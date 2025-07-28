@@ -16,22 +16,26 @@ extern "C" {
             controller = new FlightController(hal);
         }
     }
+     __declspec(dllexport) void UpdateSensorData(SensorData sensor_data) {
+        state_store->sensor_data = sensor_data;
 
-    __declspec(dllexport) ForcesAndTorques RunSimulationStep(RigidbodyState state, UserInput input, float dt) {
+    }
+    __declspec(dllexport) void UpdateBodyState(RigidbodyState body_state) {
+        state_store->ground_truth = body_state;
+    }
+
+    __declspec(dllexport) ForcesAndTorques RunSimulationStep( UserInput input, float dt) {
         if (!state_store) {
             // Or handle error appropriately
             return ForcesAndTorques(); 
         }
-
-        // Update the ground truth state
-        state_store->ground_truth = state;
 
         // The flight controller will now get the updated state when it calls read_sensors()
         MotorCommands motor_commands = controller->calculate_motor_commands(input);
         
         // The physics model can now use the state store to simulate battery drain
         // ForcesAndTorques forces_and_torques = physics->run_motor_simulation(motor_commands, dt, state_store);
-
+        
         return forces_and_torques;
     }
 

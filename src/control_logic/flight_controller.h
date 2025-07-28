@@ -7,7 +7,7 @@
 class FlightController {
 public:
     FlightController(IHAL* hal);
-    MotorCommands calculate_motor_commands(UserInput input);
+    void runFlightLoop();
 
 private:
     IHAL* hal;

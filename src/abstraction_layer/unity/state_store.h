@@ -7,7 +7,9 @@
 class StateStore {
 public:
     StateStore() : battery_voltage(12.6f) {}
-
+    Vector3 gyro_data;
+    Vector3 accelerometer_data;
+    Vector3 magnetometer_data;
     RigidbodyState ground_truth;
     float battery_voltage;
 };

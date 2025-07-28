@@ -8,12 +8,18 @@ class UnityHAL : public IHAL {
 public:
     UnityHAL(StateStore* state_store) : state_store(state_store) {}
 
-    SensorData read_sensors() override {
-        SensorData sensors;
-        sensors.gyroscope = state_store->ground_truth.angular_velocity;
-        sensors.accelerometer = {0, 0, 0}; // Placeholder
-        return sensors;
+    Vector3 read_gyros() override {
+        return state_store->gyro_data;
     }
+
+    Vector3 read_accelerometer() override {
+        return state_store->accelerometer_data;
+    }
+
+    Vector3 read_magnetometer() override {
+        return state_store->magnetometer_data;
+    }
+
 
     UserInput read_user_input() override {
         // In a real simulation, this would read from a joystick or other input device.
