@@ -27,19 +27,15 @@ extern "C" {
         state_store->ground_truth = body_state;
     }
 
-    __declspec(dllexport) ForcesAndTorques RunSimulationStep( UserInput input, float dt) {
-        if (!state_store) {
-            // Or handle error appropriately
-            return ForcesAndTorques(); 
-        }
+    __declspec(dllexport) void RunSimulationStep( UserInput input, float dt, std::array<int, 4>& forces, std::array<int, 4>& torques) {
+
 
         controller->runFlightLoop();
-        ForcesAndTorques forces_and_torques = quad->simulateQuad();
+        quad->simulateQuad(dt,forces,torques);
         
         // The physics model can now use the state store to simulate battery drain
         // ForcesAndTorques forces_and_torques = physics->run_motor_simulation(motor_commands, dt, state_store);
         
-        return forces_and_torques;
     }
 
     __declspec(dllexport) void TeardownSimulation() {

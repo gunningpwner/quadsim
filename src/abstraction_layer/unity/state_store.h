@@ -12,6 +12,7 @@ public:
     Vector3 magnetometer_data;
     RigidbodyState ground_truth;
     float battery_voltage;
+    std::array<float, 4> motor_commands;
     std::array<float, 4> motor_rpms;
 };
 
