@@ -20,8 +20,15 @@ public:
         return state_store->magnetometer_data;
     }
 
-    void write_motor_commands(std::array<int, 4>& motor_commands) override {
-        
+    std::array<float, 4> read_motor_rpms() override {
+        return state_store->motor_rpms;
+    }
+
+    void write_motor_commands(const std::array<int, 4>& motor_commands) override {
+        // This assumes a simple conversion from int to float for the motor commands.
+        for (size_t i = 0; i < motor_commands.size(); ++i) {
+            state_store->motor_commands[i] = static_cast<float>(motor_commands[i]);
+        }
     }
 
     UserInput read_user_input() override {

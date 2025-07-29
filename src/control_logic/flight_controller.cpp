@@ -2,7 +2,6 @@
 
 FlightController::FlightController(IHAL* hal) : hal(hal) {}
 
-void runFlightLoop(){
+void FlightController::runFlightLoop(){
 
 }
-

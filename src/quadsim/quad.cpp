@@ -1,25 +1,25 @@
 #include "quad.h"
+#include <cmath>
 
-ForcesAndTorques Quadcopter::simulateQuad(float dT, std::array<int, 4>& forces, std::array<int, 4>& torques){
+void Quadcopter::simulateQuad(float dT, std::array<float, 4>& forces, std::array<float, 4>& torques){
     calculateMotorResponse(dT);
-    calculateForces(std::array<int, 4>& forces, std::array<int, 4>& torques);
+    calculateRotorForces(forces, torques);
 }
 
 void Quadcopter::calculateMotorResponse(float dT){
    for (int i = 0; i < 4; i++) {
-        float throttle_percentage = state_store->motor_commands[i]/2047;
+        float throttle_percentage = state_store->motor_commands[i] / 2047.0f;
         float target_rpm = throttle_percentage * maxRPM;
         float alpha = dT/(motorTimeConstant+dT);
-        state_store->motor_rpms[i] = alpha * state_store->motor_rpms[i] + (1-alpha) * target_rpm;
+        // Correct low-pass filter implementation: y_new = (1-a)*y_old + a*x_new
+        state_store->motor_rpms[i] = (1-alpha) * state_store->motor_rpms[i] + alpha * target_rpm;
    } 
 }
 
-ForcesAndTorques Quadcopter::calculateRotorForces(std::array<int, 4>& forces, std::array<int, 4>& torques){
+void Quadcopter::calculateRotorForces(std::array<float, 4>& forces, std::array<float, 4>& torques){
     for (int i = 0; i < 4; i++){
-        float rads = state_store->motor_rpms[i]*2*3.14159/60;
+        float rads = state_store->motor_rpms[i] * 2 * M_PI / 60.0f;
         forces[i] = thrustCoefficient*rads*rads;
-        torques[i] = momentCoefficient*rads;
-    
+        torques[i] = momentCoefficient*rads*rads;
     }
-
 }

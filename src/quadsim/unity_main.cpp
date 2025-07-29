@@ -27,7 +27,7 @@ extern "C" {
         state_store->ground_truth = body_state;
     }
 
-    __declspec(dllexport) void RunSimulationStep( UserInput input, float dt, std::array<int, 4>& forces, std::array<int, 4>& torques) {
+    __declspec(dllexport) void RunSimulationStep( UserInput input, float dt, std::array<float, 4>& forces, std::array<float, 4>& torques) {
 
 
         controller->runFlightLoop();

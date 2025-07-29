@@ -4,9 +4,9 @@
 class Quadcopter {
     public: 
         Quadcopter(StateStore* state_store);
-        ForcesAndTorques simulateQuad(float dT,std::array<int, 4>& forces, std::array<int, 4>& torques);
+        void simulateQuad(float dT,std::array<float, 4>& forces, std::array<float, 4>& torques);
         void calculateMotorResponse(float dT);
-        ForcesAndTorques calculateForces(std::array<int, 4>& forces, std::array<int, 4>& torques);
+        void calculateRotorForces(std::array<float, 4>& forces, std::array<float, 4>& torques);
 
         
     private:
