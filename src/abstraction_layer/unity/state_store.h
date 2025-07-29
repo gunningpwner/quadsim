@@ -1,6 +1,6 @@
 #ifndef STATE_STORE_H
 #define STATE_STORE_H
-
+#include <array>
 #include "../src/common/types.h"
 
 // A simple class to hold the simulation's ground truth state.
@@ -12,6 +12,7 @@ public:
     Vector3 magnetometer_data;
     RigidbodyState ground_truth;
     float battery_voltage;
+    std::array<float, 4> motor_rpms;
 };
 
 #endif // STATE_STORE_H

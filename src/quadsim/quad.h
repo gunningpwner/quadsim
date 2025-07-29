@@ -4,7 +4,9 @@
 class Quadcopter {
     public: 
         Quadcopter(StateStore* state_store);
-
+        ForcesAndTorques simulateQuad();
+        void calculateMotorResponse();
+        
         
     private:
         StateStore* state_store;

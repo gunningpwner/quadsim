@@ -11,6 +11,7 @@ public:
     virtual Vector3 read_magnetometer() = 0;
     virtual void read_motor_rpms(std::array<float, 4>& motor_rpms)=0;
     virtual UserInput read_user_input() = 0;
+    virtual void write_motor_commands(std::array<int, 4>& motor_commands) = 0;
 };
 
 #endif // HAL_INTERFACE_H

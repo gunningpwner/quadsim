@@ -1,7 +1,7 @@
 #ifndef UNITY_HAL_H
 #define UNITY_HAL_H
 
-#include "../src/abstraction_layer/hal_interface.h"
+#include "../hal_interface.h"
 #include "state_store.h"
 
 class UnityHAL : public IHAL {
@@ -20,6 +20,9 @@ public:
         return state_store->magnetometer_data;
     }
 
+    void write_motor_commands(std::array<int, 4>& motor_commands) override {
+        
+    }
 
     UserInput read_user_input() override {
         // In a real simulation, this would read from a joystick or other input device.
