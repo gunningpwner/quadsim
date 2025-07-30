@@ -1,0 +1,37 @@
+
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build DLL for Unity",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-I",
+                "c:/Users/gunni/Desktop/Flight Controller/src/",
+                "-I",
+                "c:/Users/gunni/Desktop/Flight Controller/src/abstraction_layer",
+                "-I",
+                "c:/Users/gunni/Desktop/Flight Controller/src/common",
+                "-I",
+                "c:/Users/gunni/Desktop/Flight Controller/src/control_logic",
+                "-I",
+                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim",
+                "-shared",
+                "-o",
+                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/flight_controller.dll",
+                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/unity_main.cpp",
+                "c:/Users/gunni/Desktop/Flight Controller/src/control_logic/flight_controller.cpp",
+                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/quad.cpp"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compiles the C++ code into a DLL for Unity."
+        }
+    ]
+}

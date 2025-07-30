@@ -1,6 +1,8 @@
 #include "quad.h"
 #include <cmath>
 
+Quadcopter::Quadcopter(StateStore* state_store) : state_store(state_store) {}
+
 void Quadcopter::simulateQuad(float dT, std::array<float, 4>& forces, std::array<float, 4>& torques){
     calculateMotorResponse(dT);
     calculateRotorForces(forces, torques);

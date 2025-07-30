@@ -32,9 +32,7 @@ public:
     }
 
     UserInput read_user_input() override {
-        // In a real simulation, this would read from a joystick or other input device.
-        // For now, we'll just return a default value.
-        return UserInput();
+        return state_store->user_input;
     }
 
 private:
