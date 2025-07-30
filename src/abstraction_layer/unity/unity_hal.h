@@ -26,7 +26,7 @@ public:
 
     void write_motor_commands(const std::array<int, 4>& motor_commands) override {
         // This assumes a simple conversion from int to float for the motor commands.
-        for (size_t i = 0; i < motor_commands.size(); ++i) {
+        for (std::size_t i = 0; i < motor_commands.size(); ++i) {
             state_store->motor_commands[i] = static_cast<float>(motor_commands[i]);
         }
     }

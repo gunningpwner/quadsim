@@ -18,6 +18,8 @@
                 "-I",
                 "c:/Users/gunni/Desktop/Flight Controller/src/quadsim",
                 "-shared",
+                "-static-libgcc",
+                "-static-libstdc++",
                 "-o",
                 "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/flight_controller.dll",
                 "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/unity_main.cpp",
