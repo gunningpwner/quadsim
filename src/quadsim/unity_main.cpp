@@ -33,6 +33,7 @@ extern "C" {
         state_store->user_input = input;
     }
 
+
     __declspec(dllexport) void RunSimulationStep( float dt, float* out_forces, float* out_torques) {
 
         // Create local std::arrays to be used by the internal C++ functions.
@@ -48,6 +49,13 @@ extern "C" {
             // If the value is finite (not NaN/inf), use it. Otherwise, use 0.0f as a safe fallback.
             out_forces[i] = std::isfinite(forces[i]) ? forces[i] : 0.0f;
             out_torques[i] = std::isfinite(torques[i]) ? torques[i] : 0.0f;
+        }
+    }
+
+    __declspec(dllexport) void OutputAnimationElements(float* motor_rpms) {
+        for (int i = 0; i < 4; i++) {
+
+            motor_rpms[i] = state_store->motor_rpms[i];
         }
     }
 
