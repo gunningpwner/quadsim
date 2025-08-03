@@ -59,6 +59,10 @@ extern "C" {
         }
     }
 
+    __declspec(dllexport) void OutputDebugData(float* motor_rpms) {
+
+    }
+    
     __declspec(dllexport) void TeardownSimulation() {
         delete controller;
         controller = nullptr;

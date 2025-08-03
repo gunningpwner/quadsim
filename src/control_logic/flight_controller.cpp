@@ -6,16 +6,16 @@ FlightController::FlightController(IHAL* hal) : hal(hal) {
 
     // Initialize PID gains
     Kp_roll_rate = 700;
-    Ki_roll_rate = 1;
-    Kd_roll_rate = 10;
+    Ki_roll_rate = 0;
+    Kd_roll_rate = 20;
 
     Kp_pitch_rate = 700;
-    Ki_pitch_rate = 1;
-    Kd_pitch_rate = 10;
+    Ki_pitch_rate = 0;
+    Kd_pitch_rate = 20;
 
     Kp_yaw_rate = 500;
-    Ki_yaw_rate = 1;
-    Kd_yaw_rate = 10;
+    Ki_yaw_rate = 0;
+    Kd_yaw_rate = 20;
 
     // Initialize PID state
     roll_rate_error_sum = 0;
