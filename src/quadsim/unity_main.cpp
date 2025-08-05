@@ -50,37 +50,36 @@ extern "C" {
 
     // --- Main Simulation Loop (The "Orchestrator") ---
 
-    __declspec(dllexport) void RunSimulationStep(float dt, float* out_forces, float* out_torques) {
-        if (!controller || !quad || !data_manager || motor_models.empty()) return;
+ __declspec(dllexport) void RunSimulationStep(float dt, float* out_forces, float* out_torques) {
+        if (!controller || !data_manager || motor_models.empty()) return;
 
         // 1. FLIGHT LOGIC: Run the flight control loop. It reads sensor data
         //    from the DataManager and posts motor commands back to it.
         controller->runFlightLoop();
 
-        // 2. MOTOR SIMULATION: Read the controller's commands from the DataManager.
+        // 2. MOTOR SIMULATION: Read the commands from the DataManager.
         std::array<int, 4> motor_commands = data_manager->getMotorCommands();
         MotorRPMs current_rpms;
         current_rpms.Timestamp = 0; // Or get a proper timestamp
 
+        // 3. FORCE/TORQUE CALCULATION: Update each motor model and get its
+        //    individual thrust and torque. This replaces the Quadcopter class.
         for (int i = 0; i < 4; ++i) {
             motor_models[i].update(motor_commands[i], dt);
+            
+            // Get the calculated values from the motor model itself
+            out_forces[i] = motor_models[i].getThrust();
+            out_torques[i] = motor_models[i].getTorque();
             current_rpms.rpms[i] = motor_models[i].getRPM();
         }
 
-        // 3. TELEMETRY: Post the simulated RPMs back to the DataManager. The
-        //    flight controller can now consume this for RPM filtering, etc.
+        // 4. TELEMETRY: Post the simulated RPMs back to the DataManager.
         data_manager->postMotorRPMs(current_rpms);
 
-        // 4. PHYSICS: The quad physics model uses the simulated RPMs
-        //    to calculate the forces and torques for this frame.
-        std::array<float, 4> forces{};
-        std::array<float, 4> torques{};
-        quad->simulateQuad(dt, current_rpms.rpms, forces, torques);
-        
-        // 5. OUTPUT: Send the calculated forces and torques back to Unity's Rigidbody.
+        // 5. SAFETY CHECK: Ensure outputs to Unity are valid numbers.
         for (int i = 0; i < 4; i++) {
-            out_forces[i] = std::isfinite(forces[i]) ? forces[i] : 0.0f;
-            out_torques[i] = std::isfinite(torques[i]) ? torques[i] : 0.0f;
+            if (!std::isfinite(out_forces[i])) out_forces[i] = 0.0f;
+            if (!std::isfinite(out_torques[i])) out_torques[i] = 0.0f;
         }
     }
 }
