@@ -1,13 +1,5 @@
-#include "utils.h"
-#include <cmath>
+#include "coord_trans.h"
 
-// WGS84 ellipsoid constants
-const double a = 6378137.0; // semi-major axis
-const double f = 1.0 / 298.257223563; // flattening
-const double b = a * (1.0 - f); // semi-minor axis
-const double e_sq = f * (2.0 - f); // eccentricity squared
-
-// Converts degrees to radians
 double to_radians(double degrees) {
     return degrees * M_PI / 180.0;
 }

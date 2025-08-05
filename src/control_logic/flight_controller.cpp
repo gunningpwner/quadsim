@@ -97,10 +97,10 @@ Vector3 FlightController::processGPSData(){
     Vector3 lla2 = {old_data.Latitude, old_data.Longitude, old_data.Altitude};
 
     Vector3 enu_change = lla_to_enu(lla1, lla2);
-    float dt= (old_data.Timestamp-new_data.Timestamp)*1e-6;
-    enu_change.x*=dt;
-    enu_change.y*=dt;
-    enu_change.z*=dt;
+    float dt= (old_data.Timestamp-new_data.Timestamp)*1e-3;
+    enu_change.x/=dt;
+    enu_change.y/=dt;
+    enu_change.z/=dt;
     
 
     return enu_change;
