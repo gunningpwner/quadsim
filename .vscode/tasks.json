@@ -8,24 +8,24 @@
             "command": "g++",
             "args": [
                 "-I",
-                "c:/Users/gunni/Desktop/Flight Controller/src/",
+                "${workspaceFolder}/src/",
                 "-I",
-                "c:/Users/gunni/Desktop/Flight Controller/src/abstraction_layer",
+                "${workspaceFolder}/abstraction_layer",
                 "-I",
-                "c:/Users/gunni/Desktop/Flight Controller/src/common",
+                "${workspaceFolder}/src/common",
                 "-I",
-                "c:/Users/gunni/Desktop/Flight Controller/src/control_logic",
+                "${workspaceFolder}/src/control_logic",
                 "-I",
-                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim",
+                "${workspaceFolder}/src/quadsim",
                 "-shared",
                 "-static-libgcc",
                 "-static-libstdc++",
                 "-o",
-                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/flight_controller.dll",
-                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/unity_main.cpp",
-                "c:/Users/gunni/Desktop/Flight Controller/src/control_logic/flight_controller.cpp",
-                "c:/Users/gunni/Desktop/Flight Controller/src/quadsim/quad.cpp",
-                "c:/Users/gunni/Desktop/Flight Controller/src/control_logic/utils.cpp"
+                "${workspaceFolder}/src/quadsim/flight_controller.dll",
+                "${workspaceFolder}/src/quadsim/unity_main.cpp",
+                "${workspaceFolder}/src/control_logic/flight_controller.cpp",
+                "${workspaceFolder}/src/quadsim/quad.cpp",
+                "${workspaceFolder}/src/control_logic/utils.cpp"
             ],
             "group": {
                 "kind": "build",
@@ -42,7 +42,7 @@
             "command": "copy",
             "args": [
                 "${workspaceFolder}/src/quadsim/flight_controller.dll",
-                "C:/Users/gunni/Unity_Projects/QuadCopter/Assets/Plugins/flight_controller.dll"
+                "${config:myPlugin.unityPluginPath}/flight_controller.dll"
             ]
         },
         {

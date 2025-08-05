@@ -80,7 +80,7 @@ void FlightController::runFlightLoop(){
 }
 
 void FlightController::garboFilter(){
-    if  (hal->newGPSData){
+    if  (hal->newGPSData==true){
         enuVelocity = processGPSData();
         hal->newGPSData = false;
     }
@@ -89,20 +89,19 @@ void FlightController::garboFilter(){
 }
 
 Vector3 FlightController::processGPSData(){
-    std::array<GPSData, 2> gps_data = hal->read_gps();
-    Vector3 lla1 = {gps_data[0].Latitude, gps_data[0].Longitude, gps_data[0].Altitude};
-    Vector3 lla2 = {gps_data[1].Latitude, gps_data[1].Longitude, gps_data[1].Altitude};
+    GPSData new_data;
+    GPSData old_data;
+    hal->read_gps(&new_data, &old_data);
+
+    Vector3 lla1 = {new_data.Latitude, new_data.Longitude, new_data.Altitude};
+    Vector3 lla2 = {old_data.Latitude, old_data.Longitude, old_data.Altitude};
 
     Vector3 enu_change = lla_to_enu(lla1, lla2);
+    float dt= (old_data.Timestamp-new_data.Timestamp)*1e-6;
+    enu_change.x*=dt;
+    enu_change.y*=dt;
+    enu_change.z*=dt;
     
-    enu_change.x/=(gps_data[1].Timestamp-gps_data[0].Timestamp)/1e-6;
-    enu_change.y/=(gps_data[1].Timestamp-gps_data[0].Timestamp)/1e-6;
-    enu_change.z/=(gps_data[1].Timestamp-gps_data[0].Timestamp)/1e-6;
-    if (gps_data[0].Timestamp == gps_data[1].Timestamp){
-        enu_change.x = gps_data[0].Latitude;
-        enu_change.y = gps_data[0].Longitude;
-        enu_change.z = 20;
-    }
 
     return enu_change;
 

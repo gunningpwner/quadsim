@@ -6,7 +6,9 @@
 
 class UnityHAL : public IHAL {
 public:
-    UnityHAL(StateStore* state_store) : state_store(state_store) {}
+    UnityHAL(StateStore* state_store) : state_store(state_store) {
+        newGPSData = false;
+    }
 
     Vector3 read_gyros() override {
         return state_store->gyro_data;
@@ -39,11 +41,11 @@ public:
         state_store->ground_truth.rotation = bodyOrientation;
     }
 
-    virtual std::array<GPSData, 2> read_gps() override {
-        return state_store->gps_data;
+    virtual void read_gps(GPSData* new_data, GPSData* old_data) override {
+        *new_data = state_store->gps_data[1];
+        *old_data = state_store->gps_data[0];
     }
 
-    bool newGPSData = false;
 
 private:
     StateStore* state_store;

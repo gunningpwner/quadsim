@@ -1,6 +1,6 @@
 #ifndef TYPES_H
 #define TYPES_H
-
+#include <cstdint>
 struct Vector3 {
     float x, y, z;
 };
@@ -43,7 +43,7 @@ struct ForcesAndTorques {
 
 struct GPSData
 {
-    long Timestamp; // UTC time or similar
+    int64_t  Timestamp; // UTC time or similar
     int FixStatus; // 0 = No Fix, 2 = 2D, 3 = 3D
     double Latitude;
     double Longitude;

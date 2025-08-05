@@ -32,19 +32,12 @@ extern "C" {
     }
 
     __declspec(dllexport) void AddGPSData(GPSData gps_data) {
-        GPSData temp = GPSData();
-        temp.Timestamp = gps_data.Timestamp;
-        temp.FixStatus = gps_data.FixStatus;
-        temp.Latitude = gps_data.Latitude;
-        temp.Longitude = gps_data.Longitude;
-        temp.Altitude = gps_data.Altitude;
-        temp.GroundSpeed = gps_data.GroundSpeed;
-        temp.GroundVelocity = gps_data.GroundVelocity;
-        temp.Satellites = gps_data.Satellites;
-
-        state_store->gps_data[1] = state_store->gps_data[0];
-        state_store->gps_data[0] = temp;
-        hal->newGPSData=true;
+        state_store->gps_data.push_back(gps_data);
+        if (state_store->gps_data.size() > 2){
+            state_store->gps_data.pop_front();
+            hal->newGPSData = true;
+        }
+        
     }
 
     __declspec(dllexport) void RunSimulationStep( float dt, float* out_forces, float* out_torques) {
