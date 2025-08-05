@@ -34,6 +34,16 @@ public:
     UserInput read_user_input() override {
         return state_store->user_input;
     }
+    void output_debug_data(Vector3 enuVelocity, Vector3 bodyOrientation) override {
+        state_store->ground_truth.velocity = enuVelocity;
+        state_store->ground_truth.rotation = bodyOrientation;
+    }
+
+    virtual std::array<GPSData, 2> read_gps() override {
+        return state_store->gps_data;
+    }
+
+    bool newGPSData = false;
 
 private:
     StateStore* state_store;

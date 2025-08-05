@@ -8,13 +8,15 @@ class FlightController {
 public:
     FlightController(IHAL* hal);
     void runFlightLoop();
-    void complementaryFilter();
-    
+    void garboFilter();
+    Vector3 processGPSData();
 
 private:
     IHAL* hal;
 
     Vector3 bodyOrientation;
+    Vector3 enuVelocity;
+
 
     // PID gains for rate control
     float Kp_roll_rate, Ki_roll_rate, Kd_roll_rate;

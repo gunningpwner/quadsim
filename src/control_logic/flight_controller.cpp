@@ -1,5 +1,6 @@
 #include "flight_controller.h"
 #include <cmath>
+#include "utils.h"
 
 FlightController::FlightController(IHAL* hal) : hal(hal) {
     bodyOrientation = {0,0,0};
@@ -7,11 +8,11 @@ FlightController::FlightController(IHAL* hal) : hal(hal) {
     // Initialize PID gains
     Kp_roll_rate = 700;
     Ki_roll_rate = 0;
-    Kd_roll_rate = 20;
+    Kd_roll_rate = 200;
 
     Kp_pitch_rate = 700;
     Ki_pitch_rate = 0;
-    Kd_pitch_rate = 20;
+    Kd_pitch_rate = 200;
 
     Kp_yaw_rate = 500;
     Ki_yaw_rate = 0;
@@ -74,24 +75,35 @@ void FlightController::runFlightLoop(){
 
     hal->write_motor_commands({motor1, motor2, motor3, motor4});
     
+    garboFilter();
+    hal->output_debug_data(enuVelocity, bodyOrientation);
 }
 
-void FlightController::complementaryFilter(){
-    // Get sensor data
-    Vector3 gyro_data = hal->read_gyros();
-    Vector3 accel_data = hal->read_accelerometer();
+void FlightController::garboFilter(){
+    if  (hal->newGPSData){
+        enuVelocity = processGPSData();
+        hal->newGPSData = false;
+    }
+    
+    
+}
 
-    // Calculate pitch and roll from accelerometer
-    float pitch_accel = atan2(accel_data.y, accel_data.z) * 180 / M_PI;
-    float roll_accel = atan2(-accel_data.x, sqrt(accel_data.y * accel_data.y + accel_data.z * accel_data.z)) * 180 / M_PI;
+Vector3 FlightController::processGPSData(){
+    std::array<GPSData, 2> gps_data = hal->read_gps();
+    Vector3 lla1 = {gps_data[0].Latitude, gps_data[0].Longitude, gps_data[0].Altitude};
+    Vector3 lla2 = {gps_data[1].Latitude, gps_data[1].Longitude, gps_data[1].Altitude};
 
-    // Integrate gyroscope data
-    float dt = 0.004; // Assuming a 250Hz loop rate
-    bodyOrientation.x += gyro_data.x * dt;
-    bodyOrientation.y += gyro_data.y * dt;
+    Vector3 enu_change = lla_to_enu(lla1, lla2);
+    
+    enu_change.x/=(gps_data[1].Timestamp-gps_data[0].Timestamp)/1e-6;
+    enu_change.y/=(gps_data[1].Timestamp-gps_data[0].Timestamp)/1e-6;
+    enu_change.z/=(gps_data[1].Timestamp-gps_data[0].Timestamp)/1e-6;
+    if (gps_data[0].Timestamp == gps_data[1].Timestamp){
+        enu_change.x = gps_data[0].Latitude;
+        enu_change.y = gps_data[0].Longitude;
+        enu_change.z = 20;
+    }
 
-    // Apply complementary filter
-    float alpha = 0.98;
-    bodyOrientation.x = alpha * (bodyOrientation.x) + (1 - alpha) * roll_accel;
-    bodyOrientation.y = alpha * (bodyOrientation.y) + (1 - alpha) * pitch_accel;
+    return enu_change;
+
 }

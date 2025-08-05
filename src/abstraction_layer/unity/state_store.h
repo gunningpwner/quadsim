@@ -1,7 +1,7 @@
 #ifndef STATE_STORE_H
 #define STATE_STORE_H
 #include <array>
-#include "../src/common/types.h"
+#include "../../common/types.h"
 
 // A simple class to hold the simulation's ground truth state.
 class StateStore {
@@ -15,6 +15,7 @@ public:
     float battery_voltage;
     std::array<float, 4> motor_commands;
     std::array<float, 4> motor_rpms;
+    std::array<GPSData, 2> gps_data{};
 };
 
 #endif // STATE_STORE_H

@@ -11,7 +11,7 @@ struct Quaternion {
 
 struct RigidbodyState {
     Vector3 position;
-    Quaternion rotation;
+    Vector3 rotation;
     Vector3 velocity;
     Vector3 angular_velocity;
 };
@@ -26,6 +26,7 @@ struct UserInput {
 struct SensorData {
     Vector3 gyroscope;
     Vector3 accelerometer;
+    Vector3 magnetometer;
 };
 
 struct MotorCommands {
@@ -38,6 +39,18 @@ struct MotorCommands {
 struct ForcesAndTorques {
     Vector3 force;
     Vector3 torque;
+};
+
+struct GPSData
+{
+    long Timestamp; // UTC time or similar
+    int FixStatus; // 0 = No Fix, 2 = 2D, 3 = 3D
+    double Latitude;
+    double Longitude;
+    float Altitude;
+    float GroundSpeed;
+    Vector3 GroundVelocity; // In Unity's world space
+    int Satellites;
 };
 
 #endif // TYPES_H

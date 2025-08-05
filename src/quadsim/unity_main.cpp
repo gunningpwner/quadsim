@@ -23,16 +23,29 @@ extern "C" {
      __declspec(dllexport) void UpdateSensorData(SensorData sensor_data) {
         state_store->gyro_data = sensor_data.gyroscope;
         state_store->accelerometer_data = sensor_data.accelerometer;
+        state_store->magnetometer_data = sensor_data.magnetometer;
 
-    }
-    __declspec(dllexport) void UpdateBodyState(RigidbodyState body_state) {
-        state_store->ground_truth = body_state;
     }
     
     __declspec(dllexport) void UpdateUserInput(UserInput input) {
         state_store->user_input = input;
     }
 
+    __declspec(dllexport) void AddGPSData(GPSData gps_data) {
+        GPSData temp = GPSData();
+        temp.Timestamp = gps_data.Timestamp;
+        temp.FixStatus = gps_data.FixStatus;
+        temp.Latitude = gps_data.Latitude;
+        temp.Longitude = gps_data.Longitude;
+        temp.Altitude = gps_data.Altitude;
+        temp.GroundSpeed = gps_data.GroundSpeed;
+        temp.GroundVelocity = gps_data.GroundVelocity;
+        temp.Satellites = gps_data.Satellites;
+
+        state_store->gps_data[1] = state_store->gps_data[0];
+        state_store->gps_data[0] = temp;
+        hal->newGPSData=true;
+    }
 
     __declspec(dllexport) void RunSimulationStep( float dt, float* out_forces, float* out_torques) {
 
@@ -59,8 +72,11 @@ extern "C" {
         }
     }
 
-    __declspec(dllexport) void OutputDebugData(float* motor_rpms) {
-
+    __declspec(dllexport) void OutputDebugData(RigidbodyState* body_state) {
+        body_state->position = state_store->ground_truth.position;
+        body_state->rotation = state_store->ground_truth.rotation;
+        body_state->velocity = state_store->ground_truth.velocity;
+        body_state->angular_velocity = state_store->ground_truth.angular_velocity;
     }
     
     __declspec(dllexport) void TeardownSimulation() {
