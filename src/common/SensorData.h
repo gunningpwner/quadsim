@@ -4,25 +4,35 @@
 #include "Vector3.h"
 #include <cstdint>
 
-struct GPSData
-{
-    int64_t Timestamp;
+struct TimestampedData {
+    int64_t Timestamp = 0;
+
+    // A virtual destructor is crucial for polymorphism
+    virtual ~TimestampedData() = default;
+};
+
+// most likely from NMEA GPGGA, and GPGSA messages.
+// UBX-NAV-COV will give full 3x3 ned covariance
+struct GPSPositionData:TimestampedData
+{   
+    Vector3 lla;
+    Vector3 position_covariances;
     int FixStatus;
-    double Latitude;
-    double Longitude;
-    float Altitude;
-    float GroundSpeed;
-    Vector3 GroundVelocity;
     int Satellites;
 };
 
-struct AccelData
+// NMEA GPVTG
+// UBX-NAV-VELNED will give covariances
+struct GPSVelocityData:TimestampedData
 {
-    /// <summary>
-    /// The timestamp when the measurement was generated (milliseconds).
-    /// </summary>
-    int64_t Timestamp;
+    Vector3 velocity; //technically just en since gps only gives you groundspeed
+    Vector3 velocity_covariances;
+};
 
+
+
+struct AccelData:TimestampedData
+{
     /// <summary>
     /// Linear acceleration in the body frame (m/s^2).
     /// </summary>
@@ -32,13 +42,8 @@ struct AccelData
 /// <summary>
 /// Holds a single, timestamped reading from a gyroscope.
 /// </summary>
-struct GyroData
+struct GyroData:TimestampedData
 {
-    /// <summary>
-    /// The timestamp when the measurement was generated (milliseconds).
-    /// </summary>
-    int64_t Timestamp;
-
     /// <summary>
     /// Angular velocity in the body frame (radians/s).
     /// </summary>
@@ -48,11 +53,8 @@ struct GyroData
 /// <summary>
 /// Holds a single, timestamped reading from a magnetometer.
 /// </summary>
-struct MagData
+struct MagData:TimestampedData
 {
-    /// <summary>
-    /// The timestamp when the measurement was generated (milliseconds).
-    /// </summary>
     int64_t Timestamp;
 
     /// <summary>
@@ -61,9 +63,8 @@ struct MagData
     Vector3 MagneticField;
 };
 
-struct MotorRPMs
+struct MotorRPMs:TimestampedData
 {
-    int64_t Timestamp;
     std::array<float, 4> rpms;
 };
 #endif // SENSORDATA_H

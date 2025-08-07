@@ -1,37 +1,45 @@
 // EKF.h
 #pragma once
 
-#include "sensor_data.h"
+#include "SensorData.h"
 #include "DataManager.h"
+#include "Consumer.h"
 
 // Extended Kalman Filter class for state estimation
 class EKF {
 public:
     EKF(DataManager& data_manager):
         m_data_manager(data_manager),
-        m_last_gyro_count(0),
-        m_last_accel_count(0),
-        m_last_mag_count(0),
-        m_last_gps_count(0),
+        m_gyro_consumer(data_manager),
+        m_accel_consumer(data_manager),
+        m_mag_consumer(data_manager),
+        m_gps_consumer(data_manager),
         locked_in(false){};
 
     void run();
+    void processSensorMeasurements();
 
 private:
     DataManager& m_data_manager;
 
-    // Internal state variables for the EKF
-    // For example:
-    // Eigen::VectorXd m_state; // State vector (e.g., position, velocity, orientation)
-    // Eigen::MatrixXd m_covariance; // Covariance matrix
+    Consumer<GyroData> m_gyro_consumer;
+    Consumer<AccelData> m_accel_consumer;
+    Consumer<MagData> m_mag_consumer;
+    Consumer<GPSPositionData> m_gps_consumer;
 
-    // Last seen update counts for sensor data
-    unsigned int m_last_gyro_count;
-    unsigned int m_last_accel_count;
-    unsigned int m_last_mag_count;
-    unsigned int m_last_gps_count;
     bool locked_in;
+
+    uint64_t m_current_time_us;
+    uint64_t m_last_predict_time_us;
+    bool pos_lock;
     Vector3 ref_lla;
+    Vector3 pos_var;
+    bool grav_lock;
+    Vector3 grav;
+    Vector3 grav_var;
+    bool mag_lock;
+    Vector3 mag;
+    Vector3 mag_var;
 
     // Private methods for prediction and correction steps
     void predict();
@@ -40,6 +48,9 @@ private:
     void reset_filter();
 
     void bootstrap_position();
+    void bootstrap_mag();
+    void bootstrap_grav();
+    void lock_in();
     // Steps for EKF
     //1. Lock in navigation frame with GPS, accelerometer and magnetometer measurements.
     // error out if a high enough velocity or acceleration is detected

@@ -1,7 +1,8 @@
 // DataManager.h
 #pragma once
 
-#include "sensor_data.h"
+#include "SensorData.h"
+#include "DataChannel.h"
 #include <deque>
 #include <mutex>
 #include <vector>
@@ -20,59 +21,54 @@ using TimeSource = std::function<uint64_t()>;
 class DataManager {
 public:
     // --- Struct for Calculated State ---
-    struct FlightState {
-        Vector3 estimated_velocity_enu;
-        Vector3 estimated_orientation_body;
-        // ... add other states like position, altitude, etc.
-    };
 
-    DataManager(TimeSource time_source_func);
+
+    DataManager(TimeSource time_source_func):
+    m_time_source(time_source_func),
+    m_gyro_channel(IMU_BUFFER_SIZE),
+    m_accel_channel(IMU_BUFFER_SIZE),
+    m_mag_channel(IMU_BUFFER_SIZE),
+    m_gps_channel(GPS_BUFFER_SIZE){}
 
     // --- WRITE Methods (Called by Producers like HAL and FlightController) ---
 
-    void postGyro(const GyroData& gyro);
-    void postAccel(const AccelData& accel);
-    void postMag(const MagData& mag);
-    void postGPS(const GPSData& gps);
-    void postFlightState(const FlightState& state);
+    void post(const GyroData& data){m_gyro_channel.post(data);};
+    void post(const AccelData& data){m_accel_channel.post(data);};
+    void post(const MagData& data){m_mag_channel.post(data);};
+    void post(const GPSPositionData& data){m_gps_channel.post(data);};
+
 
     // --- READ Methods (For simple consumers wanting only the latest value) ---
 
-    GyroData getLatestGyro();
-    AccelData getLatestAccel();
-    MagData getLatestMag();
-    GPSData getLatestGPS();
-    FlightState getFlightState();
+    void getLatest(GyroData& latest_data){m_gyro_channel.getLatest(latest_data);};
+    void getLatest(AccelData& latest_data){m_accel_channel.getLatest(latest_data);};
+    void getLatest(MagData& latest_data){m_mag_channel.getLatest(latest_data);};
+    void getLatest(GPSPositionData& latest_data){m_gps_channel.getLatest(latest_data);};
+
     uint64_t getCurrentTimeUs() const;
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
     // This pattern allows a consumer to get all new data since it last checked.
-    bool consumeGyro(std::vector<GyroData>& gyro_samples, unsigned int& last_seen_count);
-    bool consumeAccel(std::vector<AccelData>& accel_samples, unsigned int& last_seen_count);
-    bool consumeMag(std::vector<MagData>& mag_samples, unsigned int& last_seen_count);
-    bool consumeGPS(std::vector<GPSData>& gps_samples, unsigned int& last_seen_count);
+    bool consume(std::vector<GyroData>& samples, unsigned int& last_seen_count){
+        return m_gyro_channel.consume(samples, last_seen_count);
+    };
+    bool consume(std::vector<AccelData>& samples, unsigned int& last_seen_count){
+        return m_accel_channel.consume(samples, last_seen_count);
+    };
+    bool consume(std::vector<MagData>& samples, unsigned int& last_seen_count){
+        return m_mag_channel.consume(samples, last_seen_count);
+    };
+    bool consume(std::vector<GPSPositionData>& samples, unsigned int& last_seen_count){
+        return m_gps_channel.consume(samples, last_seen_count);
+    };
 
 private:
-    std::mutex m_sensor_mutex; // Guards Gyro, Accel, Mag
-    std::mutex m_gps_mutex;
-    std::mutex m_state_mutex;
 
-    // ---  Sensor Data Buffers ---
-    std::deque<GyroData> m_gyro_buffer;
-    std::deque<AccelData> m_accel_buffer;
-    std::deque<MagData> m_mag_buffer;
-    std::deque<GPSData> m_gps_buffer;
-    
     TimeSource m_time_source;
 
-    // --- Update counters to track "newness" ---
-    unsigned int m_gyro_update_count;
-    unsigned int m_accel_update_count;
-    unsigned int m_mag_update_count;
-    unsigned int m_gps_update_count;
+    DataChannel<GyroData>  m_gyro_channel;
+    DataChannel<AccelData> m_accel_channel;
+    DataChannel<MagData>   m_mag_channel;
+    DataChannel<GPSPositionData>   m_gps_channel;
 
-    
-
-    // --- Calculated State Data ---
-    FlightState m_flight_state;
 };

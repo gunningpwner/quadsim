@@ -124,7 +124,18 @@ struct Vector3 {
     }
 };
 
+inline Vector3  operator-(float scalar, const Vector3& vec){
+    return Vector3(scalar-vec.x,scalar-vec.y,scalar-vec.z);
+}
 // Allow for scalar * vector multiplication as well
 inline Vector3 operator*(float scalar, const Vector3& vec) {
     return vec * scalar;
+}
+
+inline Vector3 operator*(const Vector3& a, const Vector3& b) {
+    return Vector3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
+inline Vector3 operator/(const Vector3& a, const Vector3& b) {
+    return Vector3(a.x / b.x, a.y / b.y, a.z / b.z);
 }

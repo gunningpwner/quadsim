@@ -43,7 +43,7 @@ extern "C" {
     __declspec(dllexport) void AddMagData(MagData mag_data) {
         if (data_manager) data_manager->postRawMag(mag_data);
     }
-    __declspec(dllexport) void AddGPSData(GPSData gps_data) {
+    __declspec(dllexport) void AddGPSData(GPSPositionData gps_data) {
         if (data_manager) data_manager->postRawGPS(gps_data);
     }
 
