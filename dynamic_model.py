@@ -12,14 +12,25 @@ theta = symbols('theta_w theta_x theta_y theta_z')
 omega = symbols('omega_w omega_x omega_y omega_z')
 alpha = symbols('alpha_w alpha_x alpha_y alpha_z')
 
-state=[*p,*v,*a,*theta,*omega,*alpha]
+dt = symbols('dt')
 
-v = a
+state=[*p,*v,*theta,*omega,]
 
 
 ori = Quaternion(*theta,norm=1)
 body_rates = Quaternion(*omega,norm=1)
 angular_acc = Quaternion(*alpha,norm=1)
 
+pmat=Matrix(p)
+vmat=Matrix(v)
+amat=Matrix(a)
 
-display(ori*Quaternion(0,*v)*ori.inverse())
+# position, velocity are all in ecef
+# acceleration measured in body frame.
+p_pred = pmat+vmat*dt
+# rotate acceleration to ecef
+a_rot=(ori*Quaternion(0,*a)*ori.inverse()).to_Matrix(vector_only=True)
+#need to normalize a_rot and p_mat in code, but for jacobian, omit
+v_pred = -9.8*pmat.normalized()+a_rot
+
+

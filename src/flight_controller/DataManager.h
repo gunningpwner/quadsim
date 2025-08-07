@@ -1,13 +1,22 @@
 // DataManager.h
 #pragma once
 
-#include "sensor_data.h" // Using the types from your provided header
+#include "sensor_data.h"
 #include <deque>
 #include <mutex>
+#include <vector>
+
+#include <functional> // Required for std::function
+
+// Configurable buffer sizes for sensor data.
+constexpr size_t IMU_BUFFER_SIZE = 50;
+constexpr size_t GPS_BUFFER_SIZE = 10; // GPS updates less frequently
+
+using TimeSource = std::function<uint64_t()>;
 
 // This class is the central "blackboard" for the entire flight software.
-// It holds the latest raw sensor data, the latest calculated state from the
-// flight controller, and any other shared system state.
+// It holds buffers of recent  sensor data, the latest calculated state
+// from the flight controller, and other shared system state.
 class DataManager {
 public:
     // --- Struct for Calculated State ---
@@ -17,115 +26,53 @@ public:
         // ... add other states like position, altitude, etc.
     };
 
-    DataManager() : 
-        m_new_gps_data_available(false),
-        m_gyro_update_count(0),
-        m_accel_update_count(0),
-        m_mag_update_count(0)
-    {}
+    DataManager(TimeSource time_source_func);
 
     // --- WRITE Methods (Called by Producers like HAL and FlightController) ---
 
-    void postRawGyro(const GyroData& gyro) { 
-        std::lock_guard<std::mutex> lock(m_sensor_mutex); 
-        m_raw_gyro = gyro; 
-        m_gyro_update_count++; // Increment counter on new data
-    }
-    void postRawAccel(const AccelData& accel) { 
-        std::lock_guard<std::mutex> lock(m_sensor_mutex); 
-        m_raw_accel = accel; 
-        m_accel_update_count++; // Increment counter on new data
-    }
-    void postRawMag(const MagData& mag) { 
-        std::lock_guard<std::mutex> lock(m_sensor_mutex); 
-        m_raw_mag = mag;
-        m_mag_update_count++; // Increment counter on new data
-    }
-    
-    void postRawGPS(const GPSData& gps) {
-        std::lock_guard<std::mutex> lock(m_gps_mutex);
-        m_gps_history.push_back(gps);
-        if (m_gps_history.size() > 2) m_gps_history.pop_front();
-        if (m_gps_history.size() >= 2) m_new_gps_data_available = true;
-    }
+    void postGyro(const GyroData& gyro);
+    void postAccel(const AccelData& accel);
+    void postMag(const MagData& mag);
+    void postGPS(const GPSData& gps);
+    void postFlightState(const FlightState& state);
 
-    void postFlightState(const FlightState& state) {
-        std::lock_guard<std::mutex> lock(m_state_mutex);
-        m_flight_state = state;
-    }
+    // --- READ Methods (For simple consumers wanting only the latest value) ---
 
-    // --- READ Methods (For simple consumers like OSD/Loggers) ---
-
-    GyroData getRawGyro() { std::lock_guard<std::mutex> lock(m_sensor_mutex); return m_raw_gyro; }
-    AccelData getRawAccel() { std::lock_guard<std::mutex> lock(m_sensor_mutex); return m_raw_accel; }
-    MagData getRawMag() { std::lock_guard<std::mutex> lock(m_sensor_mutex); return m_raw_mag; }
-    
-    FlightState getFlightState() {
-        std::lock_guard<std::mutex> lock(m_state_mutex);
-        return m_flight_state;
-    }
-
+    GyroData getLatestGyro();
+    AccelData getLatestAccel();
+    MagData getLatestMag();
+    GPSData getLatestGPS();
+    FlightState getFlightState();
+    uint64_t getCurrentTimeUs() const;
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
-    // This pattern allows a consumer to check for new data since it last checked.
-    bool consumeRawGyro(GyroData& gyro, unsigned int& last_seen_count) {
-        std::lock_guard<std::mutex> lock(m_sensor_mutex);
-        if (last_seen_count < m_gyro_update_count) {
-            gyro = m_raw_gyro;
-            last_seen_count = m_gyro_update_count;
-            return true; // There was new data
-        }
-        return false; // No new data since last check
-    }
-
-    bool consumeRawAccel(AccelData& accel, unsigned int& last_seen_count) {
-        std::lock_guard<std::mutex> lock(m_sensor_mutex);
-        if (last_seen_count < m_accel_update_count) {
-            accel = m_raw_accel;
-            last_seen_count = m_accel_update_count;
-            return true;
-        }
-        return false;
-    }
-
-    bool consumeRawMag(MagData& mag, unsigned int& last_seen_count) {
-        std::lock_guard<std::mutex> lock(m_sensor_mutex);
-        if (last_seen_count < m_mag_update_count) {
-            mag = m_raw_mag;
-            last_seen_count = m_mag_update_count;
-            return true;
-        }
-        return false;
-    }
-    
-    bool consumeGPSHistory(GPSData& new_data, GPSData& old_data) {
-        std::lock_guard<std::mutex> lock(m_gps_mutex);
-        if (!m_new_gps_data_available) return false;
-        
-        new_data = m_gps_history[1];
-        old_data = m_gps_history[0];
-        m_new_gps_data_available = false; // Flag is consumed
-        return true;
-    }
-
+    // This pattern allows a consumer to get all new data since it last checked.
+    bool consumeGyro(std::vector<GyroData>& gyro_samples, unsigned int& last_seen_count);
+    bool consumeAccel(std::vector<AccelData>& accel_samples, unsigned int& last_seen_count);
+    bool consumeMag(std::vector<MagData>& mag_samples, unsigned int& last_seen_count);
+    bool consumeGPS(std::vector<GPSData>& gps_samples, unsigned int& last_seen_count);
 
 private:
-    std::mutex m_sensor_mutex;
+    std::mutex m_sensor_mutex; // Guards Gyro, Accel, Mag
     std::mutex m_gps_mutex;
     std::mutex m_state_mutex;
 
-    // Raw Sensor Data (now using your specific struct types)
-    GyroData m_raw_gyro;
-    AccelData m_raw_accel;
-    MagData m_raw_mag;
-    std::deque<GPSData> m_gps_history;
-    bool m_new_gps_data_available;
+    // ---  Sensor Data Buffers ---
+    std::deque<GyroData> m_gyro_buffer;
+    std::deque<AccelData> m_accel_buffer;
+    std::deque<MagData> m_mag_buffer;
+    std::deque<GPSData> m_gps_buffer;
+    
+    TimeSource m_time_source;
 
-    // Update counters to track "newness"
+    // --- Update counters to track "newness" ---
     unsigned int m_gyro_update_count;
     unsigned int m_accel_update_count;
     unsigned int m_mag_update_count;
+    unsigned int m_gps_update_count;
 
-    // Calculated State Data
+    
+
+    // --- Calculated State Data ---
     FlightState m_flight_state;
 };
