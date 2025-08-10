@@ -7,7 +7,16 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-
+// The constructor now calls the base class constructor
+EKF::EKF(DataManager& data_manager) :
+    FilterBase(data_manager), // Pass data_manager to the base class
+    m_gyro_consumer(data_manager),
+    m_accel_consumer(data_manager),
+    m_mag_consumer(data_manager),
+    m_gps_consumer(data_manager),
+    locked_in(false)
+{
+}
 
 void EKF::run(){
     m_current_time_us = m_data_manager.getCurrentTimeUs();

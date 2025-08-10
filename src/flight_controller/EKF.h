@@ -2,26 +2,18 @@
 #pragma once
 
 #include "SensorData.h"
-#include "DataManager.h"
+#include "FilterBase.h"
 #include "Consumer.h"
 
 // Extended Kalman Filter class for state estimation
-class EKF {
+class EKF : public FilterBase {
 public:
-    EKF(DataManager& data_manager):
-        m_data_manager(data_manager),
-        m_gyro_consumer(data_manager),
-        m_accel_consumer(data_manager),
-        m_mag_consumer(data_manager),
-        m_gps_consumer(data_manager),
-        locked_in(false){};
+    EKF(DataManager& data_manager);
 
-    void run();
+    void run() override;
     void processSensorMeasurements();
 
 private:
-    DataManager& m_data_manager;
-
     Consumer<GyroData> m_gyro_consumer;
     Consumer<AccelData> m_accel_consumer;
     Consumer<MagData> m_mag_consumer;

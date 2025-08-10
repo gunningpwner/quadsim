@@ -11,9 +11,7 @@ public:
     explicit DataChannel(size_t buffer_size) : m_update_count(0),m_buffer_size(buffer_size) {}
 
     void post(const T& data) {
-        #ifdef UNREAL_IS_STUPID
-        UE_LOG(LogInit, Log, TEXT("Data was posted"));
-        #endif // UNREAL_IS_STUPID
+        
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_buffer.push_back(data);

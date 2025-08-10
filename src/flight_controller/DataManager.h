@@ -3,6 +3,7 @@
 
 #include "SensorData.h"
 #include "DataChannel.h"
+#include "OtherData.h"
 #include <deque>
 #include <mutex>
 #include <vector>
@@ -12,6 +13,9 @@
 // Configurable buffer sizes for sensor data.
 constexpr size_t IMU_BUFFER_SIZE = 50;
 constexpr size_t GPS_BUFFER_SIZE = 10; // GPS updates less frequently
+constexpr size_t INPUT_BUFFER_SIZE = 2;
+constexpr size_t STATE_BUFFER_SIZE = 2;
+constexpr size_t MOTOR_COMMAND_BUFFER_SIZE = 2;
 
 using TimeSource = std::function<uint64_t()>;
 
@@ -28,7 +32,10 @@ public:
     m_gyro_channel(IMU_BUFFER_SIZE),
     m_accel_channel(IMU_BUFFER_SIZE),
     m_mag_channel(IMU_BUFFER_SIZE),
-    m_gps_channel(GPS_BUFFER_SIZE){}
+    m_gps_channel(GPS_BUFFER_SIZE),
+    m_input_channel(INPUT_BUFFER_SIZE),
+    m_state_channel(STATE_BUFFER_SIZE),
+    m_motor_command_channel(MOTOR_COMMAND_BUFFER_SIZE){}
 
     // --- WRITE Methods (Called by Producers like HAL and FlightController) ---
 
@@ -36,6 +43,9 @@ public:
     void post(const AccelData& data){m_accel_channel.post(data);};
     void post(const MagData& data){m_mag_channel.post(data);};
     void post(const GPSPositionData& data){m_gps_channel.post(data);};
+    void post(const InputData& data){m_input_channel.post(data);};
+    void post(const StateData& data){m_state_channel.post(data);};
+    void post(const MotorCommands& data){m_motor_command_channel.post(data);};
 
 
     // --- READ Methods (For simple consumers wanting only the latest value) ---
@@ -44,17 +54,10 @@ public:
     void getLatest(AccelData& latest_data){m_accel_channel.getLatest(latest_data);};
     void getLatest(MagData& latest_data){m_mag_channel.getLatest(latest_data);};
     void getLatest(GPSPositionData& latest_data){m_gps_channel.getLatest(latest_data);};
+    void getLatest(InputData& latest_data){m_input_channel.getLatest(latest_data);};
+    void getLatest(StateData& latest_data){m_state_channel.getLatest(latest_data);};
+    void getLatest(MotorCommands& latest_data){m_motor_command_channel.getLatest(latest_data);};
 
-    uint64_t getCurrentTimeUs() const {
-        // Check if the time source function is valid before calling it.
-        if (!m_time_source) {
-            // Handle the error appropriately. Throwing an exception is a common choice.
-            throw std::runtime_error("Time source not initialized in DataManager.");
-        }
-        
-        // Execute the stored function and return its value.
-        return m_time_source();
-    }
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
     // This pattern allows a consumer to get all new data since it last checked.
@@ -70,6 +73,29 @@ public:
     bool consume(std::vector<GPSPositionData>& samples, unsigned int& last_seen_count){
         return m_gps_channel.consume(samples, last_seen_count);
     };
+    bool consume(std::vector<InputData>& samples, unsigned int& last_seen_count){
+        return m_input_channel.consume(samples, last_seen_count);
+    };
+    bool consume(std::vector<StateData>& samples, unsigned int& last_seen_count){
+        return m_state_channel.consume(samples,last_seen_count);
+    };
+    bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count){
+        return m_motor_command_channel.consume(samples,last_seen_count);
+    };
+
+
+    uint64_t getCurrentTimeUs() const {
+        // Check if the time source function is valid before calling it.
+        if (!m_time_source) {
+            // Handle the error appropriately. Throwing an exception is a common choice.
+            throw std::runtime_error("Time source not initialized in DataManager.");
+        }
+        
+        // Execute the stored function and return its value.
+        return m_time_source();
+    }
+    
+
 
 private:
 
@@ -79,5 +105,8 @@ private:
     DataChannel<AccelData> m_accel_channel;
     DataChannel<MagData>   m_mag_channel;
     DataChannel<GPSPositionData>   m_gps_channel;
+    DataChannel<InputData> m_input_channel;
+    DataChannel<StateData> m_state_channel;
+    DataChannel<MotorCommands> m_motor_command_channel;
 
 };

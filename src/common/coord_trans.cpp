@@ -1,4 +1,6 @@
 #include "coord_trans.h"
+#include <cmath>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -7,7 +9,7 @@ double to_radians(double degrees) {
     return degrees * M_PI / 180.0;
 }
 
-Vector3 lla_to_enu(const Vector3& lla, const Vector3& lla_ref) {
+Vector3 lla_to_ecef(const Vector3& lla) {
     double lat_rad = to_radians(lla.x);
     double lon_rad = to_radians(lla.y);
     double sin_lat = sin(lat_rad);
@@ -17,23 +19,23 @@ Vector3 lla_to_enu(const Vector3& lla, const Vector3& lla_ref) {
 
     double x = (N + lla.z) * cos_lat * cos(lon_rad);
     double y = (N + lla.z) * cos_lat * sin(lon_rad);
-    double z = ((b * b) / (a * a) * N + lla.z) * sin_lat;
+    double z = ((1.0 - e_sq) * N + lla.z) * sin_lat;
+
+    return {(float)x, (float)y, (float)z};
+}
+
+Vector3 lla_to_enu(const Vector3& lla, const Vector3& lla_ref) {
+    Vector3 ecef = lla_to_ecef(lla);
+    Vector3 ecef_ref = lla_to_ecef(lla_ref);
+
+    double dx = ecef.x - ecef_ref.x;
+    double dy = ecef.y - ecef_ref.y;
+    double dz = ecef.z - ecef_ref.z;
 
     double lat_ref_rad = to_radians(lla_ref.x);
     double lon_ref_rad = to_radians(lla_ref.y);
     double sin_lat_ref = sin(lat_ref_rad);
     double cos_lat_ref = cos(lat_ref_rad);
-
-    double N_ref = a / sqrt(1.0 - e_sq * sin_lat_ref * sin_lat_ref);
-
-    double x_ref = (N_ref + lla_ref.z) * cos_lat_ref * cos(lon_ref_rad);
-    double y_ref = (N_ref + lla_ref.z) * cos_lat_ref * sin(lon_ref_rad);
-    double z_ref = ((b * b) / (a * a) * N_ref + lla_ref.z) * sin_lat_ref;
-
-    double dx = x - x_ref;
-    double dy = y - y_ref;
-    double dz = z - z_ref;
-
     double sin_lon_ref = sin(lon_ref_rad);
     double cos_lon_ref = cos(lon_ref_rad);
 

@@ -3,6 +3,9 @@
 
 #include "Vector3.h" // Assumes you have your Vector3 class
 #include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 struct Quaternion {
     // --- Member Variables ---
