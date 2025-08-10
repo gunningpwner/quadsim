@@ -1,3 +1,4 @@
+#ifndef UNREAL_IS_STUPID
 #include <Arduino.h>
 
 RawImuData raw_imu_buffer[...]; 
@@ -43,3 +44,4 @@ void loop() {
         // ...
     }
 }
+#endif

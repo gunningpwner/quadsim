@@ -3,7 +3,7 @@
 
 #include "Vector3.h"
 #include <cstdint>
-
+#include <array>
 struct TimestampedData {
     int64_t Timestamp = 0;
 

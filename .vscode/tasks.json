@@ -14,7 +14,7 @@
                 "-I",
                 "${workspaceFolder}/src/common",
                 "-I",
-                "${workspaceFolder}/src/control_logic",
+                "${workspaceFolder}/src/flight_controller",
                 "-I",
                 "${workspaceFolder}/src/quadsim",
                 "-shared",
@@ -23,9 +23,8 @@
                 "-o",
                 "${workspaceFolder}/src/quadsim/flight_controller.dll",
                 "${workspaceFolder}/src/quadsim/unity_main.cpp",
-                "${workspaceFolder}/src/control_logic/flight_controller.cpp",
-                "${workspaceFolder}/src/quadsim/quad.cpp",
-                "${workspaceFolder}/src/control_logic/utils.cpp"
+                "${workspaceFolder}/src/common/coord_trans.cpp",
+                "${workspaceFolder}/src/flight_controller/EKF.cpp",
             ],
             "group": {
                 "kind": "build",

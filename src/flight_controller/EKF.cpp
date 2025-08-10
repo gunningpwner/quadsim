@@ -3,6 +3,12 @@
 #include <memory>
 #include <algorithm>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+
+
 void EKF::run(){
     m_current_time_us = m_data_manager.getCurrentTimeUs();
     if (!locked_in){
@@ -148,27 +154,22 @@ void EKF::processSensorMeasurements() {
 
     // === 3. PROCESS ALL DATA IN CHRONOLOGICAL ORDER ===
     // Loop through the sorted timeline and apply each measurement to the filter.
-    for (const auto& data_point : data_log) {
-        // Predict the state forward to the current measurement's timestamp
-        float dt = (data_point->Timestamp - m_last_predict_time_us) * 1.0e-6f;
-        predict(dt);
-        m_last_predict_time_us = data_point->Timestamp;
+    // for (const auto& data_point : data_log) {
+    //     // Predict the state forward to the current measurement's timestamp
+    //     float dt = (data_point->Timestamp - m_last_predict_time_us) * 1.0e-6f;
+    //     predict(dt);
+    //     m_last_predict_time_us = data_point->Timestamp;
 
-        // Use dynamic_cast to safely figure out what type of data this is
-        // and call the correct update function.
-        if (auto gyro = dynamic_cast<GyroData*>(data_point.get())) {
-            updateWithGyro(*gyro);
-        }
-        else if (auto accel = dynamic_cast<AccelData*>(data_point.get())) {
-            updateWithAccel(*accel);
-        }
-        else if (auto gps = dynamic_cast<GPSPositionData*>(data_point.get())) {
-            updateWithGps(*gps);
-        }
-    }
-}
-
-void EKF::bootstrap_position(){
-    
-
+    //     // Use dynamic_cast to safely figure out what type of data this is
+    //     // and call the correct update function.
+    //     if (auto gyro = dynamic_cast<GyroData*>(data_point.get())) {
+    //         updateWithGyro(*gyro);
+    //     }
+    //     else if (auto accel = dynamic_cast<AccelData*>(data_point.get())) {
+    //         updateWithAccel(*accel);
+    //     }
+    //     else if (auto gps = dynamic_cast<GPSPositionData*>(data_point.get())) {
+    //         updateWithGps(*gps);
+    //     }
+    // }
 }

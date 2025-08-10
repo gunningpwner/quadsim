@@ -6,7 +6,7 @@
 #include <deque>
 #include <mutex>
 #include <vector>
-
+#include <stdexcept>
 #include <functional> // Required for std::function
 
 // Configurable buffer sizes for sensor data.
@@ -45,7 +45,16 @@ public:
     void getLatest(MagData& latest_data){m_mag_channel.getLatest(latest_data);};
     void getLatest(GPSPositionData& latest_data){m_gps_channel.getLatest(latest_data);};
 
-    uint64_t getCurrentTimeUs() const;
+    uint64_t getCurrentTimeUs() const {
+        // Check if the time source function is valid before calling it.
+        if (!m_time_source) {
+            // Handle the error appropriately. Throwing an exception is a common choice.
+            throw std::runtime_error("Time source not initialized in DataManager.");
+        }
+        
+        // Execute the stored function and return its value.
+        return m_time_source();
+    }
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
     // This pattern allows a consumer to get all new data since it last checked.

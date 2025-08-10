@@ -1,4 +1,7 @@
 #include "coord_trans.h"
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 double to_radians(double degrees) {
     return degrees * M_PI / 180.0;
