@@ -26,6 +26,11 @@ struct StateData
     Vector3 angular_velocity_body;
 };
 
+struct MotorCommands
+{
+    float motor_speed[4]; // Array to hold speeds for 4 motors
+};
+
 
 
 #endif // OTHERDATA_H

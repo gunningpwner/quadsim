@@ -7,10 +7,10 @@ class Controller{
 public:
     Controller(DataManager& data_manager):
     m_data_manager(data_manager){};
+    virtual ~Controller() = default;
+    virtual void run() = 0; // Pure virtual function
 
-    void run();
-
-private:
+protected:
     DataManager& m_data_manager;
 
     uint64_t m_current_time_us;
