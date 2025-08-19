@@ -52,8 +52,9 @@ void GazeboInterface::runPublisherLoop() {
 
                 // Create the Gazebo message
                 gz::msgs::Actuators motor_msg;
-                for (float rpm : latest_command.rpms) {
-                    motor_msg.add_velocity(rpm);
+                // Iterate through the C-style array
+                for (int i = 0; i < 4; ++i) {
+                    motor_msg.add_velocity(latest_command.motor_speed[i]*1000);
                 }
 
                 // Publish the message
