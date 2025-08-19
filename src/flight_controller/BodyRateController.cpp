@@ -61,10 +61,10 @@ void BodyRateController::run() {
     float base_throttle = input_data.throttle;
 
     // Apply mixing. These coefficients might need tuning based on physical setup.
-    motor_commands.motor_speed[0] = base_throttle - pitch_control + roll_control + yaw_control; // Front-Right
-    motor_commands.motor_speed[1] = base_throttle + pitch_control - roll_control + yaw_control; // Rear-Left
-    motor_commands.motor_speed[2] = base_throttle - pitch_control - roll_control - yaw_control; // Front-Left
-    motor_commands.motor_speed[3] = base_throttle + pitch_control + roll_control - yaw_control; // Rear-Right
+    motor_commands.motor_speed[0] = base_throttle - pitch_control - roll_control - yaw_control; // Front-Right
+    motor_commands.motor_speed[1] = base_throttle - pitch_control + roll_control + yaw_control; // Front-Left
+    motor_commands.motor_speed[2] = base_throttle + pitch_control + roll_control - yaw_control; // Rear-Left
+    motor_commands.motor_speed[3] = base_throttle + pitch_control - roll_control + yaw_control; // Rear-Right
 
     // Normalize and clamp motor speeds to 0-1 range
     for (int i = 0; i < 4; ++i) {

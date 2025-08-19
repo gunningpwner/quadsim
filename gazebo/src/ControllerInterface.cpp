@@ -69,7 +69,6 @@ void ControllerInterface::runPollingLoop() {
         input.pitch = -normalizeAxis(SDL_JoystickGetAxis(m_joystick, 1)); // Invert for standard flight controls
         input.yaw = normalizeAxis(SDL_JoystickGetAxis(m_joystick, 3));
         input.throttle = normalizeTrigger(SDL_JoystickGetAxis(m_joystick, 5)); // Use right trigger
-        std::cout << "Roll: " << input.roll << ", Pitch: " << input.pitch << ", Yaw: " << input.yaw << ", Throttle: " << input.throttle << std::endl;
 
 
         m_dataManager.post(input);
