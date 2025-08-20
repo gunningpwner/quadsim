@@ -2,6 +2,7 @@
 #include <iostream>
 #include <chrono>
 
+
 GazeboInterface::GazeboInterface(DataManager& dataManager)
     : m_dataManager(dataManager), m_run_publisher(false) {
     // Advertise the motor command topic
@@ -108,5 +109,6 @@ void GazeboInterface::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
     magData.MagneticField.x = msg.field_tesla().x();
     magData.MagneticField.y = msg.field_tesla().y();
     magData.MagneticField.z = msg.field_tesla().z();
+    magData.position_covariances={.003*.003,.003*.003,.003*.003};
     m_dataManager.post(magData);
 }

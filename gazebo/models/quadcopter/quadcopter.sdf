@@ -93,6 +93,42 @@
         <visualize>true</visualize>
         <topic>imu</topic>
         <pose>0 0 0 0 0 0</pose>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type='gaussian'>
+                <stddev>.01</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type='gaussian'>
+                <stddev>.01</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type='gaussian'>
+                <stddev>.01</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type='gaussian'>
+                <stddev>.03</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type='gaussian'>
+                <stddev>.03</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type='gaussian'>
+                <stddev>.03</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
       </sensor>
 
       <sensor name="magnetometer_sensor" type="magnetometer">
@@ -101,6 +137,23 @@
         <visualize>true</visualize>
         <topic>magnetometer</topic>
         <pose>0 0 0 0 0 0</pose>
+        <magnetometer>
+          <x>
+            <noise type='gaussian'>
+              <stddev>.003</stddev>
+            </noise>
+          </x>
+          <y>
+            <noise type='gaussian'>
+              <stddev>.003</stddev>
+            </noise>
+          </y>
+          <z>
+            <noise type='gaussian'>
+              <stddev>.003</stddev>
+            </noise>
+          </z>
+        </magnetometer>
       </sensor>
 
       <sensor name="gps_sensor" type="navsat">

@@ -45,17 +45,15 @@ void EKF::bootstrap_position(){
             for (auto& sample : gps_samples) {
                 
                 if (ref_lla.magnitude()==0){
-                    std::cout << "initializing" << std::endl;
                     ref_lla = sample.lla;
                     pos_var = sample.position_covariances;
                 } else {
                     Vector3 K = pos_var / (pos_var + sample.position_covariances);
                     ref_lla+=K*(sample.lla-ref_lla);
                     pos_var=(1-K)*pos_var;
-                    // std::cout << ref_lla.ToString() << std::endl;
-                    // std::cout << pos_var.ToString() << std::endl;
                 }
-                if (pos_var.magnitude()<1e-3){
+
+                if (pos_var.x*1000+pos_var.y*1000+pos_var.z<.1){
                     pos_lock=true;
                     break;
                 }
@@ -75,7 +73,9 @@ void EKF::bootstrap_grav(){
                 } else {
                     Vector3 K = grav_var / (grav_var + sample.Acceleration);
                     grav+=K*(sample.Acceleration-grav);
-                    grav_var=1-K*grav_var;
+                    grav_var=(1-K)*grav_var;
+                    std::cout << grav.ToString() << std::endl;
+                    std::cout << grav_var.ToString() << std::endl;
                 }   
                 if (grav_var.magnitude()<1e-3){
                     grav_lock=true;
@@ -98,7 +98,7 @@ void EKF::bootstrap_mag(){
                 } else {
                     Vector3 K = mag_var / (mag_var + sample.MagneticField);
                     mag+=K*(sample.MagneticField-mag);
-                    mag_var=1-K*mag_var;
+                    mag_var=(1-K)*mag_var;
                 }   
                 if (mag_var.magnitude()<1e-3){
                     mag_lock=true;
