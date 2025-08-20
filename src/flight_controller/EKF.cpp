@@ -1,8 +1,10 @@
 #include "EKF.h"
+#include "coord_trans.h"
 #include <vector>
 #include <memory>
 #include <algorithm>
-
+#include <cstdio>
+#include <iostream>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -14,7 +16,10 @@ EKF::EKF(DataManager& data_manager) :
     m_accel_consumer(data_manager),
     m_mag_consumer(data_manager),
     m_gps_consumer(data_manager),
-    locked_in(false)
+    locked_in(false),
+    pos_lock(false),
+    grav_lock(false),
+    mag_lock(false)
 {
 }
 
@@ -38,13 +43,17 @@ void EKF::bootstrap_position(){
         std::vector<GPSPositionData> gps_samples;
         if (m_gps_consumer.consume(gps_samples)) {
             for (auto& sample : gps_samples) {
+                
                 if (ref_lla.magnitude()==0){
+                    std::cout << "initializing" << std::endl;
                     ref_lla = sample.lla;
                     pos_var = sample.position_covariances;
                 } else {
                     Vector3 K = pos_var / (pos_var + sample.position_covariances);
                     ref_lla+=K*(sample.lla-ref_lla);
-                    pos_var=1-K*pos_var;
+                    pos_var=(1-K)*pos_var;
+                    // std::cout << ref_lla.ToString() << std::endl;
+                    // std::cout << pos_var.ToString() << std::endl;
                 }
                 if (pos_var.magnitude()<1e-3){
                     pos_lock=true;
@@ -119,7 +128,13 @@ void EKF::lock_in(){
     float yaw_true = yaw_magnetic + magnetic_declination;
 
     // Assign the calculated Euler angles (in radians) to the orientation vector.
-    Vector3 ori = {roll, pitch, yaw_true};
+    
+    Quaternion ori;
+    ori.fromEuler(roll, pitch, yaw_true);
+    // Vector3 ecef = lla_to_ecef(ref_lla);
+    StateData state = {ref_lla, Vector3(), ori, Vector3()};
+    std::cout << "locked in" + ref_lla.ToString() << std::endl;
+    m_data_manager.post(state);
 }
 
 

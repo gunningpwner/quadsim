@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath> // For std::sqrt
+#include <string> // For std::to_string
 
 // Using a struct for a simple data container.
 // This also makes it "blittable" and easy to pass to C# if needed.
@@ -107,6 +108,9 @@ struct Vector3 {
         }
     }
 
+    std::string ToString() const {
+        return std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z);
+    }
     // --- Static Methods ---
     
     // Dot product of two vectors
@@ -122,6 +126,8 @@ struct Vector3 {
             a.x * b.y - a.y * b.x
         );
     }
+
+    
 };
 
 inline Vector3  operator-(float scalar, const Vector3& vec){

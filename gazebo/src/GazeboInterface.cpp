@@ -32,7 +32,13 @@ void GazeboInterface::startSubscribers() {
     if (!m_node.Subscribe(imuTopic, &GazeboInterface::imuCallback, this)) {
         std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
     }
-    // Add subscriptions for GPS and Magnetometer if they exist in your model
+    if (!m_node.Subscribe(magTopic, &GazeboInterface::magnetometerCallback, this)) {
+        std::cerr << "Error subscribing to topic [" << magTopic << "]" << std::endl;
+    }
+    if (!m_node.Subscribe(gpsTopic, &GazeboInterface::gpsCallback, this)) {
+        std::cerr << "Error subscribing to topic [" << gpsTopic << "]" << std::endl;
+    }
+    
 }
 
 void GazeboInterface::startPublisherLoop() {
@@ -86,9 +92,21 @@ void GazeboInterface::imuCallback(const gz::msgs::IMU& msg) {
 }
 
 void GazeboInterface::gpsCallback(const gz::msgs::NavSat& msg) {
-    // Implementation for GPS callback
+    int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
+    GPSPositionData gpsData;
+    gpsData.Timestamp = timestamp_us;
+    gpsData.lla={msg.latitude_deg(),msg.longitude_deg(),msg.altitude()};
+    gpsData.position_covariances={.001,.001,10};
+    m_dataManager.post(gpsData);
+    
 }
 
 void GazeboInterface::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
-    // Implementation for Magnetometer callback
+    int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
+    MagData magData;
+    magData.Timestamp = timestamp_us;
+    magData.MagneticField.x = msg.field_tesla().x();
+    magData.MagneticField.y = msg.field_tesla().y();
+    magData.MagneticField.z = msg.field_tesla().z();
+    m_dataManager.post(magData);
 }

@@ -11,6 +11,7 @@ add_executable(gazebo_link
     src/GazeboInterface.cpp
     src/ControllerInterface.cpp
     ../src/flight_controller/TruthFilter.cpp
+    ../src/flight_controller/EKF.cpp
     ../src/flight_controller/BodyRateController.cpp
     ../src/common/PID.cpp
     ../src/common/coord_trans.cpp

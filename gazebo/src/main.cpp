@@ -2,7 +2,7 @@
 #include "GazeboInterface.h"
 #include "ControllerInterface.h"
 #include "BodyRateController.h"
-#include "TruthFilter.h"
+#include "EKF.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -35,8 +35,10 @@ int main(int argc, char** argv) {
     DataManager dataManager(getTimeMicroseconds);
     GazeboInterface gazeboInterface(dataManager);
     ControllerInterface controllerInterface(dataManager);
-    TruthFilter truthFilter(dataManager);
+
+    EKF filter(dataManager);
     BodyRateController bodyRateController(dataManager);
+
     // 2. Start all threaded components
     if (controllerInterface.initialize()) {
         controllerInterface.startPolling();
@@ -51,7 +53,7 @@ int main(int argc, char** argv) {
     
     while (g_run_application.load()) {
         // Run one iteration of the flight controller logic
-        truthFilter.run();
+        filter.run();
         bodyRateController.run();
 
         // Control the loop rate (e.g., 200 Hz)

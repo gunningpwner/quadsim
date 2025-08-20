@@ -1,11 +1,7 @@
-<!-- quadcopter.sdf (for Gazebo Ionic) -->
 <sdf version='1.7'>
   <model name='quadcopter'>
-    <!-- The entire quadcopter is a single link for simpler physics. -->
-    <!-- Multiple <visual> tags are used to create a more complex appearance. -->
     <link name='base_link'>
       <pose>0 0 0 0 0 0</pose>
-      <!-- Inertial properties adjusted for a more realistic quadcopter -->
       <inertial>
         <mass>1.5</mass>
         <inertia>
@@ -18,7 +14,6 @@
         </inertia>
       </inertial>
 
-      <!-- The main collision body is a simple box for performance. -->
       <collision name='base_collision'>
         <geometry>
           <box>
@@ -27,8 +22,6 @@
         </geometry>
       </collision>
 
-      <!-- VISUALS -->
-      <!-- Central Body -->
       <visual name='base_visual'>
         <geometry>
           <box>
@@ -42,7 +35,6 @@
         </material>
       </visual>
 
-      <!-- Arm 1 (Front-Right) -->
       <visual name='arm_fr_visual'>
         <pose>0.15 -0.15 0 0 0 -0.785</pose>
         <geometry>
@@ -56,7 +48,6 @@
         </material>
       </visual>
 
-      <!-- Arm 2 (Front-Left) -->
       <visual name='arm_fl_visual'>
         <pose>0.15 0.15 0 0 0 0.785</pose>
         <geometry>
@@ -70,7 +61,6 @@
         </material>
       </visual>
 
-      <!-- Arm 3 (Rear-Left) -->
       <visual name='arm_rl_visual'>
         <pose>-0.15 0.15 0 0 0 -0.785</pose>
         <geometry>
@@ -84,7 +74,6 @@
         </material>
       </visual>
 
-      <!-- Arm 4 (Rear-Right) -->
       <visual name='arm_rr_visual'>
         <pose>-0.15 -0.15 0 0 0 0.785</pose>
         <geometry>
@@ -98,17 +87,45 @@
         </material>
       </visual>
       
-      <!-- SENSORS -->
       <sensor name="imu_sensor" type="imu">
         <always_on>1</always_on>
-        <update_rate>100</update_rate> <!-- Increased update rate -->
+        <update_rate>100</update_rate>
         <visualize>true</visualize>
         <topic>imu</topic>
         <pose>0 0 0 0 0 0</pose>
       </sensor>
+
+      <sensor name="magnetometer_sensor" type="magnetometer">
+        <always_on>1</always_on>
+        <update_rate>50</update_rate>
+        <visualize>true</visualize>
+        <topic>magnetometer</topic>
+        <pose>0 0 0 0 0 0</pose>
+      </sensor>
+
+      <sensor name="gps_sensor" type="navsat">
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <visualize>true</visualize>
+        <topic>gps</topic>
+        <pose>0 0 0 0 0 0</pose>
+        <navsat>
+          <position_sensing>
+            <horizontal>
+              <noise type='gaussian'>
+                <stddev>.001</stddev>
+              </noise>
+            </horizontal>
+            <vertical>
+              <noise type='gaussian'>
+                <stddev>10</stddev>
+              </noise>
+            </vertical>
+          </position_sensing>
+        </navsat>
+      </sensor>
     </link>
 
-    <!-- Propeller Links and Visuals -->
     <link name="prop_fr_link">
       <pose>0.212 -0.212 0.02 0 0 0</pose>
       <inertial><mass>0.01</mass><inertia><ixx>0.0001</ixx><iyy>0.0001</iyy><izz>0.0002</izz></inertia></inertial>
@@ -142,8 +159,6 @@
       </visual>
     </link>
 
-    <!-- JOINTS for motors -->
-    <!-- These joints define the location and rotation axis for each motor. -->
     <joint name="prop_fr_joint" type="revolute">
       <pose relative_to="prop_fr_link"/>
       <parent>base_link</parent>
@@ -169,12 +184,18 @@
       <axis><xyz>0 0 1</xyz></axis>
     </joint>
 
-    <!-- PLUGINS -->
     <plugin filename="gz-sim-imu-system"
         name="gz::sim::systems::Imu">
     </plugin>
+    
+    <plugin filename="gz-sim-magnetometer-system"
+      name="gz::sim::systems::Magnetometer">
+    </plugin>
+    
+    <plugin filename="gz-sim-navsat-system"
+      name="gz::sim::systems::NavSat">
+    </plugin>
 
-    <!-- MOTOR PLUGINS (One for each motor) -->
     <plugin
       filename="gz-sim-multicopter-motor-model-system"
       name="gz::sim::systems::MulticopterMotorModel">
@@ -190,7 +211,7 @@
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>0</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
-      <rollingMomentCoefficient>1e-04</rollingMomentCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
       <motorSpeedPubTopic>motor_speed/0</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
@@ -210,7 +231,7 @@
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>1</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
-      <rollingMomentCoefficient>1e-04</rollingMomentCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
       <motorSpeedPubTopic>motor_speed/1</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
@@ -230,7 +251,7 @@
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>2</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
-      <rollingMomentCoefficient>1e-04</rollingMomentCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
       <motorSpeedPubTopic>motor_speed/2</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
@@ -250,7 +271,7 @@
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>3</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
-      <rollingMomentCoefficient>1e-04</rollingMomentCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
       <motorSpeedPubTopic>motor_speed/3</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
