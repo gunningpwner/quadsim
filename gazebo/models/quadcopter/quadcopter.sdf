@@ -185,7 +185,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>800.0</maxRotVelocity>
-      <motorConstant>8.54858e-06</motorConstant>
+      <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>0</actuator_number>
@@ -205,7 +205,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>800.0</maxRotVelocity>
-      <motorConstant>8.54858e-06</motorConstant>
+      <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>1</actuator_number>
@@ -225,7 +225,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>800.0</maxRotVelocity>
-      <motorConstant>8.54858e-06</motorConstant>
+      <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>2</actuator_number>
@@ -245,7 +245,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>800.0</maxRotVelocity>
-      <motorConstant>8.54858e-06</motorConstant>
+      <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
       <actuator_number>3</actuator_number>
