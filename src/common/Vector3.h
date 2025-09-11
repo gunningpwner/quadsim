@@ -111,6 +111,14 @@ struct Vector3 {
     std::string ToString() const {
         return std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z);
     }
+
+    /**
+     * @brief Checks if any of the vector's components are NaN.
+     * @return true if a NaN value is found, false otherwise.
+     */
+    bool containsNaN() const {
+        return std::isnan(x) || std::isnan(y) || std::isnan(z);
+    }
     // --- Static Methods ---
     
     // Dot product of two vectors

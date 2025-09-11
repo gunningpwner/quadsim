@@ -24,6 +24,18 @@ struct StateData
     Quaternion orientation;
     // Angular velocity in the body frame (rad/s)
     Vector3 angular_velocity_body;
+
+    /**
+     * @brief Checks if any of the struct's floating-point members contain NaN.
+     * 
+     * This relies on the underlying Vector3 and Quaternion types also
+     * implementing a containsNaN() method.
+     * @return true if a NaN value is found, false otherwise.
+     */
+    bool containsNaN() const
+    {
+        return position_ecef.containsNaN() || velocity_ecef.containsNaN() || orientation.containsNaN() || angular_velocity_body.containsNaN();
+    }
 };
 
 struct MotorCommands

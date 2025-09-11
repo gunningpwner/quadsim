@@ -27,8 +27,11 @@ struct Quaternion {
         );
     }
 
+    bool containsNaN() const {
+        return std::isnan(x) || std::isnan(y) || std::isnan(z) || std::isnan(w);
+    }
     // --- Methods ---
-
+    
     void normalize() {
         float mag = std::sqrt(w * w + x * x + y * y + z * z);
         if (mag > 1e-6f) {
