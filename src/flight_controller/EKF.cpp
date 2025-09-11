@@ -15,127 +15,16 @@ EKF::EKF(DataManager& data_manager) :
     m_gyro_consumer(data_manager),
     m_accel_consumer(data_manager),
     m_mag_consumer(data_manager),
-    m_gps_consumer(data_manager),
-    locked_in(false),
-    pos_lock(false),
-    grav_lock(false),
-    mag_lock(false)
+    m_gps_consumer(data_manager)
 {
 }
 
 void EKF::run(){
     m_current_time_us = m_data_manager.getCurrentTimeUs();
-    if (!locked_in){
-        bootstrap_position();
-        bootstrap_grav();
-        bootstrap_mag();
-        if (pos_lock && grav_lock && mag_lock){
-            lock_in();
-        }
-    } else {
-        
-    }
 
 }
 
-void EKF::bootstrap_position(){
-    if (!pos_lock){
-        std::vector<GPSPositionData> gps_samples;
-        if (m_gps_consumer.consume(gps_samples)) {
-            for (auto& sample : gps_samples) {
-                
-                if (ref_lla.magnitude()==0){
-                    ref_lla = sample.lla;
-                    pos_var = sample.position_covariances;
-                } else {
-                    Vector3 K = pos_var / (pos_var + sample.position_covariances);
-                    ref_lla+=K*(sample.lla-ref_lla);
-                    pos_var=(1-K)*pos_var;
-                }
 
-                if (pos_var.x*1000+pos_var.y*1000+pos_var.z<.1){
-                    pos_lock=true;
-                    break;
-                }
-            }
-        }
-    }
-}
-// fix covariances for these
-void EKF::bootstrap_grav(){
-    if (!grav_lock){
-        std::vector<AccelData> accel_samples;
-        if(m_accel_consumer.consume(accel_samples)){
-            for (auto& sample : accel_samples) {
-                if (grav.magnitude()==0){
-                    grav = sample.Acceleration;
-                    grav_var = sample.Acceleration;
-                } else {
-                    Vector3 K = grav_var / (grav_var + sample.Acceleration);
-                    grav+=K*(sample.Acceleration-grav);
-                    grav_var=(1-K)*grav_var;
-                    std::cout << grav.ToString() << std::endl;
-                    std::cout << grav_var.ToString() << std::endl;
-                }   
-                if (grav_var.magnitude()<1e-3){
-                    grav_lock=true;
-                    break;
-                }
-            }
-        }
-    }
-}
-
-void EKF::bootstrap_mag(){
-    if (!mag_lock){
-        std::vector<MagData> mag_samples;
-        if(m_mag_consumer.consume(mag_samples)){
-            for (auto& sample : mag_samples) {
-                if (mag.magnitude()==0){
-                    mag = sample.MagneticField;
-
-                    mag_var = sample.MagneticField; //to do
-                } else {
-                    Vector3 K = mag_var / (mag_var + sample.MagneticField);
-                    mag+=K*(sample.MagneticField-mag);
-                    mag_var=(1-K)*mag_var;
-                }   
-                if (mag_var.magnitude()<1e-3){
-                    mag_lock=true;
-                    break;
-                }
-            }
-        }
-    }
-}
-
-void EKF::lock_in(){
-    locked_in=true;
-    grav.normalize();
-    mag.normalize();
-
-    float roll = atan2(grav.y, grav.z);
-    float pitch = asin(-grav.x);
-
-    float mag_x_leveled = mag.x * cos(pitch) + mag.y * sin(roll) * sin(pitch) + mag.z * cos(roll) * sin(pitch);
-    float mag_y_leveled = mag.y * cos(roll) - mag.z * sin(roll);
-
-    float yaw_magnetic = atan2(-mag_y_leveled, mag_x_leveled);
-
-    //placeholder
-    const float magnetic_declination = -4.2 * (M_PI / 180.0f); 
-
-    float yaw_true = yaw_magnetic + magnetic_declination;
-
-    // Assign the calculated Euler angles (in radians) to the orientation vector.
-    
-    Quaternion ori;
-    ori.fromEuler(roll, pitch, yaw_true);
-    // Vector3 ecef = lla_to_ecef(ref_lla);
-    StateData state = {ref_lla, Vector3(), ori, Vector3()};
-    std::cout << "locked in" + ref_lla.ToString() << std::endl;
-    m_data_manager.post(state);
-}
 
 
 void EKF::processSensorMeasurements() {
