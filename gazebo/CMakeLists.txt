@@ -5,6 +5,7 @@ project(gazebo_subscriber)
 find_package(gz-transport14 REQUIRED)
 find_package(gz-msgs11 REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(Eigen3 REQUIRED)
 # Add your executable
 add_executable(gazebo_link
     src/main.cpp
@@ -18,6 +19,7 @@ add_executable(gazebo_link
 )
 target_include_directories(gazebo_link
     PRIVATE
+        ${EIGEN3_INCLUDE_DIR}
         src
         ../src/common
         ../src/flight_controller

@@ -22,7 +22,7 @@ struct StateData
     Vector3 velocity_ecef;
     // Orientation as a quaternion (w, x, y, z)
     Quaternion orientation;
-    // Angular velocity in body frame
+    // Angular velocity in the body frame (rad/s)
     Vector3 angular_velocity_body;
 };
 

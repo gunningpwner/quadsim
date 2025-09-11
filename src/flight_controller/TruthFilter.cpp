@@ -19,12 +19,6 @@ void TruthFilter::run() {
     if (!gyro_samples.empty() || !gps_samples.empty()) {
         StateData new_state;
 
-        if (!gyro_samples.empty()) {
-            new_state.angular_velocity_body = gyro_samples.back().AngularVelocity;
-        } else {
-            new_state.angular_velocity_body = {0, 0, 0};
-        }
-
         if (!gps_samples.empty()) {
             new_state.position_ecef = lla_to_ecef(gps_samples.back().lla);
         } else {
