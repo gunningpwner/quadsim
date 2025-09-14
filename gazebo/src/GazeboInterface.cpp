@@ -31,12 +31,12 @@ void GazeboInterface::startSubscribers() {
     const std::string clockTopic = "/world/default/clock";
 
     // Subscribe to topics
-    // if (!m_node.Subscribe(imuTopic, &GazeboInterface::imuCallback, this)) {
-    //     std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
-    // }
-    // if (!m_node.Subscribe(magTopic, &GazeboInterface::magnetometerCallback, this)) {
-    //     std::cerr << "Error subscribing to topic [" << magTopic << "]" << std::endl;
-    // }
+    if (!m_node.Subscribe(imuTopic, &GazeboInterface::imuCallback, this)) {
+        std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
+    }
+    if (!m_node.Subscribe(magTopic, &GazeboInterface::magnetometerCallback, this)) {
+        std::cerr << "Error subscribing to topic [" << magTopic << "]" << std::endl;
+    }
     if (!m_node.Subscribe(gpsTopic, &GazeboInterface::gpsCallback, this)) {
         std::cerr << "Error subscribing to topic [" << gpsTopic << "]" << std::endl;
     }
