@@ -9,13 +9,6 @@
 #include <atomic>
 #include <csignal> // For signal handling
 
-// A simple time source function
-uint64_t getTimeMicroseconds() {
-    return std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::high_resolution_clock::now().time_since_epoch()
-    ).count();
-}
-
 // Global flag to signal exit
 std::atomic<bool> g_run_application(true);
 
@@ -31,15 +24,22 @@ int main(int argc, char** argv) {
 
     std::cout << "Starting flight software..." << std::endl;
 
-    // 1. Initialize all components
-    DataManager dataManager(getTimeMicroseconds);
+    // 1. Initialize components, resolving the time source dependency.
+    // a. Create DataManager with a placeholder time source.
+    DataManager dataManager([](){ return 0; });
+
+    // b. Create GazeboInterface, which needs the DataManager.
     GazeboInterface gazeboInterface(dataManager);
     ControllerInterface controllerInterface(dataManager);
+
+    // c. Now, create the real time source from Gazebo and update the DataManager.
+    TimeSource simTimeSource = [&gazeboInterface]() { return gazeboInterface.getSimTimeUs(); };
+    dataManager.setTimeSource(simTimeSource);
 
     EKF filter(dataManager);
     BodyRateController bodyRateController(dataManager);
 
-    // 2. Start all threaded components
+    // 2. Start all threaded interface components
     if (controllerInterface.initialize()) {
         controllerInterface.startPolling();
     } else {

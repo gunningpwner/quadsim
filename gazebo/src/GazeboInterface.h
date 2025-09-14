@@ -38,6 +38,12 @@ public:
      */
     void startPublisherLoop();
 
+    /**
+     * @brief Gets the latest simulation time received from Gazebo.
+     * @return The simulation time in microseconds.
+     */
+    uint64_t getSimTimeUs() const;
+
 private:
     /**
      * @brief The main loop for publishing motor commands.
@@ -51,6 +57,7 @@ private:
     void imuCallback(const gz::msgs::IMU& msg);
     void gpsCallback(const gz::msgs::NavSat& msg);
     void magnetometerCallback(const gz::msgs::Magnetometer& msg);
+    void clockCallback(const gz::msgs::Clock& msg);
 
     DataManager& m_dataManager;
     gz::transport::Node m_node;
@@ -60,6 +67,7 @@ private:
     std::thread m_publisherThread;
     std::atomic<bool> m_run_publisher;
     unsigned int m_last_seen_motor_command_count = 0;
+    std::atomic<uint64_t> m_sim_time_us{0};
 };
 
 #endif // GAZEBO_INTERFACE_H

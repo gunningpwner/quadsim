@@ -12,6 +12,10 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// --- DEBUGGING ---
+// Set to true to enable verbose logging of EKF internal states.
+constexpr bool EKF_DEBUG_LOGGING = true;
+
 // The constructor now calls the base class constructor
 EKF::EKF(DataManager& data_manager) :
     FilterBase(data_manager), // Pass data_manager to the base class
@@ -27,17 +31,20 @@ EKF::EKF(DataManager& data_manager) :
 void EKF::run(){
     m_current_time_us = m_data_manager.getCurrentTimeUs();
 
-    // If this is the first run, initialize the last predict time
-    if (m_last_predict_time_us == 0) {
-        m_last_predict_time_us = m_current_time_us;
-    }
-
     processSensorMeasurements();
 }
 
 void EKF::predict(float dt) {
     if (dt <= 0.0f) {
         return;
+    }
+
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "\n--- EKF PREDICT (dt: " << dt << "s) ---" << std::endl;
+        std::cout << "  State (Before): pos(" << m_x.segment<3>(0).transpose() << "), vel(" << m_x.segment<3>(3).transpose() << "), q(" << m_x(6) << "," << m_x.segment<3>(7).transpose() << ")" << std::endl;
+        std::cout << "  Biases (Before): acc(" << m_x.segment<3>(10).transpose() << "), gyr(" << m_x.segment<3>(13).transpose() << ")" << std::endl;
+        std::cout << "  IMU Input: Accel(" << m_last_accel.Acceleration.x << "," << m_last_accel.Acceleration.y << "," << m_last_accel.Acceleration.z
+                  << "), Gyro(" << m_last_gyro.AngularVelocity.x << "," << m_last_gyro.AngularVelocity.y << "," << m_last_gyro.AngularVelocity.z << ")" << std::endl;
     }
 
     // --- 1. Get current state from the state vector m_x ---
@@ -60,6 +67,10 @@ void EKF::predict(float dt) {
     // a) Predict position: p_k = p_{k-1} + v_{k-1} * dt
     position += velocity * dt;
 
+    if (EKF_DEBUG_LOGGING && position.hasNaN()) {
+        std::cout << "  [NaN DETECTED] in position prediction. Prev Vel: (" << velocity.transpose() << "), dt: " << dt << std::endl;
+    }
+
     // b) Predict orientation: q_k = q_{k-1} * delta_q(gyro)
     // Small angle approximation for quaternion update
     Eigen::Quaternionf dq;
@@ -67,11 +78,22 @@ void EKF::predict(float dt) {
     dq.vec() = 0.5f * corrected_gyro * dt;
     q = (q * dq).normalized();
 
+    if (EKF_DEBUG_LOGGING && (q.w() != q.w() || q.vec().hasNaN())) { // Check all parts of quaternion for NaN
+        std::cout << "  [NaN DETECTED] in orientation prediction. Corrected Gyro: (" << corrected_gyro.transpose() << "), dt: " << dt << std::endl;
+    }
+
     // c) Predict velocity: v_k = v_{k-1} + (C(q_k) * a_k - g) * dt
     Eigen::Matrix3f C_b_e = q.toRotationMatrix(); // Rotation from body to ECEF
     Eigen::Vector3f accel_ecef = C_b_e * corrected_accel;
     Eigen::Vector3f gravity_ecef = calculate_gravity_ecef(position);
     velocity += (accel_ecef + gravity_ecef) * dt; // Note: gravity is added because it's negative
+
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  Velocity Update: accel_ecef(" << accel_ecef.transpose() << "), gravity(" << gravity_ecef.transpose() << ")" << std::endl;
+        if (velocity.hasNaN()) {
+            std::cout << "  [NaN DETECTED] in velocity prediction. accel_ecef: (" << accel_ecef.transpose() << "), gravity: (" << gravity_ecef.transpose() << "), dt: " << dt << std::endl;
+        }
+    }
 
     // d) Biases are assumed to be random walks, so their prediction is just their previous value.
 
@@ -80,6 +102,11 @@ void EKF::predict(float dt) {
     m_x.segment<3>(3) = velocity;
     m_x.segment<4>(6) << q.w(), q.x(), q.y(), q.z();
     // Biases m_x.segment<3>(10) and m_x.segment<3>(13) remain unchanged.
+
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  State (After):  pos(" << m_x.segment<3>(0).transpose() << "), vel(" << m_x.segment<3>(3).transpose() << "), q(" << m_x(6) << "," << m_x.segment<3>(7).transpose() << ")" << std::endl;
+    }
+
 
     // --- 6. Predict error covariance: P_k = F * P_{k-1} * F^T + Q ---
 
@@ -104,9 +131,19 @@ void EKF::predict(float dt) {
 
     // b) Propagate the covariance matrix
     m_P = F * m_P * F.transpose() + m_Q;
+
+    if (EKF_DEBUG_LOGGING && m_P.hasNaN()) {
+        std::cout << "  [NaN DETECTED] in covariance matrix P after prediction." << std::endl;
+    }
 }
 
 void EKF::correctWithMag(const MagData& mag_data) {
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "\n--- EKF CORRECT (Mag) ---" << std::endl;
+        std::cout << "  Mag Measurement (Raw): (" << mag_data.MagneticField.x << ", " << mag_data.MagneticField.y << ", " << mag_data.MagneticField.z << ")" << std::endl;
+        std::cout << "  State (Before): pos(" << m_x.segment<3>(0).transpose() << "), vel(" << m_x.segment<3>(3).transpose() << "), q(" << m_x(6) << "," << m_x.segment<3>(7).transpose() << ")" << std::endl;
+    }
+
     // --- 1. Get current orientation from the state vector ---
     Eigen::Quaternionf q(m_x(6), m_x(7), m_x(8), m_x(9));
 
@@ -116,6 +153,10 @@ void EKF::correctWithMag(const MagData& mag_data) {
     Eigen::Matrix3f C_b_e = q.toRotationMatrix(); // Rotation from body to ECEF
     Eigen::Matrix3f C_e_b = C_b_e.transpose();    // Rotation from ECEF to body
     Eigen::Vector3f z_predicted = C_e_b * m_mag_ref_ecef;
+
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  Mag Predicted: (" << z_predicted.transpose() << "), Mag Ref ECEF: (" << m_mag_ref_ecef.transpose() << ")" << std::endl;
+    }
 
     // --- 3. Get the actual measurement ---
     Eigen::Vector3f z_actual(mag_data.MagneticField.x, mag_data.MagneticField.y, mag_data.MagneticField.z);
@@ -139,12 +180,26 @@ void EKF::correctWithMag(const MagData& mag_data) {
     // a) Calculate innovation (measurement residual)
     Eigen::Vector3f y = z_actual - z_predicted;
 
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  Mag Innovation 'y': (" << y.transpose() << ")" << std::endl;
+    }
+
     // b) Calculate innovation covariance
     Eigen::Matrix3f S = H * m_P * H.transpose() + m_R_mag;
 
     // c) Calculate Kalman Gain
-    Eigen::Matrix<float, ERROR_STATE_SIZE, 3> K = m_P * H.transpose() * S.inverse();
+    Eigen::Matrix3f S_inv = S.inverse();
+    if (EKF_DEBUG_LOGGING && S_inv.hasNaN()) {
+        std::cout << "  [NaN DETECTED] in Mag S.inverse(). Matrix S might be singular." << std::endl;
+        std::cout << "  S = \n" << S << std::endl;
+        return; // Abort correction if S is not invertible
+    }
+    Eigen::Matrix<float, ERROR_STATE_SIZE, 3> K = m_P * H.transpose() * S_inv;
 
+    if (EKF_DEBUG_LOGGING && K.hasNaN()) {
+        std::cout << "  [NaN DETECTED] in Mag Kalman Gain K." << std::endl;
+    }
+    
     // d) Calculate the error state correction
     Eigen::Matrix<float, ERROR_STATE_SIZE, 1> dx = K * y;
 
@@ -164,6 +219,14 @@ void EKF::correctWithMag(const MagData& mag_data) {
 
     // f) Update the covariance matrix
     m_P = (Eigen::Matrix<float, ERROR_STATE_SIZE, ERROR_STATE_SIZE>::Identity() - K * H) * m_P;
+
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  State Correction 'dx': dPos(" << dx.segment<3>(0).transpose() << "), dVel(" << dx.segment<3>(3).transpose() << "), dTheta(" << dx.segment<3>(6).transpose() << ")" << std::endl;
+        std::cout << "  State (After):  pos(" << m_x.segment<3>(0).transpose() << "), vel(" << m_x.segment<3>(3).transpose() << "), q(" << m_x(6) << "," << m_x.segment<3>(7).transpose() << ")" << std::endl;
+        if (m_P.hasNaN()) {
+            std::cout << "  [NaN DETECTED] in covariance matrix P after Mag correction." << std::endl;
+        }
+    }
 }
 
 void EKF::correctWithGps(const GPSPositionData& gps_data) {
@@ -171,6 +234,7 @@ void EKF::correctWithGps(const GPSPositionData& gps_data) {
     Vector3 lla_vec = {static_cast<float>(gps_data.lla.x), static_cast<float>(gps_data.lla.y), static_cast<float>(gps_data.lla.z)};
     Vector3 ecef_vec = lla_to_ecef(lla_vec);
     Eigen::Vector3f z_actual(ecef_vec.x, ecef_vec.y, ecef_vec.z);
+
 
     // If the filter is not yet initialized, use this GPS measurement to set the initial state.
     if (!m_is_initialized) {
@@ -188,6 +252,12 @@ void EKF::correctWithGps(const GPSPositionData& gps_data) {
         return;
     }
 
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "\n--- EKF CORRECT (GPS) ---" << std::endl;
+        std::cout << "  GPS Measurement (ECEF): (" << z_actual.transpose() << ")" << std::endl;
+        std::cout << "  State (Before): pos(" << m_x.segment<3>(0).transpose() << "), vel(" << m_x.segment<3>(3).transpose() << "), q(" << m_x(6) << "," << m_x.segment<3>(7).transpose() << ")" << std::endl;
+    }
+
     // --- 1. Define the measurement model h(x) ---
     // The measurement is a direct observation of the position state.
     Eigen::Vector3f z_predicted = m_x.segment<3>(0);
@@ -197,23 +267,44 @@ void EKF::correctWithGps(const GPSPositionData& gps_data) {
     Eigen::Matrix<float, 3, ERROR_STATE_SIZE> H = Eigen::Matrix<float, 3, ERROR_STATE_SIZE>::Zero();
     H.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
 
-    // --- 3. Define the measurement noise R ---
-    // Use the covariance provided by the GPS message.
-    Eigen::Matrix3f R_gps;
-    R_gps.setZero();
-    R_gps.diagonal() << gps_data.position_covariances.x, gps_data.position_covariances.y, gps_data.position_covariances.z;
+    // --- 3. Define and rotate the measurement noise R ---
+    // The GPS provides covariance in the local NED frame. It must be rotated to the ECEF frame
+    // for the Kalman update, since the filter state and innovation are in ECEF.
+    Eigen::Matrix3f R_ned;
+    R_ned.setZero();
+    R_ned.diagonal() << gps_data.position_covariances.x, gps_data.position_covariances.y, gps_data.position_covariances.z;
 
+    // Get the rotation matrix from ECEF to NED
+    Eigen::Matrix3f C_e_n = ecef_to_ned_matrix(gps_data.lla.x, gps_data.lla.y);
+    // The rotation from NED to ECEF is the transpose
+    Eigen::Matrix3f C_n_e = C_e_n.transpose();
+    // Rotate the covariance: R_ecef = C_n_e * R_ned * C_n_e^T
+    Eigen::Matrix3f R_gps = C_n_e * R_ned * C_n_e;
     // --- 4. Perform the Kalman Update ---
 
     // a) Calculate innovation (measurement residual)
     Eigen::Vector3f y = z_actual - z_predicted;
 
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  GPS Innovation 'y': (" << y.transpose() << ")" << std::endl;
+    }
+
     // b) Calculate innovation covariance
     Eigen::Matrix3f S = H * m_P * H.transpose() + R_gps;
 
     // c) Calculate Kalman Gain
-    Eigen::Matrix<float, ERROR_STATE_SIZE, 3> K = m_P * H.transpose() * S.inverse();
+    Eigen::Matrix3f S_inv = S.inverse();
+    if (EKF_DEBUG_LOGGING && S_inv.hasNaN()) {
+        std::cout << "  [NaN DETECTED] in GPS S.inverse(). Matrix S might be singular." << std::endl;
+        std::cout << "  S = \n" << S << std::endl;
+        return; // Abort correction if S is not invertible
+    }
+    Eigen::Matrix<float, ERROR_STATE_SIZE, 3> K = m_P * H.transpose() * S_inv;
 
+    if (EKF_DEBUG_LOGGING && K.hasNaN()) {
+        std::cout << "  [NaN DETECTED] in GPS Kalman Gain K." << std::endl;
+    }
+    
     // d) Calculate the error state correction
     Eigen::Matrix<float, ERROR_STATE_SIZE, 1> dx = K * y;
 
@@ -233,13 +324,20 @@ void EKF::correctWithGps(const GPSPositionData& gps_data) {
     // f) Update the covariance matrix using the Joseph form for numerical stability
     Eigen::Matrix<float, ERROR_STATE_SIZE, ERROR_STATE_SIZE> I_KH = Eigen::Matrix<float, ERROR_STATE_SIZE, ERROR_STATE_SIZE>::Identity() - K * H;
     m_P = I_KH * m_P * I_KH.transpose() + K * R_gps * K.transpose();
+
+    if (EKF_DEBUG_LOGGING) {
+        std::cout << "  State Correction 'dx': dPos(" << dx.segment<3>(0).transpose() << "), dVel(" << dx.segment<3>(3).transpose() << "), dTheta(" << dx.segment<3>(6).transpose() << ")" << std::endl;
+        std::cout << "  State (After):  pos(" << m_x.segment<3>(0).transpose() << "), vel(" << m_x.segment<3>(3).transpose() << "), q(" << m_x(6) << "," << m_x.segment<3>(7).transpose() << ")" << std::endl;
+        if (m_P.hasNaN()) {
+            std::cout << "  [NaN DETECTED] in covariance matrix P after GPS correction." << std::endl;
+        }
+    }
 }
 
 void EKF::processSensorMeasurements() {
     // === 1. GATHER ALL NEW DATA FROM EVERY CHANNEL ===
     // This vector will hold all measurements from all sensors for this update cycle.
     std::vector<std::unique_ptr<TimestampedData>> data_log;
-
     // Consume gyroscope data
     std::vector<GyroData> gyro_samples;
     if (m_gyro_consumer.consume(gyro_samples)) {
@@ -248,6 +346,9 @@ void EKF::processSensorMeasurements() {
             // Store the most recent gyro data for the predict step
             if (sample.Timestamp > m_last_gyro.Timestamp) {
                 m_last_gyro = sample;
+                if (EKF_DEBUG_LOGGING){
+                    std::cout << "New Gyro sample with timestamp " << sample.Timestamp << std::endl;
+                }
             }
         }
     }
@@ -260,6 +361,9 @@ void EKF::processSensorMeasurements() {
             // Store the most recent accel data for the predict step
             if (sample.Timestamp > m_last_accel.Timestamp) {
                 m_last_accel = sample;
+                if (EKF_DEBUG_LOGGING){
+                    std::cout << "New accelerometer sample with timestamp " << sample.Timestamp << std::endl;
+                }
             }
         }
     }
@@ -269,6 +373,9 @@ void EKF::processSensorMeasurements() {
     if (m_mag_consumer.consume(mag_samples)) {
         for (auto& sample : mag_samples) {
             data_log.push_back(std::make_unique<MagData>(sample));
+            if (EKF_DEBUG_LOGGING){
+                std::cout << "New magnetometer sample with timestamp " << sample.Timestamp << std::endl;
+            }
         }
     }
 
@@ -277,6 +384,9 @@ void EKF::processSensorMeasurements() {
     if (m_gps_consumer.consume(gps_samples)) {
         for (auto& sample : gps_samples) {
             data_log.push_back(std::make_unique<GPSPositionData>(sample));
+            if (EKF_DEBUG_LOGGING){
+                std::cout << "New GPS sample with timestamp " << sample.Timestamp << std::endl;
+            }
         }
     }
 
@@ -291,12 +401,26 @@ void EKF::processSensorMeasurements() {
 
     // === 3. PROCESS ALL DATA IN CHRONOLOGICAL ORDER ===
     // Loop through the sorted timeline and apply each measurement to the filter.
+    
     for (const auto& data_point_ptr : data_log) {
         // Predict the state forward to the current measurement's timestamp
-        uint64_t timestamp = data_point_ptr->Timestamp;
-        float dt = (timestamp - m_last_predict_time_us) * 1.0e-6f;
-        predict(dt);
-        m_last_predict_time_us = timestamp;
+        if (EKF_DEBUG_LOGGING){
+            std::cout << "Processing data point with timestamp " << data_point_ptr->Timestamp << std::endl;
+        }
+        const uint64_t timestamp = data_point_ptr->Timestamp;
+
+        // Handle the very first measurement to initialize the time
+        if (m_last_predict_time_us == 0) {
+            m_last_predict_time_us = timestamp;
+        } else if (timestamp > m_last_predict_time_us) {
+            // Predict forward to the current measurement's timestamp
+            const float dt = (timestamp - m_last_predict_time_us) * 1.0e-6f;
+            if (EKF_DEBUG_LOGGING) {
+                std::cout << "Measurement prediction timestamp " << timestamp << " last predict " << m_last_predict_time_us << std::endl;
+            }
+            predict(dt);
+            m_last_predict_time_us = timestamp;
+        }
 
         // Use dynamic_cast to safely figure out what type of data this is
         // and call the correct update function.
@@ -316,11 +440,6 @@ void EKF::processSensorMeasurements() {
         }
     }
 
-    // After processing all intermediate sensor data, predict up to the current time
-    float final_dt = (m_current_time_us - m_last_predict_time_us) * 1.0e-6f;
-    predict(final_dt);
-    m_last_predict_time_us = m_current_time_us;
-
     // === 4. PUBLISH THE UPDATED STATE ===
     // Only publish if the filter has been initialized.
     if (m_is_initialized) {
@@ -336,6 +455,14 @@ void EKF::processSensorMeasurements() {
         Eigen::Vector3f gyro_meas(m_last_gyro.AngularVelocity.x, m_last_gyro.AngularVelocity.y, m_last_gyro.AngularVelocity.z);
         Eigen::Vector3f corrected_gyro = gyro_meas - gyro_bias;
         estimated_state.angular_velocity_body = {corrected_gyro.x(), corrected_gyro.y(), corrected_gyro.z()};
+
+        if (EKF_DEBUG_LOGGING && estimated_state.containsNaN()) {
+            std::cout << "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+            std::cout << "!!! EKF: NaN DETECTED IN FINAL STATE BEFORE POSTING !!!" << std::endl;
+            std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+            std::cout << "Final State: pos(" << estimated_state.position_ecef.x << "," << estimated_state.position_ecef.y << "," << estimated_state.position_ecef.z
+                      << "), vel(" << estimated_state.velocity_ecef.x << "," << estimated_state.velocity_ecef.y << "," << estimated_state.velocity_ecef.z << ")" << std::endl;
+        }
 
         m_data_manager.post(estimated_state);
     }

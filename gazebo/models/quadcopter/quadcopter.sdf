@@ -166,7 +166,10 @@
           <position_sensing>
             <horizontal>
               <noise type='gaussian'>
-                <stddev>.001</stddev>
+                <!-- A realistic standard deviation for a non-RTK GPS is ~2.5 meters.
+                     The navsat plugin expects this value in degrees.
+                     2.5m / 111132 m/deg = ~0.0000225 degrees -->
+                <stddev>0.0000225</stddev>
               </noise>
             </horizontal>
             <vertical>

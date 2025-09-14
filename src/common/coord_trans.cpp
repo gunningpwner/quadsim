@@ -45,3 +45,19 @@ Vector3 lla_to_enu(const Vector3& lla, const Vector3& lla_ref) {
 
     return {e, n, u};
 }
+
+Eigen::Matrix3f ecef_to_ned_matrix(double lat_deg, double lon_deg) {
+    const double lat_rad = to_radians(lat_deg);
+    const double lon_rad = to_radians(lon_deg);
+
+    const float cos_lat = static_cast<float>(cos(lat_rad));
+    const float sin_lat = static_cast<float>(sin(lat_rad));
+    const float cos_lon = static_cast<float>(cos(lon_rad));
+    const float sin_lon = static_cast<float>(sin(lon_rad));
+
+    Eigen::Matrix3f C_e_n;
+    C_e_n << -sin_lat * cos_lon, -sin_lat * sin_lon,  cos_lat,
+             -sin_lon,            cos_lon,           0,
+             -cos_lat * cos_lon, -cos_lat * sin_lon, -sin_lat;
+    return C_e_n;
+}

@@ -28,16 +28,20 @@ void GazeboInterface::startSubscribers() {
     const std::string imuTopic = "/imu";
     const std::string gpsTopic = "/gps"; // You may need to add a GPS sensor to your SDF
     const std::string magTopic = "/magnetometer"; // You may need to add a magnetometer to your SDF
+    const std::string clockTopic = "/world/default/clock";
 
     // Subscribe to topics
-    if (!m_node.Subscribe(imuTopic, &GazeboInterface::imuCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
-    }
-    if (!m_node.Subscribe(magTopic, &GazeboInterface::magnetometerCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << magTopic << "]" << std::endl;
-    }
+    // if (!m_node.Subscribe(imuTopic, &GazeboInterface::imuCallback, this)) {
+    //     std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
+    // }
+    // if (!m_node.Subscribe(magTopic, &GazeboInterface::magnetometerCallback, this)) {
+    //     std::cerr << "Error subscribing to topic [" << magTopic << "]" << std::endl;
+    // }
     if (!m_node.Subscribe(gpsTopic, &GazeboInterface::gpsCallback, this)) {
         std::cerr << "Error subscribing to topic [" << gpsTopic << "]" << std::endl;
+    }
+    if (!m_node.Subscribe(clockTopic, &GazeboInterface::clockCallback, this)) {
+        std::cerr << "Error subscribing to topic [" << clockTopic << "]" << std::endl;
     }
     
 }
@@ -97,7 +101,11 @@ void GazeboInterface::gpsCallback(const gz::msgs::NavSat& msg) {
     GPSPositionData gpsData;
     gpsData.Timestamp = timestamp_us;
     gpsData.lla={msg.latitude_deg(),msg.longitude_deg(),msg.altitude()};
-    gpsData.position_covariances={.001,.001,10};
+    // Set a realistic horizontal covariance. A standard deviation of 2.5 meters
+    // is a reasonable assumption for a standard GPS. Variance = stdev^2.
+    const float horizontal_stdev = 2.5f; // meters
+    const float horizontal_variance = horizontal_stdev * horizontal_stdev;
+    gpsData.position_covariances={horizontal_variance, horizontal_variance, 10};
     m_dataManager.post(gpsData);
     
 }
@@ -111,4 +119,13 @@ void GazeboInterface::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
     magData.MagneticField.z = msg.field_tesla().z();
     // magData.position_covariances={.003*.003,.003*.003,.003*.003};
     m_dataManager.post(magData);
+}
+
+void GazeboInterface::clockCallback(const gz::msgs::Clock& msg) {
+    uint64_t time_us = msg.sim().sec() * 1000000LL + msg.sim().nsec() / 1000LL;
+    m_sim_time_us.store(time_us);
+}
+
+uint64_t GazeboInterface::getSimTimeUs() const {
+    return m_sim_time_us.load();
 }

@@ -95,6 +95,10 @@ public:
         return m_time_source();
     }
     
+    void setTimeSource(TimeSource time_source_func) {
+        std::lock_guard<std::mutex> lock(m_time_mutex);
+        m_time_source = time_source_func;
+    }
 
 
 private:
@@ -108,5 +112,6 @@ private:
     DataChannel<InputData> m_input_channel;
     DataChannel<StateData> m_state_channel;
     DataChannel<MotorCommands> m_motor_command_channel;
+    std::mutex m_time_mutex;
 
 };

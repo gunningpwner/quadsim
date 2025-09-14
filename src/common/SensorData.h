@@ -16,6 +16,8 @@ struct TimestampedData {
 struct GPSPositionData:TimestampedData
 {   
     Vector3 lla;
+    // Covariance of position in the local NED frame (North, East, Down).
+    // Units are meters-squared (m^2).
     Vector3 position_covariances;
     int FixStatus;
     int Satellites;
@@ -55,8 +57,6 @@ struct GyroData:TimestampedData
 /// </summary>
 struct MagData:TimestampedData
 {
-    int64_t Timestamp;
-
     /// <summary>
     /// The magnetic field vector in the body frame (normalized).
     /// </summary>
