@@ -4,6 +4,7 @@
 #include "usbd_cdc_if.h"
 #include "usbd_desc.h"
 #include <string.h>
+#include <stdio.h>
 
 USBD_HandleTypeDef hUsbDeviceFS;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -43,6 +44,37 @@ void MX_USB_DEVICE_Init(void) {
   USBD_Start(&hUsbDeviceFS);
 }
 
+/**
+  * @brief  Retargets the C library printf function to the VIRTUAL COM PORT.
+  * @note   This is a weak function implementation that can be overridden.
+  *         It routes stdout (file descriptor 1) to the USB CDC port.
+  * @param  file: File descriptor.
+  * @param  ptr: Pointer to the data to be written.
+  * @param  len: Length of the data.
+  * @retval The number of characters written.
+  */
+int _write(int file, char *ptr, int len)
+{
+  // We only want to handle stdout (file descriptor 1)
+  if (file != 1) {
+    return -1;
+  }
+
+  // Define a timeout period in milliseconds.
+  const uint32_t timeout = 10; // Give up after 10ms
+  uint32_t start_time = HAL_GetTick();
+
+  // Attempt to transmit the data. If the port is busy, loop until it's free
+  // or until the timeout is reached.
+  while (CDC_Transmit_FS((uint8_t *)ptr, len) == USBD_BUSY) {
+    if (HAL_GetTick() - start_time > timeout) {
+      // Timeout occurred, data is dropped.
+      return len; // Lie and say we wrote it all to not confuse printf.
+    }
+  }
+  return len;
+}
+
 int main(void) {
   HAL_Init();
   SystemClock_Config_HSI();
@@ -61,9 +93,10 @@ int main(void) {
 
   // --- Infinite Loop ---
   while (1) {
+    static uint32_t counter = 0;
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
-    char msg[] = "It's alive!\r\n";
-    CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
+    // Now you can use printf!
+    printf("It's alive! Count: %lu\r\n", counter++);
     HAL_Delay(500);
   }
 }
