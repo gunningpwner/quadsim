@@ -118,48 +118,52 @@ void DWT_Delay_us(volatile uint32_t microseconds) {
   while ((DWT->CYCCNT - clk_cycle_start) < microseconds);
 }
 
-// Replace your existing bmi270_xxx functions with these two
-uint8_t bmi270_read_reg(uint8_t reg_addr) {
-    HAL_StatusTypeDef status;
-    uint8_t tx_byte = reg_addr | 0x80; // Address with read bit
-    uint8_t dummy_tx = 0x00;           // Dummy byte to send
-    uint8_t rx_dummy;                  // To receive the first dummy byte from IMU
-    uint8_t rx_data;                   // To receive the actual data
+int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
+  // The first byte sent is the register address with the read bit set (MSB=1)
+  uint8_t tx_addr = reg_addr | 0x80;
 
-    // CS Low
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET); // CS Low
 
-    // 1. Send the register address we want to read
-    status = HAL_SPI_TransmitReceive(&hspi1, &tx_byte, &rx_dummy, 1, HAL_MAX_DELAY);
-    if (status != HAL_OK) {
-        printf("SPI TransmitReceive (address phase) failed!\n");
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-        return 0;
-    }
-
-    // 2. Send a dummy byte to clock in the data from the sensor
-    status = HAL_SPI_TransmitReceive(&hspi1, &dummy_tx, &rx_data, 1, HAL_MAX_DELAY);
-    if (status != HAL_OK) {
-        printf("SPI TransmitReceive (data phase) failed!\n");
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-        return 0;
-    }
-
-    // CS High
+  // Transmit the register address
+  if (HAL_SPI_Transmit(&hspi1, &tx_addr, 1, HAL_MAX_DELAY) != HAL_OK) {
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+    return -1;
+  }
+  u_int8_t buffer[len+1];
+  // Receive the data
+  if (HAL_SPI_Receive(&hspi1, buffer, len+1, HAL_MAX_DELAY) != HAL_OK) {
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+    return -1;
+  }
+  // The first byte received is dummy, actual data starts from the second byte
+  memcpy(data, &buffer[1], len);
 
-    return rx_data;
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET); // CS High
+  return 1;
 }
 
-void bmi270_write_reg(uint8_t reg_addr, uint8_t data) {
-    uint8_t tx_buffer[2];
-    tx_buffer[0] = reg_addr & 0x7F; // Address with write bit (MSB=0)
-    tx_buffer[1] = data;
+/*
+ * @brief Platform-specific SPI write function for the BMI270 API
+ */
+int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
+  // The first byte sent is the register address with the write bit cleared (MSB=0)
+  uint8_t tx_addr = reg_addr & 0x7F;
 
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);
-    HAL_SPI_Transmit(&hspi1, tx_buffer, 2, HAL_MAX_DELAY);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET); // CS Low
+  // Transmit the register address
+  if (HAL_SPI_Transmit(&hspi1, &tx_addr, 1, HAL_MAX_DELAY) != HAL_OK) {
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-    DWT_Delay_us(450); // After a write, especially to a config reg, a longer delay is safer.
+    return -1;
+  }
+
+  // Transmit the data
+  if (HAL_SPI_Transmit(&hspi1, (uint8_t*)data, len, HAL_MAX_DELAY) != HAL_OK) {
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+    return -1;
+  }
+
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET); // CS High
+  return 1;
 }
 
 
@@ -175,23 +179,17 @@ int main(void) {
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
 
-  HAL_Delay(1000);
+  HAL_Delay(5000);
+  printf("Dummy");
   printf("\n--- Last Attempt: Low-Level Communication Test ---\n");
 
-  // Perform a dummy read to set SPI mode.
-  bmi270_read_reg(0x00); 
   HAL_Delay(1); // Small delay
 
-  // Now, try reading the Chip ID.
-  uint8_t chip_id = bmi270_read_reg(0x00);
-  printf("Chip ID: 0x%02X (Expected: 0x24)\n", chip_id);
-
-  if (chip_id == 0x24) {
-    printf("SUCCESS! It was a HAL timing issue.\n");
-  } else {
-    printf("FAILURE. The issue is confirmed to be a deep HAL/Betaflight difference.\n");
-    printf("Next step is to port the exact SPI driver functions from Betaflight source.\n");
-  }
+  uint8_t chip_id=0;
+  bmi270_spi_read(0x00, &chip_id, 1);
+  bmi270_spi_read(0x00, &chip_id, 1); // Pass the address of chip_id
+  printf("Read Chip ID: 0x%02X (Expected: 0x24)\n", chip_id);
+ 
 
   while (1) {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
