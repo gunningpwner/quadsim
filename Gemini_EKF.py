@@ -170,36 +170,43 @@ def rotate_vector_by_quaternion(vector, rotation_quaternion):
 def run_imu_frame_ekf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate, gps_rate,
                              accel_noise_std, gyro_noise_std, gps_noise_std, true_accel_bias, true_gyro_bias):
     """
-    
-    State: [px_global, py_global, pz_global, vx_global, vy_global, vz_global, ax_imu, ay_imu, az_imu,
-            qx, qy, qz, qw, gx, gy, gz, b_ax, b_ay, b_az, b_gx, b_gy, b_gz]
+    Implements a 9-state EKF to estimate position, velocity, and accelerometer bias.
+    This version still assumes no orientation change.
+    State: [px, py, pz, vx, vy, vz, bax, bay, baz]
     """
     num_steps = len(imu_accel_data)
     
-    # State Vector: Position (3), Velocity (3), Accel (3), Orientation (4), Angular Vel (3), Accel Bias (3), Gyro Bias (3)
-    x = np.zeros(22)
-    x[9] = 1.0 # Initialize quaternion with [1,0,0,0] for identity rotation
+    # State Vector: Position (3), Velocity (3), Accel Bias (3)
+    x = np.zeros(9)
     
     # Error Covariance Matrix (P)
-    P = np.eye(22) * 100
-    # P[6:9,6:9] = np.eye(3)*.1
-    P[9:13, 9:13] = np.eye(4) * 0.1
-    # P[16:22,16:22] = np.eye(6)*10000
+    P = np.eye(9) * 100  # High initial uncertainty
+    P[6:9, 6:9] = np.eye(3) * 1.0 # Initial accel bias uncertainty
+
     # Process Noise Covariance Matrix (Q)
-    Q = np.diag([
-        0.001, 0.001, 0.001,    # Position
-        0.01, 0.01, 0.01,       # Velocity
-        0.1, 0.1, 0.1,          # Acceleration
-        0.001, 0.001, 0.001, 0.001, # Orientation
-        0.01, 0.01, 0.01,       # Angular Velocity
-        0.0001, 0.0001, 0.0001,     # Accel Bias
-        0.0001, 0.0001, 0.0001      # Gyro Bias
+    # This models the uncertainty in our prediction model. It has two components:
+    # 1. Uncertainty in the "true" acceleration (modeled as jerk).
+    # 2. Uncertainty in the bias stability (modeled as a random walk).
+    
+    sigma_a_jerk = 0.5  # Process noise for acceleration (m/s^3) - tuning parameter
+    sigma_ba_walk = 0.001 # Process noise for accel bias random walk - tuning parameter
+
+    # Process noise injection matrix
+    G = np.zeros((9, 6))
+    G[0:3, 0:3] = 0.5 * dt_imu**2 * np.eye(3) # Jerk effect on position
+    G[3:6, 0:3] = dt_imu * np.eye(3)          # Jerk effect on velocity
+    G[6:9, 3:6] = dt_imu * np.eye(3)          # Random walk on bias
+
+    # Covariance of the process noise sources
+    Q_w = np.diag([
+        sigma_a_jerk**2, sigma_a_jerk**2, sigma_a_jerk**2,
+        sigma_ba_walk**2, sigma_ba_walk**2, sigma_ba_walk**2
     ])
+
+    Q = G @ Q_w @ G.T
     
     # Measurement Noise Covariance Matrix (R) for GPS, Gyro and Accel
     R_gps = np.diag([gps_noise_std**2, gps_noise_std**2, gps_noise_std**2])
-    R_gyro = np.diag([gyro_noise_std**2, gyro_noise_std**2, gyro_noise_std**2])
-    R_accel = np.diag([accel_noise_std**2, accel_noise_std**2, accel_noise_std**2])
     
     # Storage for results
     estimated_pos = []
@@ -216,116 +223,69 @@ def run_imu_frame_ekf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate,
     for i in range(num_steps):
         dt = dt_imu
         
-        # Prediction step.
-        x_pred = np.zeros(22)
-        
-        # x_pred[0:3] = x[0:3] + x[3:6]*dt
-        
-        global_rot = Quaternion(*x[9:13])
-        
-        global_acc = rotate_vector_by_quaternion(x[6:9], global_rot)
-        x_pred[3:6] = x[3:6] + (global_acc)*dt
-        
-        # imu_rot = integrate_quaternion(Quaternion(1,0,0,0), x[13:16], dt)
-        # x_pred[6:9] = rotate_vector_by_quaternion(x_pred[6:9], imu_rot)
-        
-        # x_pred[9:13] = integrate_quaternion(Quaternion(*x[9:13]), x[13:16], dt).q
-        
-        x_pred[0:3] = x[0:3] + x[3:6]*dt +.5*x[6:9]*dt**2
-        # x_pred[3:6] = x[3:6] + x[6:9]*dt
-        x_pred[6:9] = x[6:9]
-        
-        
-        x_pred[9:22] = x[9:22]
-        # x_pred[13:22] = x[13:22]
-        
-        F = np.eye(22)
-        F[0:3, 3:6] = np.eye(3) * dt
-        F[0:3,6:9] = 05.*np.eye(3)*dt**2
-        F[3:6,6:9] = np.eye(3) * dt
-        
-        # Jacobian with respect to accel and gyro biases.
-        # F[3:6, 16:19] = -global_rot * dt
-        # omega_cross = np.array([[0, -x[21], x[20]],
-        #                         [x[21], 0, -x[19]],
-        #                         [-x[20], x[19], 0]])
-        
-        # F[9:12, 19:22] = -0.5 * global_rot @ omega_cross * dt
-        
-        P_pred = F@P@F.T + Q * dt
-        
-        P=P_pred
-        x=x_pred
-        
-        #Update step
-        # 1. Gyroscope Update Step (Always available)
-        # gyro_measurement = imu_gyro_data[i]
-        
-        # # Measurement matrix for gyroscope
-        # H_gyro = np.zeros((3, 22))
-        # H_gyro[0:3, 13:16] = np.eye(3) 
-        # H_gyro[0:3, 19:22] = np.eye(3) 
-        
-        # # Predicted measurement
-        # h_gyro = x[13:16] + x[19:22]
-        
-        # y_gyro = gyro_measurement - h_gyro
-        # S_gyro = H_gyro @ P @ H_gyro.T + R_gyro
-        # K_gyro = P @ H_gyro.T @ inv(S_gyro)
-        # x = x + K_gyro @ y_gyro
-        # P = (np.eye(22) - K_gyro @ H_gyro) @ P
-        
-        # 2. Accelerometer Update Step (Always available)
+        # --- 1. Prediction Step (using IMU) ---
+        # Get the latest accelerometer measurement
         accel_measurement = imu_accel_data[i]
-        global_rot = Quaternion(*x[9:13])
+        accel_bias = x[6:9]
+
+        # Correct the measurement with the estimated bias
+        accel_corrected = accel_measurement - accel_bias
+
+        # For now, assume body frame is aligned with world frame.
+        # Subtract gravity to get world acceleration.
+        # The measurement is proper acceleration: a_meas = a_world - g_world
+        # So, a_world = a_meas + g_world
+        g_world = np.array([0, 0, -9.81])
+        accel_world = accel_corrected + g_world
         
-        gravity_in_imu_frame = rotate_vector_by_quaternion(np.array([0, 0, 9.81]),global_rot.conjugate())
+        # State Transition Matrix F (Jacobian of state dynamics)
+        F = np.eye(9)
+        F[0:3, 3:6] = np.eye(3) * dt
+        F[3:6, 6:9] = -np.eye(3) * dt # dv/dba = -I*dt
         
-        # Measurement matrix for accelerometer
-        H_accel = np.zeros((3, 22))
-        H_accel[0:3, 6:9] = np.eye(3) # Measuring true acceleration
-        H_accel[0:3, 16:19] = np.eye(3) # Measuring accel bias
-        
-        # Predicted measurement
-        h_accel = x[6:9] + gravity_in_imu_frame + x[16:19] 
-        
-        y_accel = accel_measurement - h_accel
-        S_accel = H_accel @ P @ H_accel.T + R_accel
-        K_accel = P @ H_accel.T @ inv(S_accel)
-        x = x + K_accel @ y_accel
-        P = (np.eye(22) - K_accel @ H_accel) @ P
-        
-        # 3. GPS Update Step (if data is available)
-        if i % (imu_rate // gps_rate) == 0:
+        # Predict state using constant acceleration model
+        x[0:3] = x[0:3] + x[3:6] * dt + 0.5 * accel_world * dt**2
+        x[3:6] = x[3:6] + accel_world * dt
+        # Bias is predicted as a random walk (i.e., constant)
+        # x[6:9] = x[6:9]
+
+        # Predict covariance
+        P = F @ P @ F.T + Q
+
+        # --- 2. Correction/Update Step (with GPS) ---
+        if i > 0 and i % (imu_rate // gps_rate) == 0:
             gps_measurement = gps_data[gps_data_idx]
             gps_data_idx += 1
-            
-            # Measurement Matrix (H)
-            H_gps = np.zeros((3, 22))
-            H_gps[0:3, 0:3] = np.eye(3) # Measure position
-            
-            # Innovation
-            y_gps = gps_measurement - H_gps @ x
-            
+
+            # Measurement Matrix H (we only measure position)
+            H = np.zeros((3, 9))
+            H[0:3, 0:3] = np.eye(3)
+
+            # Innovation (measurement residual)
+            y = gps_measurement - H @ x
+
             # Innovation Covariance
-            S_gps = H_gps @ P @ H_gps.T + R_gps
-            
+            S = H @ P @ H.T + R_gps
+
             # Kalman Gain
-            K_gps = P @ H_gps.T @ inv(S_gps)
-            
-            # Updated State
-            x = x + K_gps @ y_gps
-            
-            # Updated Error Covariance
-            P = (np.eye(22) - K_gps @ H_gps) @ P
-            
-        estimated_pos.append(x[0:3])
-        estimated_vel.append(x[3:6])
-        estimated_acc.append(x[6:9])
-        estimated_orientation.append(x[9:13])
-        estimated_ang_vel.append(x[13:16])
-        estimated_accel_bias.append(x[16:19])
-        estimated_gyro_bias.append(x[19:22])
+            K = P @ H.T @ inv(S)
+
+            # Update state
+            x = x + K @ y
+
+            # Update covariance
+            P = (np.eye(9) - K @ H) @ P
+
+        # --- Store results for plotting ---
+        # Use .copy() to prevent the mutation bug you found!
+        estimated_pos.append(x[0:3].copy())
+        estimated_vel.append(x[3:6].copy())
+        estimated_accel_bias.append(x[6:9].copy())
+        # For this simple EKF, other states are not estimated
+        estimated_acc.append(np.zeros(3))
+        estimated_orientation.append(np.array([1.0, 0, 0, 0])) # w,x,y,z
+        estimated_ang_vel.append(np.zeros(3))
+        estimated_gyro_bias.append(np.zeros(3))
         P_diag_history.append(np.diag(P))
         
             
