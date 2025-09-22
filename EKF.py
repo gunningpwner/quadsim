@@ -201,16 +201,28 @@ def run_imu_frame_ekf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate,
         x_pred[0:3] = x[0:3] + x[3:6]*dt
         
         global_rot = Quaternion(*x[9:13])
-        global_acc = rotate_vector_by_quaternion(x[6:9],global_rot)
+        global_rot = R.from_quat(x[9:13]).as_matrix()
+        global_acc = x[6:9]@global_rot
         x_pred[3:6] = x[3:6] + (global_acc+np.array([0,0,-9.8]))*dt
         
         imu_rot = integrate_quaternion(Quaternion(1,0,0,0), x[13:16], dt)
         x_pred[6:9] = rotate_vector_by_quaternion(x_pred[6:9], imu_rot)
         
-        x_pred[9:13] = integrate_quaternion(global_rot, x[13:16], dt).q
+        x_pred[9:13] = integrate_quaternion(Quaternion(*x[9:13]), x[13:16], dt).q
         x_pred[16:22] = x[16:22]
+        F = np.eye(22)
+        F[0:3, 3:6] = np.eye(3) * dt
         
-        P_pred = P + Q * dt
+        # Jacobian with respect to accel and gyro biases.
+        F[3:6, 16:19] = -global_rot * dt
+        #19:22
+        omega_cross = np.array([[0, -x[21], x[20]],
+                                [x[21], 0, -x[19]],
+                                [-x[20], x[19], 0]])
+        
+        F[9:12, 19:22] = -0.5 * global_rot @ omega_cross * dt
+        
+        P_pred = F@P@F.T + Q * dt
         
         P=P_pred
         x=x_pred
@@ -221,8 +233,8 @@ def run_imu_frame_ekf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate,
         
         # Measurement matrix for gyroscope
         H_gyro = np.zeros((3, 22))
-        H_gyro[0:3, 13:16] = np.eye(3) # Measuring true angular velocity
-        H_gyro[0:3, 19:22] = np.eye(3) # Measuring gyro bias
+        H_gyro[0:3, 13:16] = np.eye(3) 
+        H_gyro[0:3, 19:22] = np.eye(3) 
         
         # Predicted measurement
         h_gyro = x[13:16] + x[19:22]
@@ -359,7 +371,7 @@ def plot_results(estimated_pos, estimated_vel, estimated_accel_bias, estimated_g
 
 if __name__ == '__main__':
     # Simulation Parameters
-    NUM_STEPS = 1000
+    NUM_STEPS = 100
     IMU_RATE = 100 # Hz
     GPS_RATE = 1 # Hz
     ACCEL_BIAS = np.array([0.1, 0.2, 0.3]) # m/s^2
@@ -367,7 +379,7 @@ if __name__ == '__main__':
     ACCEL_NOISE_STD = 0.05
     GYRO_NOISE_STD = 0.01
     GPS_NOISE_STD = 0.5
-    SEED = 42 
+    SEED = 420 
     
     print("Running EKF with IMU Frame...")
     imu_accel_data, imu_gyro_data, gps_data, dt_imu = generate_data(
