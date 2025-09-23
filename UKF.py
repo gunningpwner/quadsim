@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep 23 11:31:29 2025
+
+@author: RodriguesAT
+"""
+
 # Standard Library Imports
 import numpy as np
-from numpy.linalg import inv
+from scipy.linalg import cholesky
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 def generate_data(num_steps, imu_rate, gps_rate, accel_bias, gyro_bias, accel_noise_std, gyro_noise_std, gps_noise_std, true_angular_velocity, true_velocity=None, seed=None):
@@ -167,129 +174,176 @@ def rotate_vector_by_quaternion(vector, rotation_quaternion):
     # 4. Extract the vector part from the result
     return np.array([rotated_q.x, rotated_q.y, rotated_q.z])
 
-def run_imu_frame_ekf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate, gps_rate,
-                             accel_noise_std, gyro_noise_std, gps_noise_std, true_accel_bias, true_gyro_bias):
+def run_ukf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate, gps_rate,
+            accel_noise_std, gyro_noise_std, gps_noise_std, true_accel_bias, true_gyro_bias):
     """
-    Implements a 9-state EKF to estimate position, velocity, and accelerometer bias.
-    This version still assumes no orientation change.
-    State: [px, py, pz, vx, vy, vz, bax, bay, baz]
+    Implements a 15-state error-state Unscented Kalman Filter (UKF) for full state estimation.
+    Nominal State: [p, v, q, ba, bg] (Position, Velocity, Orientation, Accel Bias, Gyro Bias)
+    Error State:   [dp, dv, d_theta, d_ba, d_bg] (15 states)
     """
     num_steps = len(imu_accel_data)
-    
-    # State Vector: Position (3), Velocity (3), Accel Bias (3)
-    x = np.zeros(9)
-    
-    # Error Covariance Matrix (P)
-    P = np.eye(9) * 100  # High initial uncertainty
-    P[6:9, 6:9] = np.eye(3) * 1.0 # Initial accel bias uncertainty
 
-    # Process Noise Covariance Matrix (Q)
-    # This models the uncertainty in our prediction model. It has two components:
-    # 1. Uncertainty in the "true" acceleration (modeled as jerk).
-    # 2. Uncertainty in the bias stability (modeled as a random walk).
-    
-    sigma_a_jerk = 0.5  # Process noise for acceleration (m/s^3) - tuning parameter
-    sigma_ba_walk = 0.001 # Process noise for accel bias random walk - tuning parameter
+    # --- State Definition ---
+    # Nominal state (the filter's best guess)
+    p = np.zeros(3)
+    v = np.zeros(3)
+    q = Quaternion(1, 0, 0, 0)
+    ba = np.zeros(3)
+    bg = np.zeros(3)
 
-    # Process noise injection matrix
-    G = np.zeros((9, 6))
-    G[0:3, 0:3] = 0.5 * dt_imu**2 * np.eye(3) # Jerk effect on position
-    G[3:6, 0:3] = dt_imu * np.eye(3)          # Jerk effect on velocity
-    G[6:9, 3:6] = dt_imu * np.eye(3)          # Random walk on bias
+    # Error-state covariance
+    n_error = 15  # dp(3), dv(3), d_theta(3), d_ba(3), d_bg(3)
+    P = np.eye(n_error) * 0.1
 
-    # Covariance of the process noise sources
-    Q_w = np.diag([
-        sigma_a_jerk**2, sigma_a_jerk**2, sigma_a_jerk**2,
-        sigma_ba_walk**2, sigma_ba_walk**2, sigma_ba_walk**2
-    ])
+    # --- UKF Parameters ---
+    alpha = 1e-3
+    kappa = 0
+    beta = 2
+    lambda_ = alpha**2 * (n_error + kappa) - n_error
+    
+    # Weights for sigma points
+    Wm = np.full(2 * n_error + 1, 1 / (2 * (n_error + lambda_)))
+    Wc = np.full(2 * n_error + 1, 1 / (2 * (n_error + lambda_)))
+    Wm[0] = lambda_ / (n_error + lambda_)
+    Wc[0] = lambda_ / (n_error + lambda_) + (1 - alpha**2 + beta)
 
-    Q = G @ Q_w @ G.T
-    
-    # Measurement Noise Covariance Matrix (R) for GPS, Gyro and Accel
-    R_gps = np.diag([gps_noise_std**2, gps_noise_std**2, gps_noise_std**2])
-    
-    # Storage for results
+    # --- Noise Covariances ---
+    # Measurement Noise (R): How much do we trust the GPS?
+    # This is based on the sensor's datasheet or empirical testing.
+    R_gps = np.diag([gps_noise_std**2] * 3)
+
+    # Process Noise (Q): How much do we trust our prediction model?
+    # These are the primary tuning parameters for the filter.
+    accel_process_noise = 0.1     # std dev of uncertainty in acceleration (m/s^2)
+    gyro_process_noise = 0.05     # std dev of uncertainty in angular velocity (rad/s)
+    accel_bias_process_noise = 0.0001 # std dev of accel bias random walk
+    gyro_bias_process_noise = 0.0001  # std dev of gyro bias random walk
+
+    # --- Storage for results ---
     estimated_pos = []
     estimated_vel = []
-    estimated_acc = []
-    estimated_ang_vel = []
     estimated_accel_bias = []
     estimated_gyro_bias = []
     estimated_orientation = []
+    estimated_ang_vel = []
     P_diag_history = []
-    
+
     gps_data_idx = 0
-    
+
     for i in range(num_steps):
         dt = dt_imu
-        
-        # --- 1. Prediction Step (using IMU) ---
-        # Get the latest accelerometer measurement
-        accel_measurement = imu_accel_data[i]
-        accel_bias = x[6:9]
 
-        # Correct the measurement with the estimated bias
-        accel_corrected = accel_measurement - accel_bias
+        # --- 1. Nominal State Prediction (using raw IMU) ---
+        accel_meas = imu_accel_data[i]
+        gyro_meas = imu_gyro_data[i]
 
-        # For now, assume body frame is aligned with world frame.
-        # Subtract gravity to get world acceleration.
-        # The measurement is proper acceleration: a_meas = a_world - g_world
-        # So, a_world = a_meas + g_world
-        g_world = np.array([0, 0, -9.81])
-        accel_world = accel_corrected + g_world
-        
-        # State Transition Matrix F (Jacobian of state dynamics)
-        F = np.eye(9)
+        # Correct measurements with current bias estimates
+        corrected_gyro = gyro_meas - bg
+        corrected_accel = accel_meas - ba
+
+        # Propagate orientation
+        q_pred = integrate_quaternion(q, corrected_gyro, dt)
+
+        # Propagate velocity and position
+        # Use the newly predicted orientation (q_pred) to rotate the acceleration
+        g_world = np.array([0, 0, 9.81]) # Gravity vector in world frame
+        accel_world = rotate_vector_by_quaternion(corrected_accel, q_pred) - g_world
+        v_pred = v + accel_world * dt
+        p_pred = p + v * dt + 0.5 * accel_world * dt**2
+
+        # Update nominal state
+        p, v, q = p_pred, v_pred, q_pred
+
+        # --- 2. Error State Covariance Prediction ---
+        # Build the error-state transition matrix, F
+        F = np.eye(n_error)
+        # dp/dv
         F[0:3, 3:6] = np.eye(3) * dt
-        F[3:6, 6:9] = -np.eye(3) * dt # dv/dba = -I*dt
         
-        # Predict state using constant acceleration model
-        x[0:3] = x[0:3] + x[3:6] * dt + 0.5 * accel_world * dt**2
-        x[3:6] = x[3:6] + accel_world * dt
-        # Bias is predicted as a random walk (i.e., constant)
-        x[6:9] = x[6:9]
+        # dv/d_theta (effect of orientation error on acceleration)
+        C_q_matrix = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
+        accel_skew = np.array([[0, -corrected_accel[2], corrected_accel[1]],
+                               [corrected_accel[2], 0, -corrected_accel[0]],
+                               [-corrected_accel[1], corrected_accel[0], 0]])
+        F[3:6, 6:9] = -C_q_matrix @ accel_skew * dt
+        
+        # dv/d_ba (effect of accel bias on velocity)
+        F[3:6, 9:12] = -C_q_matrix * dt
+        
+        # d_theta/d_bg (effect of gyro bias on orientation)
+        F[6:9, 12:15] = -np.eye(3) * dt
 
-        # Predict covariance
-        P = F @ P @ F.T + Q
+        # Build the process noise covariance matrix Q
+        Q_full = np.zeros((n_error, n_error))
+        Q_full[3:6, 3:6] = C_q_matrix @ np.diag([accel_process_noise**2]*3) @ C_q_matrix.T * dt**2 # vel noise
+        Q_full[6:9, 6:9] = np.diag([gyro_process_noise**2]*3) * dt**2 # orientation noise
+        Q_full[9:12, 9:12] = np.diag([accel_bias_process_noise**2]*3) * dt**2 # accel bias noise
+        Q_full[12:15, 12:15] = np.diag([gyro_bias_process_noise**2]*3) * dt**2 # gyro bias noise
 
-        # --- 2. Correction/Update Step (with GPS) ---
+        # Propagate covariance: P = F * P * F' + Q
+        P = F @ P @ F.T + Q_full
+
+        # --- 3. UKF Update (with GPS) ---
         if i > 0 and i % (imu_rate // gps_rate) == 0:
             gps_measurement = gps_data[gps_data_idx]
             gps_data_idx += 1
 
-            # Measurement Matrix H (we only measure position)
-            H = np.zeros((3, 9))
-            H[0:3, 0:3] = np.eye(3)
+            # a) Generate sigma points again with the predicted P
+            sqrt_P = cholesky((n_error + lambda_) * P)
+            sigma_points = np.zeros((n_error, 2 * n_error + 1))
+            sigma_points[:, 1:n_error + 1] = sqrt_P
+            sigma_points[:, n_error + 1:] = -sqrt_P
 
-            # Innovation (measurement residual)
-            y = gps_measurement - H @ x
+            # b) Transform sigma points into measurement space
+            # The measurement is position: z = p_nominal + dp
+            Z_sigma = p[:, np.newaxis] + sigma_points[0:3, :]
 
-            # Innovation Covariance
-            S = H @ P @ H.T + R_gps
+            # c) Calculate predicted measurement and covariance
+            z_pred = np.sum(Wm * Z_sigma, axis=1)
+            P_zz = np.zeros((3, 3))
+            P_xz = np.zeros((n_error, 3))
+            for j in range(2 * n_error + 1):
+                z_diff = Z_sigma[:, j] - z_pred
+                x_diff = sigma_points[:, j] # Error state mean is zero
+                P_zz += Wc[j] * np.outer(z_diff, z_diff)
+                P_xz += Wc[j] * np.outer(x_diff, z_diff)
+            P_zz += R_gps
 
-            # Kalman Gain
-            K = P @ H.T @ inv(S)
+            # d) Calculate Kalman Gain and update
+            K = P_xz @ np.linalg.inv(P_zz)
+            y = gps_measurement - z_pred # Innovation
+            dx = K @ y # Estimated error state
 
-            # Update state
-            x = x + K @ y
+            # Update covariance using the numerically stable Joseph form
+            # P = P - K @ P_zz @ K.T  <-- This is numerically unstable
+            I_min_KH = np.eye(n_error) - K @ P_xz.T
+            P = I_min_KH @ P @ I_min_KH.T + K @ R_gps @ K.T
 
-            # Update covariance
-            P = (np.eye(9) - K @ H) @ P
+            # e) Inject the error back into the nominal state
+            p += dx[0:3]
+            v += dx[3:6]
+            d_theta = dx[6:9]
+            # Convert error rotation vector to quaternion and update orientation
+            if np.linalg.norm(d_theta) > 0:
+                dq = R.from_rotvec(d_theta).as_quat() # [x,y,z,w]
+                q_update = Quaternion(dq[3], dq[0], dq[1], dq[2])
+                q = q * q_update
+                q.normalize()
+            ba += dx[9:12]
+            bg += dx[12:15]
 
-        # --- Store results for plotting ---
-        # Use .copy() to prevent the mutation bug you found!
-        estimated_pos.append(x[0:3].copy())
-        estimated_vel.append(x[3:6].copy())
-        estimated_accel_bias.append(x[6:9].copy())
-        # For this simple EKF, other states are not estimated
-        estimated_acc.append(np.zeros(3))
-        estimated_orientation.append(np.array([1.0, 0, 0, 0])) # w,x,y,z
-        estimated_ang_vel.append(np.zeros(3))
-        estimated_gyro_bias.append(np.zeros(3))
-        P_diag_history.append(np.diag(P))
-        
-            
-    return np.array(estimated_pos), np.array(estimated_vel),np.array(estimated_acc),np.array(estimated_orientation),np.array(estimated_ang_vel), np.array(estimated_accel_bias), np.array(estimated_gyro_bias), np.array(P_diag_history)
+        # --- Store results ---
+        estimated_pos.append(p.copy())
+        estimated_vel.append(v.copy())
+        estimated_orientation.append(q.q.copy())
+        estimated_accel_bias.append(ba.copy())
+        estimated_gyro_bias.append(bg.copy())
+        estimated_ang_vel.append(corrected_gyro.copy())
+        P_diag_history.append(np.diag(P).copy())
+
+    # For compatibility with the plotting function, return empty/zero arrays for unused states
+    zeros_array = np.zeros((num_steps, 3))
+    return np.array(estimated_pos), np.array(estimated_vel), zeros_array, np.array(estimated_orientation), np.array(estimated_ang_vel), np.array(estimated_accel_bias), np.array(estimated_gyro_bias), np.array(P_diag_history)
 
 
 def plot_results(estimated_pos, estimated_vel, estimated_acc, imu_accel_data, estimated_accel_bias, estimated_gyro_bias, estimated_orientation, estimated_ang_vel, true_orientation, true_accel_bias, true_gyro_bias, true_angular_velocity, P_diag_history, title):
@@ -417,33 +471,33 @@ def plot_results(estimated_pos, estimated_vel, estimated_acc, imu_accel_data, es
     axs3[3].set_visible(False)
 
     # Plot Position and Velocity Variance
-    axs3[0].plot(P_diag_history[:, 0:3])
-    axs3[0].set_title('Position Variance')
-    axs3[0].set_ylabel('Variance (m^2)')
-    axs3[0].legend(state_labels[0:3])
-    axs3[0].grid(True)
+    # axs3[0].plot(P_diag_history[:, 0:3])
+    # axs3[0].set_title('Position Variance')
+    # axs3[0].set_ylabel('Variance (m^2)')
+    # axs3[0].legend(state_labels[0:3])
+    # axs3[0].grid(True)
 
-    # Plot Velocity Variance
-    axs3[1].plot(P_diag_history[:, 3:6])
-    axs3[1].set_title('Velocity Variance')
-    axs3[1].set_ylabel('Variance ((m/s)^2)')
-    axs3[1].legend(state_labels[3:6])
-    axs3[1].grid(True)
+    # # Plot Velocity Variance
+    # axs3[1].plot(P_diag_history[:, 3:6])
+    # axs3[1].set_title('Velocity Variance')
+    # axs3[1].set_ylabel('Variance ((m/s)^2)')
+    # axs3[1].legend(state_labels[3:6])
+    # axs3[1].grid(True)
 
-    # Plot Accel Bias Variance
-    axs3[2].plot(P_diag_history[:, 6:9])
-    axs3[2].set_title('Accelerometer Bias Variance')
-    axs3[2].set_xlabel('IMU Step')
-    axs3[2].set_ylabel('Variance ((m/s^2)^2)')
-    axs3[2].legend(state_labels[6:9])
-    axs3[2].grid(True)
+    # # Plot Accel Bias Variance
+    # axs3[2].plot(P_diag_history[:, 6:9])
+    # axs3[2].set_title('Accelerometer Bias Variance')
+    # axs3[2].set_xlabel('IMU Step')
+    # axs3[2].set_ylabel('Variance ((m/s^2)^2)')
+    # axs3[2].legend(state_labels[6:9])
+    # axs3[2].grid(True)
 
     fig3.tight_layout(rect=[0, 0.03, 1, 0.96])
     plt.show()
 
 if __name__ == '__main__':
     # Simulation Parameters
-    NUM_STEPS = 10000
+    NUM_STEPS = 300
     IMU_RATE = 100 # Hz
     GPS_RATE = 1 # Hz
     ACCEL_BIAS = np.array([0.1, 0.2, .3]) # m/s^2
@@ -451,18 +505,18 @@ if __name__ == '__main__':
     ACCEL_NOISE_STD = 0.05
     GYRO_NOISE_STD = 0.01
     GPS_NOISE_STD = 0.5
-    true_angular_velocity=np.array([0,0,0])
+    true_angular_velocity=np.array([0.1,0,0])
     true_velocity = np.array([1.0, -10, 0.2]) # Constant velocity in m/s
     SEED = 420 
     
-    print("Running EKF with IMU Frame...")
+    print("Running Unscented Kalman Filter...")
     imu_accel_data, imu_gyro_data, gps_data, true_orientation_data, dt_imu = generate_data(
         NUM_STEPS, IMU_RATE, GPS_RATE, ACCEL_BIAS, GYRO_BIAS, ACCEL_NOISE_STD, GYRO_NOISE_STD, GPS_NOISE_STD, true_angular_velocity, true_velocity=true_velocity, seed=SEED
     )
     
-    est_pos, est_vel,est_acc, est_orientation,est_ang_vel, est_accel_bias, est_gyro_bias, P_diag = run_imu_frame_ekf(
+    est_pos, est_vel, est_acc, est_orientation, est_ang_vel, est_accel_bias, est_gyro_bias, P_diag = run_ukf(
         imu_accel_data, imu_gyro_data, gps_data, dt_imu, IMU_RATE, GPS_RATE,
         ACCEL_NOISE_STD, GYRO_NOISE_STD, GPS_NOISE_STD, ACCEL_BIAS, GYRO_BIAS
     )
     
-    plot_results(est_pos, est_vel, est_acc, imu_accel_data, est_accel_bias, est_gyro_bias, est_orientation, est_ang_vel, true_orientation_data, ACCEL_BIAS, GYRO_BIAS, true_velocity, P_diag, "EKF: Position Estimate in IMU Frame")
+    plot_results(est_pos, est_vel, est_acc, imu_accel_data, est_accel_bias, est_gyro_bias, est_orientation, est_ang_vel, true_orientation_data, ACCEL_BIAS, GYRO_BIAS, true_angular_velocity, P_diag, "UKF Orientation Estimate")
