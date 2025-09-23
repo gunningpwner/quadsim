@@ -174,34 +174,64 @@ def rotate_vector_by_quaternion(vector, rotation_quaternion):
     # 4. Extract the vector part from the result
     return np.array([rotated_q.x, rotated_q.y, rotated_q.z])
 
-def run_mahony_filter(imu_accel_data, imu_gyro_data, dt_imu, true_accel_bias, true_gyro_bias):
+def run_mahony_ekf(imu_accel_data, imu_gyro_data, gps_data, dt_imu, imu_rate, gps_rate, gps_noise_std, true_accel_bias, true_gyro_bias):
     """
     Implements a Mahony filter to estimate orientation and gyroscope bias.
-    This version only uses accelerometer and gyroscope data.
+    This version uses accelerometer and gyroscope data for orientation, and
+    adds a strapdown integrator with GPS corrections for position and velocity.
     """
     num_steps = len(imu_accel_data)
 
     # Filter parameters (tuning gains)
-    Kp = 1.0  # Proportional gain for accelerometer correction
-    Ki = 0.1  # Integral gain for gyroscope bias correction
+    Kp = 1  # Proportional gain for accelerometer correction
+    Ki = 0.2  # Integral gain for gyroscope bias correction
 
-    # State variables
+    # --- Mahony State Variables ---
     q = Quaternion(1, 0, 0, 0)  # Initial orientation (identity)
     gyro_bias = np.zeros(3)     # Initial gyroscope bias estimate
 
+    # --- EKF State Variables ---
+    # State vector: [pos(3), vel(3), accel_bias(3)]
+    x = np.zeros(9)
+    # Error Covariance Matrix (P)
+    P = np.eye(9) * 10.0
+
+    # --- EKF Noise Parameters ---
+    # Process Noise: uncertainty in our prediction model. These are key tuning parameters.
+    # Higher values mean we trust the model less and the measurements more.
+    accel_process_noise = 0.5  # std dev of uncertainty in acceleration (m/s^2)
+    bias_process_noise = 0.001 # std dev of accel bias random walk
+
+    Q = np.diag([
+        # Uncertainty in velocity, driven by accel process noise
+        accel_process_noise**2, accel_process_noise**2, accel_process_noise**2,
+        # Uncertainty in accel bias, driven by random walk
+        bias_process_noise**2, bias_process_noise**2, bias_process_noise**2
+    ])
+
+    # Measurement Noise: uncertainty in the GPS sensor.
+    R_gps = np.diag([gps_noise_std**2] * 3)
+
     # Storage for results
+    estimated_pos = []
+    estimated_vel = []
+    estimated_accel_bias = []
+    # Mahony-specific results
     estimated_gyro_bias = []
     estimated_orientation = []
     estimated_ang_vel = []
+    P_diag_history = []
+
+    gps_data_idx = 0
 
     for i in range(num_steps):
         dt = dt_imu
-
+        
         # Get sensor measurements for the current step
         accel_measurement = imu_accel_data[i]
         gyro_measurement = imu_gyro_data[i]
 
-        # --- Correction Step ---
+        # --- Mahony Orientation Correction ---
         # Normalize the accelerometer measurement
         accel_norm = np.linalg.norm(accel_measurement)
         error = np.zeros(3)
@@ -217,15 +247,16 @@ def run_mahony_filter(imu_accel_data, imu_gyro_data, dt_imu, true_accel_bias, tr
             # This error represents the rotational difference.
             error = np.cross(accel_unit, g_body)
 
-        # --- Gyro Bias Update ---
-        # Integrate the error to update the gyroscope bias estimate.
-        gyro_bias += -Ki * error * dt
+        # --- Mahony Gyro Bias Update ---
+        # Integrate the orientation error to update the gyroscope bias estimate.
+        gyro_bias += -Ki * error * dt # Gyro bias is still driven by orientation error
 
-        # --- Gyro Correction ---
+        # --- Mahony Gyro Correction ---
         # Correct the raw gyroscope measurement with the estimated bias and the proportional error term.
+        # The proportional term drives the orientation towards the accelerometer's gravity vector.
         gyro_corrected = gyro_measurement - gyro_bias + Kp * error
 
-        # --- Orientation Integration ---
+        # --- Mahony Orientation Integration ---
         # Update the orientation quaternion by integrating the corrected angular velocity.
         # Create a small rotation quaternion from the corrected gyro reading.
         omega_mag = np.linalg.norm(gyro_corrected)
@@ -246,14 +277,79 @@ def run_mahony_filter(imu_accel_data, imu_gyro_data, dt_imu, true_accel_bias, tr
             q = q * delta_q
             q.normalize()
 
+        # --- EKF Prediction Step ---
+        # Get current accel bias from the EKF state
+        accel_bias = x[6:9]
+
+        # 1. Correct accelerometer measurement with the latest bias estimate
+        accel_corrected = accel_measurement - accel_bias
+
+        # 2. Rotate corrected acceleration from body to world frame using Mahony's orientation
+        accel_world = rotate_vector_by_quaternion(accel_corrected, q)
+
+        # 3. Subtract gravity to get true linear acceleration in the world frame
+        linear_accel_world = accel_world - np.array([0, 0, 1]) * 9.81
+
+        # 4. Predict the next state [p, v, ba]
+        # Note: x[0:3] is pos, x[3:6] is vel
+        x[0:3] = x[0:3] + x[3:6] * dt + 0.5 * linear_accel_world * dt**2
+        x[3:6] = x[3:6] + linear_accel_world * dt
+        # Accel bias is modeled as a random walk, so its prediction is its last value.
+
+        # 5. Propagate the error covariance
+        # State Transition Matrix F (Jacobian of state dynamics)
+        F = np.eye(9)
+        F[0:3, 3:6] = np.eye(3) * dt  # dp/dv = I*dt
+
+        # Jacobian of velocity w.r.t. accel bias
+        C_q_matrix = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix() # Body to World
+        F[3:6, 6:9] = -C_q_matrix * dt # dv/dba = -C(q)*dt
+
+        # Process Noise Injection Matrix for Q
+        # This maps the process noise sources to the state vector
+        G = np.zeros((9, 6))
+        G[3:6, 0:3] = C_q_matrix * dt # Accel noise affects velocity
+        G[6:9, 3:6] = np.eye(3) * dt  # Bias random walk
+
+        # Propagate covariance: P = F * P * F' + G * Q * G'
+        P = F @ P @ F.T + G @ Q @ G.T
+
+        # --- EKF Correction Step (with GPS) ---
+        # Check if a new GPS measurement is available at this time step
+        if i > 0 and i % (imu_rate // gps_rate) == 0 and gps_data_idx < len(gps_data):
+            gps_measurement = gps_data[gps_data_idx]
+            gps_data_idx += 1
+
+            # Measurement Matrix H (we only measure position)
+            H = np.zeros((3, 9))
+            H[0:3, 0:3] = np.eye(3)
+
+            # Innovation (measurement residual)
+            y = gps_measurement - H @ x
+
+            # Innovation Covariance
+            S = H @ P @ H.T + R_gps
+
+            # Kalman Gain
+            K = P @ H.T @ inv(S)
+
+            # Update state
+            x = x + K @ y
+
+            # Update covariance (using numerically stable Joseph form)
+            I_KH = np.eye(9) - K @ H
+            P = I_KH @ P @ I_KH.T + K @ R_gps @ K.T
+
         # --- Store results for plotting ---
+        estimated_pos.append(x[0:3].copy())
+        estimated_vel.append(x[3:6].copy())
+        estimated_accel_bias.append(x[6:9].copy())
         estimated_orientation.append(q.q.copy()) # Store as [w, x, y, z]
         estimated_gyro_bias.append(gyro_bias.copy())
         estimated_ang_vel.append(gyro_corrected.copy())
+        P_diag_history.append(np.diag(P).copy())
 
-    # For compatibility with the plotting function, return empty/zero arrays for unused states
-    zeros_array = np.zeros((num_steps, 3))
-    return zeros_array, zeros_array, zeros_array, np.array(estimated_orientation), np.array(estimated_ang_vel), zeros_array, np.array(estimated_gyro_bias), []
+    return np.array(estimated_pos), np.array(estimated_vel), np.zeros((num_steps, 3)), np.array(estimated_orientation), np.array(estimated_ang_vel), np.array(estimated_accel_bias), np.array(estimated_gyro_bias), np.array(P_diag_history)
 
 
 def plot_results(estimated_pos, estimated_vel, estimated_acc, imu_accel_data, estimated_accel_bias, estimated_gyro_bias, estimated_orientation, estimated_ang_vel, true_orientation, true_accel_bias, true_gyro_bias, true_angular_velocity, P_diag_history, title):
@@ -366,48 +462,43 @@ def plot_results(estimated_pos, estimated_vel, estimated_acc, imu_accel_data, es
     fig2.tight_layout(rect=[0, 0.03, 1, 0.96])
 
     # --- Figure 3: Covariance Matrix Diagonals (Variance) ---
-    fig3, axs3 = plt.subplots(4, 1, figsize=(12, 18), sharex=True)
-    fig3.suptitle(f"{title} - State Variances (P Matrix Diagonals)", fontsize=16)
+    if P_diag_history is not None and len(P_diag_history) > 0:
+        fig3, axs3 = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
+        fig3.suptitle(f"{title} - State Variances (P Matrix Diagonals)", fontsize=16)
 
-    # State labels for the P matrix diagonal
-    state_labels = [
-        'Pos X', 'Pos Y', 'Pos Z',
-        'Vel X', 'Vel Y', 'Vel Z',
-        'Bias Acc X', 'Bias Acc Y', 'Bias Acc Z'
-    ]
-    P_diag_history = np.array(P_diag_history) # Ensure it's a numpy array
+        state_labels_pos = ['Pos X', 'Pos Y', 'Pos Z']
+        state_labels_vel = ['Vel X', 'Vel Y', 'Vel Z']
+        state_labels_bias = ['Bias Acc X', 'Bias Acc Y', 'Bias Acc Z']
 
-    # Disable plots for non-estimated states in this simple version
-    axs3[3].set_visible(False)
+        # Plot Position Variance
+        axs3[0].plot(P_diag_history[:, 0:3])
+        axs3[0].set_title('Position Variance')
+        axs3[0].set_ylabel('Variance (m^2)')
+        axs3[0].legend(state_labels_pos)
+        axs3[0].grid(True)
 
-    # Plot Position and Velocity Variance
-    # axs3[0].plot(P_diag_history[:, 0:3])
-    # axs3[0].set_title('Position Variance')
-    # axs3[0].set_ylabel('Variance (m^2)')
-    # axs3[0].legend(state_labels[0:3])
-    # axs3[0].grid(True)
+        # Plot Velocity Variance
+        axs3[1].plot(P_diag_history[:, 3:6])
+        axs3[1].set_title('Velocity Variance')
+        axs3[1].set_ylabel('Variance ((m/s)^2)')
+        axs3[1].legend(state_labels_vel)
+        axs3[1].grid(True)
 
-    # # Plot Velocity Variance
-    # axs3[1].plot(P_diag_history[:, 3:6])
-    # axs3[1].set_title('Velocity Variance')
-    # axs3[1].set_ylabel('Variance ((m/s)^2)')
-    # axs3[1].legend(state_labels[3:6])
-    # axs3[1].grid(True)
+        # Plot Accel Bias Variance
+        axs3[2].plot(P_diag_history[:, 6:9])
+        axs3[2].set_title('Accelerometer Bias Variance')
+        axs3[2].set_xlabel('IMU Step')
+        axs3[2].set_ylabel('Variance ((m/s^2)^2)')
+        axs3[2].legend(state_labels_bias)
+        axs3[2].grid(True)
 
-    # # Plot Accel Bias Variance
-    # axs3[2].plot(P_diag_history[:, 6:9])
-    # axs3[2].set_title('Accelerometer Bias Variance')
-    # axs3[2].set_xlabel('IMU Step')
-    # axs3[2].set_ylabel('Variance ((m/s^2)^2)')
-    # axs3[2].legend(state_labels[6:9])
-    # axs3[2].grid(True)
+        fig3.tight_layout(rect=[0, 0.03, 1, 0.96])
 
-    fig3.tight_layout(rect=[0, 0.03, 1, 0.96])
     plt.show()
 
 if __name__ == '__main__':
     # Simulation Parameters
-    NUM_STEPS = 10000
+    NUM_STEPS = 30000
     IMU_RATE = 100 # Hz
     GPS_RATE = 1 # Hz
     ACCEL_BIAS = np.array([0.1, 0.2, .3]) # m/s^2
@@ -415,8 +506,8 @@ if __name__ == '__main__':
     ACCEL_NOISE_STD = 0.05
     GYRO_NOISE_STD = 0.01
     GPS_NOISE_STD = 0.5
-    true_angular_velocity=np.array([.1,0,0])
-    true_velocity = np.array([1.0, -10, 0.2]) # Constant velocity in m/s
+    true_angular_velocity=np.array([.1,0.05,0])
+    true_velocity = np.array([1.0, -1, 0.2]) # Constant velocity in m/s
     SEED = 420 
     
     print("Running Mahony Filter...")
@@ -424,8 +515,8 @@ if __name__ == '__main__':
         NUM_STEPS, IMU_RATE, GPS_RATE, ACCEL_BIAS, GYRO_BIAS, ACCEL_NOISE_STD, GYRO_NOISE_STD, GPS_NOISE_STD, true_angular_velocity, true_velocity=true_velocity, seed=SEED
     )
     
-    est_pos, est_vel, est_acc, est_orientation, est_ang_vel, est_accel_bias, est_gyro_bias, P_diag = run_mahony_filter(
-        imu_accel_data, imu_gyro_data, dt_imu, ACCEL_BIAS, GYRO_BIAS
+    est_pos, est_vel, est_acc, est_orientation, est_ang_vel, est_accel_bias, est_gyro_bias, P_diag = run_mahony_ekf(
+        imu_accel_data, imu_gyro_data, gps_data, dt_imu, IMU_RATE, GPS_RATE, GPS_NOISE_STD, ACCEL_BIAS, GYRO_BIAS
     )
     
-    plot_results(est_pos, est_vel, est_acc, imu_accel_data, est_accel_bias, est_gyro_bias, est_orientation, est_ang_vel, true_orientation_data, ACCEL_BIAS, GYRO_BIAS, true_angular_velocity, P_diag, "Mahony Filter Orientation Estimate")
+    plot_results(est_pos, est_vel, est_acc, imu_accel_data, est_accel_bias, est_gyro_bias, est_orientation, est_ang_vel, true_orientation_data, ACCEL_BIAS, GYRO_BIAS, true_angular_velocity, P_diag, "Mahony Filter with EKF for Position/Velocity")
