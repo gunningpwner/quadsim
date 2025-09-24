@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "stm32f4xx_hal_spi.h"
+#include "bmi270.h"
 
 // Global variables
 SPI_HandleTypeDef hspi1;
@@ -18,7 +19,6 @@ void SystemClock_Config_HSE(void);
 void MX_USB_DEVICE_Init(void);
 void MX_GPIO_Init(void);
 void MX_SPI1_Init(void);
-void DWT_Delay_us(volatile uint32_t microseconds);
 
 
 /**
@@ -108,67 +108,12 @@ int _write(int file, char *ptr, int len) {
   return len;
 }
 
-/**
-  * @brief  Provides a precise microsecond delay using the DWT cycle counter.
-  * @param  microseconds: Number of microseconds to wait.
-  */
-void DWT_Delay_us(volatile uint32_t microseconds) {
-  uint32_t clk_cycle_start = DWT->CYCCNT;
-  microseconds *= (HAL_RCC_GetHCLKFreq() / 1000000);
-  while ((DWT->CYCCNT - clk_cycle_start) < microseconds);
-}
-
-int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
-  // The first byte sent is the register address with the read bit set (MSB=1)
-  uint8_t tx_addr = reg_addr | 0x80;
-
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET); // CS Low
-
-
-  uint8_t tx_buf[len+2];
-  uint8_t rx_buf[len+2];
-  tx_buf[0] = tx_addr;
-  if (HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, len+2, HAL_MAX_DELAY) != HAL_OK) {  
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-    return -1;
-  }
-  // The first byte received is dummy, actual data starts from the second byte
-  memcpy(data, &rx_buf[2], len);
-
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET); // CS High
-  return 1;
-}
-
-/*
- * @brief Platform-specific SPI write function for the BMI270 API
- */
-int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
-  // The first byte sent is the register address with the write bit cleared (MSB=0)
-  uint8_t tx_addr = reg_addr & 0x7F;
-
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET); // CS Low
-  // Transmit the register address
-  if (HAL_SPI_Transmit(&hspi1, &tx_addr, 1, HAL_MAX_DELAY) != HAL_OK) {
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-    return -1;
-  }
-
-  // Transmit the data
-  if (HAL_SPI_Transmit(&hspi1, (uint8_t*)data, len, HAL_MAX_DELAY) != HAL_OK) {
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-    return -1;
-  }
-
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET); // CS High
-  return 1;
-}
-
-
 // Replace your main function with this
 int main(void) {
   HAL_Init();
   SystemClock_Config_HSE();
 
+  // Enable DWT Cycle Counter for microsecond delays
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
   DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
@@ -176,17 +121,14 @@ int main(void) {
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
 
-  HAL_Delay(5000);
-  printf("Dummy");
-  printf("\n--- Last Attempt: Low-Level Communication Test ---\n");
+  HAL_Delay(2000); // Wait for USB to enumerate
+  printf("\n--- BMI270 Initialization ---\n");
 
-  HAL_Delay(1); // Small delay
-
-  uint8_t chip_id=0;
-  bmi270_spi_read(0x00, &chip_id, 1);
-  bmi270_spi_read(0x00, &chip_id, 1); // Pass the address of chip_id
-  printf("Read Chip ID: 0x%02X (Expected: 0x24)\n", chip_id);
- 
+  if (bmi270_init() == 0) {
+      printf("BMI270 Initialized Successfully. Chip ID: 0x%02X\n", BMI270_CHIP_ID);
+  } else {
+      printf("BMI270 Initialization Failed!\n");
+  }
 
   while (1) {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
