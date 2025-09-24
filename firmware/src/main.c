@@ -124,19 +124,16 @@ int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
 
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET); // CS Low
 
-  // Transmit the register address
-  if (HAL_SPI_Transmit(&hspi1, &tx_addr, 1, HAL_MAX_DELAY) != HAL_OK) {
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-    return -1;
-  }
-  u_int8_t buffer[len+1];
-  // Receive the data
-  if (HAL_SPI_Receive(&hspi1, buffer, len+1, HAL_MAX_DELAY) != HAL_OK) {
+
+  uint8_t tx_buf[len+2];
+  uint8_t rx_buf[len+2];
+  tx_buf[0] = tx_addr;
+  if (HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, len+2, HAL_MAX_DELAY) != HAL_OK) {  
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
     return -1;
   }
   // The first byte received is dummy, actual data starts from the second byte
-  memcpy(data, &buffer[1], len);
+  memcpy(data, &rx_buf[2], len);
 
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET); // CS High
   return 1;
