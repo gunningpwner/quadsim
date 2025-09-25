@@ -67,15 +67,15 @@ int8_t bmi270_init(void) {
     uint8_t status=0;
     bmi270_spi_read(BMI270_INTERNAL_STATUS_REG,&status,1);
     if (status==0x01){
-      return 0; 
     } else
     {
       printf("status is %02X\n",status);
       return -1;
     }
     
-    
-    
+    // Turn on the sensors
+    bmi270_spi_write(BMI270_PWR_CTRL_REG, (const uint8_t[]){0b0110}, 1);
+    return 0; 
 }
 
 /**
@@ -144,3 +144,38 @@ int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
 
   return 0;
 }
+
+
+
+/**
+ * @brief Reads the raw accelerometer data and converts it to g's.
+ * @param acc_data Pointer to a float array of size 3 to store the X, Y, Z accelerometer data.
+ * @return 0 on success, -1 on failure.
+ */
+void bmi270_read_accelerometer(){
+  uint8_t data[6];
+  if (bmi270_spi_read(BMI270_ACC_DATA_REG, data, 6) != 0) {
+
+  }
+  // The sensitivity depends on the configured range.
+  // For BMI270, with default +/- 2g range, the LSB per g is 16384.
+  const float sensitivity = 16384.0f;
+
+  // Loop for all 3 axes (X, Y, Z)
+  for (int i = 0; i < 3; i++){
+    // Combine LSB and MSB into a 16-bit signed integer
+    int16_t raw = (int16_t)((data[2*i+1]<<8)|data[2*i]);
+    // Convert raw value to g's and store it
+    float acc = (float)raw / sensitivity;
+    printf("%f ",acc);
+  }
+  printf("\n");
+}
+
+/* Example usage in your main loop:
+  float acc[3];
+  if (bmi270_read_accelerometer(acc) == 0) {
+    // To print without float support:
+    printf("ACC X:%d Y:%d Z:%d\n", (int)(acc[0]*100), (int)(acc[1]*100), (int)(acc[2]*100));
+  }
+*/

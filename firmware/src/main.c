@@ -167,13 +167,15 @@ int main(void) {
   printf("\n--- BMI270 Initialization ---\n");
 
   if (bmi270_init() == 0) {
-      printf("BMI270 Initialized Successfully. Chip ID: 0x%02X\n", BMI270_CHIP_ID);
+      printf("BMI270 Initialized Successfully.\n");
   } else {
       printf("BMI270 Initialization Failed!\n");
   }
 
+
   while (1) {
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
+    // HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
+    bmi270_read_accelerometer();
     HAL_Delay(500);
   }
 }

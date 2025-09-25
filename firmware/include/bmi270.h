@@ -13,10 +13,13 @@
 // Chip ID Register
 #define BMI270_CHIP_ID_REG 0x00
 #define BMI270_PWR_CONF_REG 0x7C
+#define BMI270_PWR_CTRL_REG 0x7D
 #define BMI270_INIT_CTRL_REG 0x59
 #define BMI270_INIT_DATA_REG 0x5E
 #define BMI270_INTERNAL_STATUS_REG 0x21
 
+#define BMI270_ACC_DATA_REG 0x0C
+#define BMI270_GYRO_DATA_REG 0x12
 
 /**
   * @brief Initializes the BMI270 sensor.
@@ -49,5 +52,6 @@ int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len);
   */
 void bmi270_delay_us(uint32_t microseconds);
 
+void bmi270_read_accelerometer();
 
 #endif // BMI270_H
