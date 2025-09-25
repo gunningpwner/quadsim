@@ -7,12 +7,16 @@
 // Expected Chip ID for BMI270
 #define BMI270_CHIP_ID 0x24
 
+// Chip Select Pin configuration
+#define BMI270_CS_PORT GPIOC
+#define BMI270_CS_PIN  GPIO_PIN_4
 // Chip ID Register
 #define BMI270_CHIP_ID_REG 0x00
 #define BMI270_PWR_CONF_REG 0x7C
 #define BMI270_INIT_CTRL_REG 0x59
 #define BMI270_INIT_DATA_REG 0x5E
 #define BMI270_INTERNAL_STATUS_REG 0x21
+
 
 /**
   * @brief Initializes the BMI270 sensor.

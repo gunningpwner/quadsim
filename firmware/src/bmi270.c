@@ -3,12 +3,7 @@
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
-// These are defined in main.c
 extern SPI_HandleTypeDef hspi1;
-
-// Chip Select Pin configuration
-#define BMI270_CS_PORT GPIOC
-#define BMI270_CS_PIN  GPIO_PIN_4
 
 /**
   * @brief  Provides a precise microsecond delay using the DWT cycle counter.
@@ -43,11 +38,11 @@ int8_t bmi270_init(void) {
     }
 
     // Disable power save mode
-    bmi270_spi_write(BMI270_PWR_CONF_REG,0x00,1);
+    bmi270_spi_write(BMI270_PWR_CONF_REG,(const uint8_t[]){0x00},1);
     // Delay for at least 450us
     bmi270_delay_us(500);
     // Upload that config file boi
-    bmi270_spi_write(BMI270_INIT_CTRL_REG, 0x00, 1);
+    bmi270_spi_write(BMI270_INIT_CTRL_REG, (const uint8_t[]){0x00}, 1);
     
     bmi270_spi_write(BMI270_INIT_DATA_REG,bmi270_config_file,sizeof(bmi270_config_file));
 
@@ -65,15 +60,22 @@ int8_t bmi270_init(void) {
     // if (mismatches == 0) printf("Config file verified successfully!\n");
     // bmi270_delay_us(10);
     
-    bmi270_spi_write(BMI270_INIT_CTRL_REG, 0x01, 1);
+    bmi270_spi_write(BMI270_INIT_CTRL_REG, (const uint8_t[]){0x01}, 1);
     //wait a bit
     HAL_Delay(100);
+
     uint8_t status=0;
     bmi270_spi_read(BMI270_INTERNAL_STATUS_REG,&status,1);
-    bmi270_spi_read(BMI270_INTERNAL_STATUS_REG,&status,1);
-    printf("status is %02X\n",status);
-
-    return 0; 
+    if (status==0x01){
+      return 0; 
+    } else
+    {
+      printf("status is %02X\n",status);
+      return -1;
+    }
+    
+    
+    
 }
 
 /**
@@ -83,7 +85,7 @@ int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
   // The first byte sent is the register address with the read bit set (MSB=1)
   uint8_t tx_addr = reg_addr | 0x80;
 
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_RESET); // CS Low
+   // CS Low
 
   // The BMI270 requires a dummy byte after the register address for reads
   uint8_t tx_buf[len + 2];
@@ -91,15 +93,24 @@ int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
   memset(tx_buf, 0, sizeof(tx_buf));
   tx_buf[0] = tx_addr;
 
+  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_RESET);
   if (HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, len + 2, HAL_MAX_DELAY) != HAL_OK) {
     HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET);
     return -1;
   }
+  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET); // CS High
 
   // Data is received after the two dummy bytes
   memcpy(data, &rx_buf[2], len);
 
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET); // CS High
+  #ifdef IMU_IO_DEBUG
+    printf("Read ");
+    for (int i = 0; i <(len);i++){
+        printf("0x%02X ", data[i]);
+    }
+    printf(" from address 0x%02X\n",reg_addr);
+  #endif
+
   return 0;
 }
 
@@ -108,20 +119,28 @@ int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
  */
 int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
   // The first byte sent is the register address with the write bit cleared (MSB=0)
+  
   uint8_t tx_addr = reg_addr & 0x7F;
-
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_RESET); // CS Low
   uint8_t tx_buf[len + 1];
   memset(tx_buf, 0, sizeof(tx_buf));
   tx_buf[0] = tx_addr;
   memcpy(&tx_buf[1], data, len);
+
+  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_RESET); // CS Low
   // Transmit the stuff
   if (HAL_SPI_Transmit(&hspi1, tx_buf, len + 1, HAL_MAX_DELAY) != HAL_OK) {
     HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET);
     return -1;
   }
-
-
   HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET); // CS High
+
+  #ifdef IMU_IO_DEBUG
+    printf("Wrote ");
+    for (int i = 0; i <(len);i++){
+        printf("0x%02X ", data[i]);
+    }
+    printf(" to address 0x%02X\n",reg_addr);
+  #endif
+
   return 0;
 }

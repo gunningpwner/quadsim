@@ -1,9 +1,10 @@
 #include "w25.h"
-
+#include "stm32f4xx_hal.h"
 // Functions this driver needs to perform
 // 1. Manage data
 // 2. It's just that simple
- 
+extern SPI_HandleTypeDef hspi2;
+
 void init(){
 
 
