@@ -11,18 +11,18 @@ add_executable(gazebo_link
     src/main.cpp
     src/GazeboInterface.cpp
     src/ControllerInterface.cpp
-    ../src/flight_controller/TruthFilter.cpp
-    ../src/flight_controller/EKF.cpp
-    ../src/flight_controller/BodyRateController.cpp
-    ../src/common/PID.cpp
-    ../src/common/coord_trans.cpp
+    ../libs/flight_controller/TruthFilter.cpp
+    ../libs/flight_controller/EKF.cpp
+    ../libs/flight_controller/BodyRateController.cpp
+    ../libs/common/PID.cpp
+    ../libs/common/coord_trans.cpp
 )
 target_include_directories(gazebo_link
     PRIVATE
         ${EIGEN3_INCLUDE_DIR}
         src
-        ../src/common
-        ../src/flight_controller
+        ../libs/common
+        ../libs/flight_controller
 )
 # Link the necessary libraries
 target_link_libraries(gazebo_link
