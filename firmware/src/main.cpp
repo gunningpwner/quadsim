@@ -144,7 +144,7 @@ void MX_SPI2_Init(void){
 }
 
 
-int _write(int file, char *ptr, int len) {
+extern "C" int _write(int file, char *ptr, int len) {
   if (file != 1) { return -1; }
   CDC_Transmit_FS((uint8_t *)ptr, len);
   return len;
@@ -180,10 +180,10 @@ int main(void) {
   }
 }
 
-void SysTick_Handler(void) {
+extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
 }
 
-void OTG_FS_IRQHandler(void) {
+extern "C" void OTG_FS_IRQHandler(void) {
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
 }

@@ -4,6 +4,11 @@
 #include "stm32f4xx_hal.h"
 #include <stdint.h>
 
+// C++ compatibility guard
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Expected Chip ID for BMI270
 #define BMI270_CHIP_ID 0x24
 
@@ -53,5 +58,9 @@ int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len);
 void bmi270_delay_us(uint32_t microseconds);
 
 void bmi270_read_accelerometer();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // BMI270_H

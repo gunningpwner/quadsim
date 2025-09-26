@@ -1,6 +1,7 @@
 #include "bmi270.h"
 #include "bmi270_config.h"
 #include "stm32f4xx_hal.h"
+#include <cstdio> // For printf
 #include <string.h>
 
 extern SPI_HandleTypeDef hspi1;
