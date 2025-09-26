@@ -23,6 +23,7 @@ void SystemClock_Config_HSE(void);
 void MX_USB_DEVICE_Init(void);
 void MX_DMA_Init(void);
 void MX_GPIO_Init(void);
+void MX_TIM2_Init(void);
 void MX_SPI1_Init(void);
 
 // Global pointer to the IMU object for the interrupt handler to use.
@@ -95,6 +96,40 @@ void MX_DMA_Init(void)
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
 }
+
+TIM_HandleTypeDef htim2;
+
+void MX_TIM2_Init(void) {
+    // TIM2 is on APB1, which has a timer clock of 84 MHz.
+    // We want to trigger at 100 Hz (every 10ms).
+    // For 100Hz (10ms): (839 + 1) * (999 + 1) / 84MHz = 840 * 1000 / 84M = 0.01s = 10ms.
+
+    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+    TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+    htim2.Instance = TIM2;
+    htim2.Init.Prescaler = 840 - 1; // Gives a 100kHz timer clock
+    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim2.Init.Period = 1000 - 1; // Count up to 1000 for a 10ms period (100Hz)
+    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_Base_Init(&htim2);
+
+    sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+    HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig);
+
+    sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+    sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+    HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+    if (htim->Instance == TIM2) {
+        // Timer has elapsed, kick off a DMA read.
+        if (g_imu_ptr) g_imu_ptr->startReadAccelerometer_DMA();
+    }
+}
+
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
@@ -215,6 +250,16 @@ void MX_SPI2_Init(void){
 
 }
 
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
+    if(tim_baseHandle->Instance==TIM2) {
+        /* TIM2 clock enable */
+        __HAL_RCC_TIM2_CLK_ENABLE();
+
+        /* TIM2 interrupt Init */
+        HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+        HAL_NVIC_EnableIRQ(TIM2_IRQn);
+    }
+}
 
 extern "C" int _write(int file, char *ptr, int len) {
   if (file != 1) { return -1; }
@@ -234,6 +279,7 @@ int main(void) {
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_TIM2_Init();
   MX_USB_DEVICE_Init();
 
   // Create an instance of the BMI270 driver
@@ -251,22 +297,15 @@ int main(void) {
       while(1);
   }
 
-  uint32_t last_toggle_time = HAL_GetTick();
+  // Start the timer. It will now trigger DMA reads automatically in the background.
+  HAL_TIM_Base_Start_IT(&htim2);
 
   while (1) {
-    uint32_t current_time = HAL_GetTick();
-
-    // This is a non-blocking delay. The loop continues to run while waiting.
-    if (current_time - last_toggle_time >= 500) {
-      // It's been 500ms, so toggle the LED
-      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
-      last_toggle_time = current_time;
-      // Kick off a DMA read. The result will be handled in the interrupt.
-      imu.startReadAccelerometer_DMA();
-    }
-
-    // You can do other, faster tasks here, outside the 'if' block.
-    // This part of the loop runs continuously without waiting.
+    // The main loop is now free! Sensor reads are happening automatically.
+    // We can use a simple blocking delay here to toggle an LED and prove
+    // that the main loop's activity doesn't affect the sensor reads.
+    HAL_Delay(500);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
   }
 }
 
@@ -276,6 +315,11 @@ extern "C" void SysTick_Handler(void) {
 
 extern "C" void OTG_FS_IRQHandler(void) {
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
+}
+
+extern "C" void TIM2_IRQHandler(void) {
+    // This is the interrupt handler for TIM2
+    HAL_TIM_IRQHandler(&htim2);
 }
 
 extern "C" void DMA2_Stream0_IRQHandler(void) {

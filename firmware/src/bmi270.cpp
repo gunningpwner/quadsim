@@ -183,6 +183,11 @@ void BMI270::processRawData() {
 
   // For now, we just print the timestamped data.
   // In a real system, you would post this to a thread-safe queue (like a DataManager).
-  printf("TS: %llu, DMA Accel: X=%.3f Y=%.3f Z=%.3f\n",
-         data.Timestamp, data.Acceleration.x, data.Acceleration.y, data.Acceleration.z);
+  // The printf in this standard library doesn't support 64-bit integers (%lld).
+  // We cast the timestamp to a double to print it without causing stack corruption.
+  printf("TS: %.0f, DMA Accel: X=%.3f Y=%.3f Z=%.3f\n",
+         (double)data.Timestamp,
+         (double)data.Acceleration.x,
+         (double)data.Acceleration.y,
+         (double)data.Acceleration.z);
 }
