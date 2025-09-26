@@ -4,6 +4,12 @@
 #include "timing.h"
 #include <cstdio> // For printf
 #include <string.h>
+#include "DataManager.h"
+
+// Make the global DataManager instance from main.cpp available here.
+// This allows the ISR-context function to post data.
+extern DataManager g_data_manager;
+
 
 BMI270::BMI270(SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin)
     : m_spi_handle(spi_handle), m_cs_port(cs_port), m_cs_pin(cs_pin) {}
@@ -193,14 +199,8 @@ void BMI270::processRawData() {
   gyro_data.AngularVelocity << (float)raw_gx, (float)raw_gy, (float)raw_gz;
   gyro_data.AngularVelocity = gyro_data.AngularVelocity / GYRO_SENSITIVITY * DEG_TO_RAD;
 
-  // For now, we just print the timestamped data.
-  // In a real system, you would post this to a thread-safe queue (like a DataManager).
-  printf("TS: %.0f, Accel: X=%.3f Y=%.3f Z=%.3f, Gyro: X=%.3f Y=%.3f Z=%.3f\n",
-         (double)accel_data.Timestamp,
-         (double)accel_data.Acceleration.x(),
-         (double)accel_data.Acceleration.y(),
-         (double)accel_data.Acceleration.z(),
-         (double)gyro_data.AngularVelocity.x(),
-         (double)gyro_data.AngularVelocity.y(),
-         (double)gyro_data.AngularVelocity.z());
+  // Post the processed data to the central DataManager.
+  // This is safe to do from an ISR because the DataChannel uses a lock-free ring buffer.
+  g_data_manager.post(accel_data);
+  g_data_manager.post(gyro_data);
 }

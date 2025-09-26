@@ -53,11 +53,16 @@ void MahonyFilter::run() {
     for (const auto& data_point_ptr : data_log) {
         const uint64_t timestamp = data_point_ptr->Timestamp;
 
-        // Update last known sensor values
-        if (auto gyro = dynamic_cast<GyroData*>(data_point_ptr.get())) {
-            m_last_gyro = *gyro;
-        } else if (auto accel = dynamic_cast<AccelData*>(data_point_ptr.get())) {
-            m_last_accel = *accel;
+        // Update last known sensor values using the type enum
+        switch (data_point_ptr->type) {
+            case TimestampedData::Type::Gyro:
+                m_last_gyro = *static_cast<GyroData*>(data_point_ptr.get());
+                break;
+            case TimestampedData::Type::Accel:
+                m_last_accel = *static_cast<AccelData*>(data_point_ptr.get());
+                break;
+            default:
+                break; // Ignore other data types
         }
 
         // Calculate dt and run the update step
@@ -75,6 +80,7 @@ void MahonyFilter::run() {
     // For a complete state, it would need to be combined with a position/velocity estimator.
     // For now, we can create a partial StateData for debugging or other consumers.
     StateData estimated_state;
+    // estimated_state.Timestamp = m_last_update_time_us;
     estimated_state.orientation = {m_q.w(), m_q.x(), m_q.y(), m_q.z()};
 
     Eigen::Vector3f corrected_gyro = m_last_gyro.AngularVelocity - m_gyro_bias;

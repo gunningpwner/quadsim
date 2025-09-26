@@ -418,21 +418,23 @@ void EKF::processSensorMeasurements() {
             m_last_predict_time_us = timestamp;
         }
 
-        // Use dynamic_cast to safely figure out what type of data this is
-        // and call the correct update function.
-        if (auto gyro = dynamic_cast<GyroData*>(data_point_ptr.get())) {
-            // This gyro data is now the most current. It will be used for the *next* predict step.
-            m_last_gyro = *gyro;
-        }
-        else if (auto accel = dynamic_cast<AccelData*>(data_point_ptr.get())) {
-            // This accel data is now the most current. It will be used for the *next* predict step.
-            m_last_accel = *accel;
-        }
-        else if (auto gps = dynamic_cast<GPSPositionData*>(data_point_ptr.get())) {
-            correctWithGps(*gps);
-        }
-        else if (auto mag = dynamic_cast<MagData*>(data_point_ptr.get())) {
-            correctWithMag(*mag);
+        // Use the type enum to determine the data type and call the correct update function.
+        // This avoids RTTI and is safe for embedded systems.
+        switch (data_point_ptr->type) {
+            case TimestampedData::Type::Gyro:
+                m_last_gyro = *static_cast<GyroData*>(data_point_ptr.get());
+                break;
+            case TimestampedData::Type::Accel:
+                m_last_accel = *static_cast<AccelData*>(data_point_ptr.get());
+                break;
+            case TimestampedData::Type::GPSPosition:
+                correctWithGps(*static_cast<GPSPositionData*>(data_point_ptr.get()));
+                break;
+            case TimestampedData::Type::Mag:
+                correctWithMag(*static_cast<MagData*>(data_point_ptr.get()));
+                break;
+            default:
+                break; // Ignore other data types
         }
     }
 

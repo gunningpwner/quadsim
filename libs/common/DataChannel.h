@@ -7,7 +7,8 @@
 #include <string>      // For std::string
 #include <typeinfo>    // For typeid
 
-#ifdef STM32F4xx_HAL_H // This macro is defined by the STM32 HAL, indicating an embedded build
+// Use a more robust check for an embedded ARM GCC environment.
+#ifdef FIRMWARE_BUILD
 #include <array>
 #include <atomic>
 #else
@@ -32,28 +33,29 @@ namespace detail {
 template <typename T>
 class DataChannel {
 public:
-#ifdef STM32F4xx_HAL_H
+#ifdef FIRMWARE_BUILD
     // --- Embedded-Safe, Lock-Free Ring Buffer Implementation ---
-    explicit DataChannel(size_t buffer_size) : m_head(0), m_tail(0), m_update_count(0) {}
-
-    explicit DataChannel(size_t buffer_size) : m_update_count(0),m_buffer_size(buffer_size) {}
+    // The buffer_size argument is ignored here, as the size is fixed at compile time.
+    explicit DataChannel(size_t /*buffer_size*/) : m_head(0), m_tail(0), m_update_count(0) {}
 
     // Throws std::invalid_argument if data contains NaN and T is NaN-checkable.
     void post(const T& data) {
+        // On embedded, we cannot throw exceptions from an ISR.
+        // The check is performed, but we simply don't post the data if it's NaN.
         if constexpr (detail::is_nan_checkable_v<T>) {
             if (data.containsNaN()) {
-                throw std::invalid_argument("NaN detected in posted data of type: " + std::string(typeid(T).name()));
+                return; // Silently drop NaN data in an embedded context.
             }
         }
 
         size_t current_head = m_head.load(std::memory_order_relaxed);
-        size_t next_head = (current_head + 1) % m_buffer.size();
+        size_t next_head = (current_head + 1) % COMPILE_TIME_BUFFER_SIZE;
 
         // In this SPSC queue, if the head catches the tail, we overwrite old data.
         // This is a common strategy for sensor data where the latest is most important.
         if (next_head == m_tail.load(std::memory_order_acquire)) {
             // Buffer is full, advance the tail to make space (overwrite oldest data)
-            m_tail.store( (m_tail.load(std::memory_order_relaxed) + 1) % m_buffer.size(), std::memory_order_release);
+            m_tail.store( (m_tail.load(std::memory_order_relaxed) + 1) % COMPILE_TIME_BUFFER_SIZE, std::memory_order_release);
         }
 
         m_buffer[current_head] = data;
@@ -73,7 +75,7 @@ public:
 
         while(current_tail != current_head) {
             samples.push_back(m_buffer[current_tail]);
-            current_tail = (current_tail + 1) % m_buffer.size();
+            current_tail = (current_tail + 1) % COMPILE_TIME_BUFFER_SIZE;
         }
 
         m_tail.store(current_head, std::memory_order_release);
@@ -88,7 +90,7 @@ public:
             return;
         }
         // Get the item just before the head
-        size_t latest_index = (current_head == 0) ? m_buffer.size() - 1 : current_head - 1;
+        size_t latest_index = (current_head == 0) ? COMPILE_TIME_BUFFER_SIZE - 1 : current_head - 1;
         latest_data = m_buffer[latest_index];
     }
 
@@ -97,7 +99,12 @@ public:
     explicit DataChannel(size_t buffer_size) : m_update_count(0), m_buffer_size(buffer_size) {}
 
     void post(const T& data) {
-        // NaN check as before
+        // On desktop, we can safely throw an exception for NaN data.
+        if constexpr (detail::is_nan_checkable_v<T>) {
+            if (data.containsNaN()) {
+                throw std::invalid_argument("NaN detected in posted data of type: " + std::string(typeid(T).name()));
+            }
+        }
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_buffer.push_back(data);
@@ -132,7 +139,7 @@ public:
 
 
 private:
-#ifdef STM32F4xx_HAL_H
+#ifdef FIRMWARE_BUILD
     // For embedded, we use a std::array to prevent dynamic allocation.
     // The size must be known at compile time. We'll use a generous default.
     // NOTE: This requires all DataChannels to have the same size.

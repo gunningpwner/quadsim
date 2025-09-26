@@ -7,6 +7,8 @@
 #include "usbd_desc.h"
 #include "bmi270.h"
 #include "timing.h"
+#include "DataManager.h"
+#include "Consumer.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -28,6 +30,9 @@ void MX_SPI1_Init(void);
 
 // Global pointer to the IMU object for the interrupt handler to use.
 BMI270* g_imu_ptr = nullptr;
+
+// Global DataManager instance, providing the time source function.
+DataManager g_data_manager(getCurrentTimeUs);
 
 uint64_t getCurrentTimeUs() {
     // Return the value of the DWT cycle counter, scaled to microseconds
@@ -300,12 +305,28 @@ int main(void) {
   // Start the timer. It will now trigger DMA reads automatically in the background.
   HAL_TIM_Base_Start_IT(&htim2);
 
+  // Create consumers to read data from the DataManager in the main loop
+  Consumer<AccelData> accel_consumer(g_data_manager);
+  Consumer<GyroData> gyro_consumer(g_data_manager);
+
   while (1) {
-    // The main loop is now free! Sensor reads are happening automatically.
-    // We can use a simple blocking delay here to toggle an LED and prove
-    // that the main loop's activity doesn't affect the sensor reads.
-    HAL_Delay(500);
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
+    // The main loop is now free to process data as it becomes available.
+    std::vector<AccelData> accel_samples;
+    if (accel_consumer.consume(accel_samples)) {
+        for (const auto& sample : accel_samples) {
+            printf("Consumed Accel TS: %.0f\n", (double)sample.Timestamp);
+        }
+    }
+
+    std::vector<GyroData> gyro_samples;
+    if (gyro_consumer.consume(gyro_samples)) {
+        for (const auto& sample : gyro_samples) {
+            printf("Consumed Gyro TS: %.0f\n", (double)sample.Timestamp);
+        }
+    }
+
+    // Let the CPU rest briefly if there's nothing to do.
+    HAL_Delay(1);
   }
 }
 

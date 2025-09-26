@@ -4,11 +4,15 @@
 #include "SensorData.h"
 #include "DataChannel.h"
 #include "OtherData.h"
-#include <deque>
-#include <mutex>
 #include <vector>
 #include <stdexcept>
 #include <functional> // Required for std::function
+
+#ifndef FIRMWARE_BUILD
+#include <mutex>
+#endif
+
+
 
 // Configurable buffer sizes for sensor data.
 constexpr size_t IMU_BUFFER_SIZE = 50;
@@ -87,8 +91,13 @@ public:
     uint64_t getCurrentTimeUs() const {
         // Check if the time source function is valid before calling it.
         if (!m_time_source) {
+#ifdef FIRMWARE_BUILD
+            // On embedded, we can't throw. Halt the system on critical error.
+            while(1);
+#else
             // Handle the error appropriately. Throwing an exception is a common choice.
             throw std::runtime_error("Time source not initialized in DataManager.");
+#endif
         }
         
         // Execute the stored function and return its value.
@@ -96,7 +105,9 @@ public:
     }
     
     void setTimeSource(TimeSource time_source_func) {
+#ifndef FIRMWARE_BUILD
         std::lock_guard<std::mutex> lock(m_time_mutex);
+#endif
         m_time_source = time_source_func;
     }
 
@@ -112,6 +123,8 @@ private:
     DataChannel<InputData> m_input_channel;
     DataChannel<StateData> m_state_channel;
     DataChannel<MotorCommands> m_motor_command_channel;
-    std::mutex m_time_mutex;
 
+#ifndef FIRMWARE_BUILD
+    std::mutex m_time_mutex;
+#endif
 };

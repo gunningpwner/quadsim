@@ -5,7 +5,18 @@
 #include <Eigen/Dense>
 #include <array>
 struct TimestampedData {
+    enum class Type {
+        Generic,
+        GPSPosition,
+        GPSVelocity,
+        Accel,
+        Gyro,
+        Mag,
+        MotorRPMs
+    };
+
     int64_t Timestamp = 0;
+    Type type = Type::Generic;
 
     // A virtual destructor is crucial for polymorphism
     virtual ~TimestampedData() = default;
@@ -15,6 +26,7 @@ struct TimestampedData {
 // UBX-NAV-COV will give full 3x3 ned covariance
 struct GPSPositionData:TimestampedData
 {   
+    GPSPositionData() { type = Type::GPSPosition; }
     Eigen::Vector3f lla;
     // Covariance of position in the local NED frame (North, East, Down).
     // Units are meters-squared (m^2).
@@ -27,6 +39,7 @@ struct GPSPositionData:TimestampedData
 // UBX-NAV-VELNED will give covariances
 struct GPSVelocityData:TimestampedData
 {
+    GPSVelocityData() { type = Type::GPSVelocity; }
     Eigen::Vector3f velocity; //technically just en since gps only gives you groundspeed
     Eigen::Vector3f velocity_covariances;
 };
@@ -35,6 +48,7 @@ struct GPSVelocityData:TimestampedData
 
 struct AccelData:TimestampedData
 {
+    AccelData() { type = Type::Accel; }
     /// <summary>
     /// Linear acceleration in the body frame (m/s^2).
     /// </summary>
@@ -46,6 +60,7 @@ struct AccelData:TimestampedData
 /// </summary>
 struct GyroData:TimestampedData
 {
+    GyroData() { type = Type::Gyro; }
     /// <summary>
     /// Angular velocity in the body frame (radians/s).
     /// </summary>
@@ -57,6 +72,7 @@ struct GyroData:TimestampedData
 /// </summary>
 struct MagData:TimestampedData
 {
+    MagData() { type = Type::Mag; }
     /// <summary>
     /// The magnetic field vector in the body frame (normalized).
     /// </summary>
@@ -65,6 +81,7 @@ struct MagData:TimestampedData
 
 struct MotorRPMs:TimestampedData
 {
+    MotorRPMs() { type = Type::MotorRPMs; }
     std::array<float, 4> rpms;
 };
 #endif // SENSORDATA_H
