@@ -126,7 +126,7 @@ void MX_TIM2_Init(void) {
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM2) {
         // Timer has elapsed, kick off a DMA read.
-        if (g_imu_ptr) g_imu_ptr->startReadAccelerometer_DMA();
+        if (g_imu_ptr) g_imu_ptr->startReadImu_DMA();
     }
 }
 

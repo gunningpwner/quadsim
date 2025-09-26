@@ -75,7 +75,9 @@ int8_t BMI270::init(void) {
 
     //Set the sensor range
     spi_write(REG_ACC_RANGE, (const uint8_t[]){ACCEL_RANGE}, 1);
-    
+    spi_write(REG_GYRO_RANGE, (const uint8_t[]){GYRO_RANGE}, 1);
+
+
     // Turn on the sensors
     // Enable accelerometer and gyroscope
     spi_write(REG_PWR_CTRL, (const uint8_t[]){0b00001110}, 1);
@@ -141,7 +143,7 @@ int8_t BMI270::spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
   return 0;
 }
 
-bool BMI270::startReadAccelerometer_DMA() {
+bool BMI270::startReadImu_DMA() {
   // Prepare the transmit buffer. The first byte is the register address with the read bit set.
   // The rest are dummy bytes to clock out the data.
   memset(m_spi_tx_buf, 0, sizeof(m_spi_tx_buf));
@@ -151,8 +153,8 @@ bool BMI270::startReadAccelerometer_DMA() {
   HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_RESET);
 
   // Start a non-blocking SPI transfer with DMA.
-  // We transfer 8 bytes: 2 dummy bytes + 6 data bytes.
-  if (HAL_SPI_TransmitReceive_DMA(m_spi_handle, m_spi_tx_buf, m_spi_rx_buf, 8) != HAL_OK) {
+  // We transfer 14 bytes: 2 dummy bytes + 12 data bytes (accel + gyro).
+  if (HAL_SPI_TransmitReceive_DMA(m_spi_handle, m_spi_tx_buf, m_spi_rx_buf, 14) != HAL_OK) {
     // If the DMA fails to start, de-assert CS and return failure.
     HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
     return false;
@@ -169,25 +171,39 @@ void BMI270::processRawData() {
   // --- Timestamp the data as close to its arrival as possible ---
   uint64_t timestamp = getCurrentTimeUs();
 
-  // The actual data starts at index 2 of the receive buffer.
-  int16_t raw_x = (int16_t)((m_spi_rx_buf[3] << 8) | m_spi_rx_buf[2]);
-  int16_t raw_y = (int16_t)((m_spi_rx_buf[5] << 8) | m_spi_rx_buf[4]);
-  int16_t raw_z = (int16_t)((m_spi_rx_buf[7] << 8) | m_spi_rx_buf[6]);
+  // Data starts at index 2. Accel is first (6 bytes), then Gyro (6 bytes).
+  const uint8_t* data_ptr = &m_spi_rx_buf[2];
 
-  // Create an AccelData struct and populate it
-  AccelData data;
-  data.Timestamp = timestamp;
-  data.Acceleration.x = (float)raw_x / ACCEL_SENSITIVITY * G_TO_MS2;
-  data.Acceleration.y = (float)raw_y / ACCEL_SENSITIVITY * G_TO_MS2;
-  data.Acceleration.z = (float)raw_z / ACCEL_SENSITIVITY * G_TO_MS2;
+  // --- Process Accelerometer Data ---
+  int16_t raw_ax = (int16_t)((data_ptr[1] << 8) | data_ptr[0]);
+  int16_t raw_ay = (int16_t)((data_ptr[3] << 8) | data_ptr[2]);
+  int16_t raw_az = (int16_t)((data_ptr[5] << 8) | data_ptr[4]);
+
+  AccelData accel_data;
+  accel_data.Timestamp = timestamp;
+  accel_data.Acceleration.x = (float)raw_ax / ACCEL_SENSITIVITY * G_TO_MS2;
+  accel_data.Acceleration.y = (float)raw_ay / ACCEL_SENSITIVITY * G_TO_MS2;
+  accel_data.Acceleration.z = (float)raw_az / ACCEL_SENSITIVITY * G_TO_MS2;
+
+  // --- Process Gyroscope Data ---
+  int16_t raw_gx = (int16_t)((data_ptr[7] << 8) | data_ptr[6]);
+  int16_t raw_gy = (int16_t)((data_ptr[9] << 8) | data_ptr[8]);
+  int16_t raw_gz = (int16_t)((data_ptr[11] << 8) | data_ptr[10]);
+
+  GyroData gyro_data;
+  gyro_data.Timestamp = timestamp; // Use the same timestamp for both
+  gyro_data.AngularVelocity.x = (float)raw_gx / GYRO_SENSITIVITY * DEG_TO_RAD;
+  gyro_data.AngularVelocity.y = (float)raw_gy / GYRO_SENSITIVITY * DEG_TO_RAD;
+  gyro_data.AngularVelocity.z = (float)raw_gz / GYRO_SENSITIVITY * DEG_TO_RAD;
 
   // For now, we just print the timestamped data.
   // In a real system, you would post this to a thread-safe queue (like a DataManager).
-  // The printf in this standard library doesn't support 64-bit integers (%lld).
-  // We cast the timestamp to a double to print it without causing stack corruption.
-  printf("TS: %.0f, DMA Accel: X=%.3f Y=%.3f Z=%.3f\n",
-         (double)data.Timestamp,
-         (double)data.Acceleration.x,
-         (double)data.Acceleration.y,
-         (double)data.Acceleration.z);
+  printf("TS: %.0f, Accel: X=%.3f Y=%.3f Z=%.3f, Gyro: X=%.3f Y=%.3f Z=%.3f\n",
+         (double)accel_data.Timestamp,
+         (double)accel_data.Acceleration.x,
+         (double)accel_data.Acceleration.y,
+         (double)accel_data.Acceleration.z,
+         (double)gyro_data.AngularVelocity.x,
+         (double)gyro_data.AngularVelocity.y,
+         (double)gyro_data.AngularVelocity.z);
 }
