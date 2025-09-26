@@ -9,6 +9,8 @@
 #include "timing.h"
 #include "DataManager.h"
 #include "Consumer.h"
+#include "MahonyFilter.h"
+#include "OtherData.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -34,9 +36,32 @@ BMI270* g_imu_ptr = nullptr;
 // Global DataManager instance, providing the time source function.
 DataManager g_data_manager(getCurrentTimeUs);
 
+// --- Robust 64-bit Timer Implementation ---
+static volatile uint32_t s_overflow_count = 0;
+static volatile uint32_t s_last_dwt_cyccnt = 0;
+
+void initTime() {
+    // Enable DWT Cycle Counter
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    s_last_dwt_cyccnt = DWT->CYCCNT;
+}
+
+void updateTime() {
+    const uint32_t current_dwt_cyccnt = DWT->CYCCNT;
+    // Check for overflow
+    if (current_dwt_cyccnt < s_last_dwt_cyccnt) {
+        s_overflow_count++;
+    }
+    s_last_dwt_cyccnt = current_dwt_cyccnt;
+}
+
 uint64_t getCurrentTimeUs() {
-    // Return the value of the DWT cycle counter, scaled to microseconds
-    return DWT->CYCCNT / (HAL_RCC_GetHCLKFreq() / 1000000);
+    // Combine the 32-bit overflow count and the 32-bit cycle counter
+    // to create a full 64-bit cycle count.
+    const uint64_t total_cycles = ((uint64_t)s_overflow_count << 32) | DWT->CYCCNT;
+    // Scale to microseconds
+    return total_cycles / (HAL_RCC_GetHCLKFreq() / 1000000);
 }
 
 /**
@@ -277,9 +302,7 @@ int main(void) {
   SystemClock_Config_HSE(); // Configure the clock first.
   HAL_Init(); // Then initialize the HAL, which sets up the SysTick based on the new clock.
 
-  // Enable DWT Cycle Counter for microsecond delays
-  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+  initTime(); // Initialize our robust 64-bit timer
 
   MX_GPIO_Init();
   MX_DMA_Init();
@@ -305,26 +328,23 @@ int main(void) {
   // Start the timer. It will now trigger DMA reads automatically in the background.
   HAL_TIM_Base_Start_IT(&htim2);
 
-  // Create consumers to read data from the DataManager in the main loop
-  Consumer<AccelData> accel_consumer(g_data_manager);
-  Consumer<GyroData> gyro_consumer(g_data_manager);
+  // --- Instantiate the Orientation Filter ---
+  MahonyFilter mahony_filter(g_data_manager);
+
+  // Create a consumer to read the state data produced by the filter
+  Consumer<StateData> state_consumer(g_data_manager);
 
   while (1) {
-    // The main loop is now free to process data as it becomes available.
-    std::vector<AccelData> accel_samples;
-    if (accel_consumer.consume(accel_samples)) {
-        for (const auto& sample : accel_samples) {
-            printf("Consumed Accel TS: %.0f\n", (double)sample.Timestamp);
-        }
-    }
+    // Run the filter. This will consume new IMU data and post a new state estimate.
+    mahony_filter.run();
 
-    std::vector<GyroData> gyro_samples;
-    if (gyro_consumer.consume(gyro_samples)) {
-        for (const auto& sample : gyro_samples) {
-            printf("Consumed Gyro TS: %.0f\n", (double)sample.Timestamp);
-        }
+    // Check if the filter produced a new state estimate
+    std::vector<StateData> state_samples;
+    if (state_consumer.consume(state_samples) && !state_samples.empty()) {
+        const auto& latest_state = state_samples.back();
+        printf("Orientation: w=%.3f, x=%.3f, y=%.3f, z=%.3f\n",
+               latest_state.orientation.w(), latest_state.orientation.x(), latest_state.orientation.y(), latest_state.orientation.z());
     }
-
     // Let the CPU rest briefly if there's nothing to do.
     HAL_Delay(1);
   }
@@ -332,6 +352,7 @@ int main(void) {
 
 extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
+  updateTime(); // Update our overflow counter
 }
 
 extern "C" void OTG_FS_IRQHandler(void) {

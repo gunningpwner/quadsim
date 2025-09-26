@@ -80,7 +80,7 @@ void MahonyFilter::run() {
     // For a complete state, it would need to be combined with a position/velocity estimator.
     // For now, we can create a partial StateData for debugging or other consumers.
     StateData estimated_state;
-    // estimated_state.Timestamp = m_last_update_time_us;
+    estimated_state.Timestamp = m_last_update_time_us;
     estimated_state.orientation = {m_q.w(), m_q.x(), m_q.y(), m_q.z()};
 
     Eigen::Vector3f corrected_gyro = m_last_gyro.AngularVelocity - m_gyro_bias;

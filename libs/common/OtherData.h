@@ -14,6 +14,7 @@ struct InputData
 
 struct StateData
 {
+    int64_t Timestamp;
     // Position in ECEF (Earth-Centered, Earth-Fixed) coordinates
     Eigen::Vector3f position_ecef; 
     // Velocity in ECEF coordinates
