@@ -1,12 +1,15 @@
 #include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal_spi.h"
+
 #include "usbd_core.h"
 #include "usbd_cdc.h"
 #include "usbd_cdc_if.h"
 #include "usbd_desc.h"
+#include "bmi270.h"
+#include "timing.h"
+
 #include <string.h>
 #include <stdio.h>
-#include "stm32f4xx_hal_spi.h"
-#include "bmi270.h"
 
 // Global variables
 SPI_HandleTypeDef hspi1;
@@ -18,9 +21,17 @@ extern USBD_DescriptorsTypeDef FS_Desc;
 // Function Prototypes
 void SystemClock_Config_HSE(void);
 void MX_USB_DEVICE_Init(void);
+void MX_DMA_Init(void);
 void MX_GPIO_Init(void);
 void MX_SPI1_Init(void);
 
+// Global pointer to the IMU object for the interrupt handler to use.
+BMI270* g_imu_ptr = nullptr;
+
+uint64_t getCurrentTimeUs() {
+    // Return the value of the DWT cycle counter, scaled to microseconds
+    return DWT->CYCCNT / (HAL_RCC_GetHCLKFreq() / 1000000);
+}
 
 /**
   * @brief System Clock Configuration for an 8MHz HSE crystal.
@@ -68,6 +79,35 @@ void MX_GPIO_Init(void) {
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 }
 
+/**
+  * @brief Enable DMA controller clock
+  */
+void MX_DMA_Init(void)
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream0_IRQn interrupt configuration (for SPI1_RX) */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+  /* DMA2_Stream3_IRQn interrupt configuration (for SPI1_TX) */
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+}
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi->Instance == SPI1) {
+    // This function is called when the SPI DMA transfer is complete.
+    // We can now process the raw data that the DMA has moved for us.
+    if (g_imu_ptr != nullptr) {
+      g_imu_ptr->processRawData();
+    }
+  }
+}
+
+
 void MX_SPI1_Init(void) {
   // Used by the IMU
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -88,6 +128,9 @@ void MX_SPI1_Init(void) {
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
 
+  // DMA handles must be static or global
+  static DMA_HandleTypeDef hdma_spi1_rx;
+  static DMA_HandleTypeDef hdma_spi1_tx;
   __HAL_RCC_SPI1_CLK_ENABLE();
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
@@ -101,6 +144,35 @@ void MX_SPI1_Init(void) {
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 10;
+
+  // Configure DMA for SPI1 RX
+  hdma_spi1_rx.Instance = DMA2_Stream0;
+  hdma_spi1_rx.Init.Channel = DMA_CHANNEL_3;
+  hdma_spi1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+  hdma_spi1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+  hdma_spi1_rx.Init.MemInc = DMA_MINC_ENABLE;
+  hdma_spi1_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  hdma_spi1_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+  hdma_spi1_rx.Init.Mode = DMA_NORMAL;
+  hdma_spi1_rx.Init.Priority = DMA_PRIORITY_HIGH;
+  hdma_spi1_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+  HAL_DMA_Init(&hdma_spi1_rx);
+  __HAL_LINKDMA(&hspi1, hdmarx, hdma_spi1_rx);
+
+  // Configure DMA for SPI1 TX
+  hdma_spi1_tx.Instance = DMA2_Stream3;
+  hdma_spi1_tx.Init.Channel = DMA_CHANNEL_3;
+  hdma_spi1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+  hdma_spi1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+  hdma_spi1_tx.Init.MemInc = DMA_MINC_ENABLE;
+  hdma_spi1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  hdma_spi1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+  hdma_spi1_tx.Init.Mode = DMA_NORMAL;
+  hdma_spi1_tx.Init.Priority = DMA_PRIORITY_LOW;
+  hdma_spi1_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+  HAL_DMA_Init(&hdma_spi1_tx);
+  __HAL_LINKDMA(&hspi1, hdmatx, hdma_spi1_tx);
+
   HAL_SPI_Init(&hspi1);
 }
 
@@ -150,33 +222,51 @@ extern "C" int _write(int file, char *ptr, int len) {
   return len;
 }
 
-// Replace your main function with this
+
 int main(void) {
-  HAL_Init();
-  SystemClock_Config_HSE();
+  SystemClock_Config_HSE(); // Configure the clock first.
+  HAL_Init(); // Then initialize the HAL, which sets up the SysTick based on the new clock.
 
   // Enable DWT Cycle Counter for microsecond delays
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
   DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
+
+  // Create an instance of the BMI270 driver
+  BMI270 imu(&hspi1, GPIOC, GPIO_PIN_4);
+  g_imu_ptr = &imu; // Set the global pointer
 
   HAL_Delay(2000); // Wait for USB to enumerate
   printf("\n--- BMI270 Initialization ---\n");
 
-  if (bmi270_init() == 0) {
+  if (imu.init() == 0) {
       printf("BMI270 Initialized Successfully.\n");
   } else {
       printf("BMI270 Initialization Failed!\n");
+      // It's good practice to halt if essential hardware fails
+      while(1);
   }
 
+  uint32_t last_toggle_time = HAL_GetTick();
 
   while (1) {
-    // HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
-    bmi270_read_accelerometer();
-    HAL_Delay(500);
+    uint32_t current_time = HAL_GetTick();
+
+    // This is a non-blocking delay. The loop continues to run while waiting.
+    if (current_time - last_toggle_time >= 500) {
+      // It's been 500ms, so toggle the LED
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
+      last_toggle_time = current_time;
+      // Kick off a DMA read. The result will be handled in the interrupt.
+      imu.startReadAccelerometer_DMA();
+    }
+
+    // You can do other, faster tasks here, outside the 'if' block.
+    // This part of the loop runs continuously without waiting.
   }
 }
 
@@ -186,4 +276,14 @@ extern "C" void SysTick_Handler(void) {
 
 extern "C" void OTG_FS_IRQHandler(void) {
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
+}
+
+extern "C" void DMA2_Stream0_IRQHandler(void) {
+    // This is the interrupt handler for SPI1_RX
+    HAL_DMA_IRQHandler(hspi1.hdmarx);
+}
+
+extern "C" void DMA2_Stream3_IRQHandler(void) {
+    // This is the interrupt handler for SPI1_TX
+    HAL_DMA_IRQHandler(hspi1.hdmatx);
 }

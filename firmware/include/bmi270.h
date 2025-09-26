@@ -2,65 +2,59 @@
 #define BMI270_H
 
 #include "stm32f4xx_hal.h"
-#include <stdint.h>
+#include <cstdint>
+#include "SensorData.h" // For AccelData struct
 
-// C++ compatibility guard
-#ifdef __cplusplus
-extern "C" {
-#endif
+class BMI270 {
+public:
+    BMI270(SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin);
 
-// Expected Chip ID for BMI270
-#define BMI270_CHIP_ID 0x24
+    // Blocking init function
+    int8_t init();
 
-// Chip Select Pin configuration
-#define BMI270_CS_PORT GPIOC
-#define BMI270_CS_PIN  GPIO_PIN_4
-// Chip ID Register
-#define BMI270_CHIP_ID_REG 0x00
-#define BMI270_PWR_CONF_REG 0x7C
-#define BMI270_PWR_CTRL_REG 0x7D
-#define BMI270_INIT_CTRL_REG 0x59
-#define BMI270_INIT_DATA_REG 0x5E
-#define BMI270_INTERNAL_STATUS_REG 0x21
+    // Non-blocking DMA read functions
+    bool startReadAccelerometer_DMA();
+    // This function will be called from the SPI/DMA interrupt handler
+    void processRawData();
 
-#define BMI270_ACC_DATA_REG 0x0C
-#define BMI270_GYRO_DATA_REG 0x12
+private:
+    // Register Map
+    static constexpr uint8_t REG_CHIP_ID         = 0x00;
+    static constexpr uint8_t REG_INTERNAL_STATUS = 0x21;
+    static constexpr uint8_t REG_ACC_DATA        = 0x0C;
+    static constexpr uint8_t REG_ACC_RANGE       = 0x41; 
+    static constexpr uint8_t REG_GYRO_DATA       = 0x12;
+    static constexpr uint8_t REG_INIT_CTRL       = 0x59;
+    static constexpr uint8_t REG_INIT_DATA       = 0x5E;
+    static constexpr uint8_t REG_PWR_CONF        = 0x7C;
+    static constexpr uint8_t REG_PWR_CTRL        = 0x7D;
+    
+    // Constants
+    static constexpr uint8_t EXPECTED_CHIP_ID = 0x24;
 
-/**
-  * @brief Initializes the BMI270 sensor.
-  *        Performs a dummy read to enter SPI mode, then verifies the Chip ID.
-  * @return 0 on success, -1 on failure (e.g., wrong chip ID).
-  */
-int8_t bmi270_init(void);
+    // Sensitivity for default +/- 2g range. LSB/g
+    // static constexpr float ACCEL_SENSITIVITY = 16384.0f;
+    // static constexpr uint8_t ACCEL_RANGE = 0x00; //+/- 2g range
 
-/**
- * @brief Platform-specific SPI read function for the BMI270 API.
- * @param reg_addr: Register address to read from.
- * @param data: Pointer to the buffer to store the read data.
- * @param len: Number of bytes to read.
- * @return 0 on success, non-zero on failure.
- */
-int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len);
+    static constexpr float ACCEL_SENSITIVITY = 8192.0f;
+    static constexpr uint8_t ACCEL_RANGE = 0x01; //+/- 4g range
+    // Conversion from g to m/s^2
+    static constexpr float G_TO_MS2 = 9.80665f;
 
-/**
- * @brief Platform-specific SPI write function for the BMI270 API.
- * @param reg_addr: Register address to write to.
- * @param data: Pointer to the data to be written.
- * @param len: Number of bytes to write.
- * @return 0 on success, non-zero on failure.
- */
-int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len);
+    // Platform-specific functions are now private helper methods
+    int8_t spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len);
+    int8_t spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len);
+    void delay_us(uint32_t microseconds);
 
-/**
-  * @brief  Provides a precise microsecond delay using the DWT cycle counter.
-  * @param  microseconds: Number of microseconds to wait.
-  */
-void bmi270_delay_us(uint32_t microseconds);
+    // Member variables to hold driver state
+    SPI_HandleTypeDef* m_spi_handle;
+    GPIO_TypeDef*      m_cs_port;
+    uint16_t           m_cs_pin;
 
-void bmi270_read_accelerometer();
-
-#ifdef __cplusplus
-}
-#endif
+    // Buffers for DMA transfers. The size is 8 because we read 6 data bytes
+    // plus the 2 dummy bytes required by the BMI270 SPI protocol for reads.
+    uint8_t m_spi_tx_buf[8];
+    uint8_t m_spi_rx_buf[8];
+};
 
 #endif // BMI270_H

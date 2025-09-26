@@ -1,92 +1,90 @@
 #include "bmi270.h"
 #include "bmi270_config.h"
 #include "stm32f4xx_hal.h"
+#include "timing.h"
 #include <cstdio> // For printf
 #include <string.h>
 
-extern SPI_HandleTypeDef hspi1;
+BMI270::BMI270(SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin)
+    : m_spi_handle(spi_handle), m_cs_port(cs_port), m_cs_pin(cs_pin) {}
 
 /**
   * @brief  Provides a precise microsecond delay using the DWT cycle counter.
   * @param  microseconds: Number of microseconds to wait.
   */
-void bmi270_delay_us(uint32_t microseconds) {
+void BMI270::delay_us(uint32_t microseconds) {
   uint32_t clk_cycle_start = DWT->CYCCNT;
   microseconds *= (HAL_RCC_GetHCLKFreq() / 1000000);
   while ((DWT->CYCCNT - clk_cycle_start) < microseconds);
 }
 
-/**
- * @brief Initializes the BMI270 sensor.
- *        Performs a dummy read to enter SPI mode, then verifies the Chip ID.
- * @return 0 on success, -1 on failure (e.g., wrong chip ID).
- */
-int8_t bmi270_init(void) {
+int8_t BMI270::init(void) {
     uint8_t chip_id = 0;
 
     // The first read operation is a dummy read to put the device into SPI mode.
     // See BMI270 Datasheet, section 5.1.2
-    bmi270_spi_read(BMI270_CHIP_ID_REG, &chip_id, 1);
-    bmi270_delay_us(100); // Small delay after mode switch
+    spi_read(REG_CHIP_ID, &chip_id, 1);
+    delay_us(100); // Small delay after mode switch
 
     // Second read should return the correct Chip ID
-    if (bmi270_spi_read(BMI270_CHIP_ID_REG, &chip_id, 1) != 0) {
+    if (spi_read(REG_CHIP_ID, &chip_id, 1) != 0) {
         return -1; // SPI communication failure
     }
 
-    if (chip_id != BMI270_CHIP_ID) {
+    if (chip_id != EXPECTED_CHIP_ID) {
         return -1; // Chip ID mismatch
     }
 
     // Disable power save mode
-    bmi270_spi_write(BMI270_PWR_CONF_REG,(const uint8_t[]){0x00},1);
+    spi_write(REG_PWR_CONF,(const uint8_t[]){0x00},1);
     // Delay for at least 450us
-    bmi270_delay_us(500);
+    delay_us(500);
     // Upload that config file boi
-    bmi270_spi_write(BMI270_INIT_CTRL_REG, (const uint8_t[]){0x00}, 1);
+    spi_write(REG_INIT_CTRL, (const uint8_t[]){0x00}, 1);
     
-    bmi270_spi_write(BMI270_INIT_DATA_REG,bmi270_config_file,sizeof(bmi270_config_file));
+    spi_write(REG_INIT_DATA,bmi270_config_file,sizeof(bmi270_config_file));
 
-    // uint8_t test[sizeof(bmi270_config_file)];
-    // bmi270_spi_read(BMI270_INIT_DATA_REG,test,sizeof(bmi270_config_file));
-    // printf("Verifying config file write...\n");
-    // int mismatches = 0;
-    // for(int i=0;i<sizeof(bmi270_config_file);i++){
-    //     if(test[i]!=bmi270_config_file[i]){
-    //         if (mismatches == 0) printf("Mismatched bytes found:\n");
-    //         printf("Index %d: Wrote %02X, Read %02X\n", i, bmi270_config_file[i], test[i]);
-    //         mismatches++;
-    //     }
-    // }
-    // if (mismatches == 0) printf("Config file verified successfully!\n");
-    // bmi270_delay_us(10);
+    #ifdef IMU_IO_DEBUG
+    uint8_t test[sizeof(bmi270_config_file)];
+    spi_read(REG_INIT_DATA,test,sizeof(bmi270_config_file));
+    printf("Verifying config file write...\n");
+    int mismatches = 0;
+    for(int i=0;i<sizeof(bmi270_config_file);i++){
+        if(test[i]!=bmi270_config_file[i]){
+            if (mismatches == 0) printf("Mismatched bytes found:\n");
+            printf("Index %d: Wrote 0x%02X, Read 0x%02X\n", i, bmi270_config_file[i], test[i]);
+            mismatches++;
+        }
+    }
+    if (mismatches == 0) printf("Config file verified successfully!\n");
+    delay_us(10);
+    #endif
     
-    bmi270_spi_write(BMI270_INIT_CTRL_REG, (const uint8_t[]){0x01}, 1);
+    spi_write(REG_INIT_CTRL, (const uint8_t[]){0x01}, 1);
     //wait a bit
     HAL_Delay(100);
 
     uint8_t status=0;
-    bmi270_spi_read(BMI270_INTERNAL_STATUS_REG,&status,1);
+    spi_read(REG_INTERNAL_STATUS,&status,1);
     if (status==0x01){
     } else
     {
-      printf("status is %02X\n",status);
+      printf("BMI270 init status is 0x%02X, expected 0x01\n",status);
       return -1;
     }
+
+    //Set the sensor range
+    spi_write(REG_ACC_RANGE, (const uint8_t[]){ACCEL_RANGE}, 1);
     
     // Turn on the sensors
-    bmi270_spi_write(BMI270_PWR_CTRL_REG, (const uint8_t[]){0b0110}, 1);
+    // Enable accelerometer and gyroscope
+    spi_write(REG_PWR_CTRL, (const uint8_t[]){0b00001110}, 1);
     return 0; 
 }
 
-/**
- * @brief Platform-specific SPI read function for the BMI270 
- */
-int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
+int8_t BMI270::spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
   // The first byte sent is the register address with the read bit set (MSB=1)
   uint8_t tx_addr = reg_addr | 0x80;
-
-   // CS Low
 
   // The BMI270 requires a dummy byte after the register address for reads
   uint8_t tx_buf[len + 2];
@@ -94,19 +92,19 @@ int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
   memset(tx_buf, 0, sizeof(tx_buf));
   tx_buf[0] = tx_addr;
 
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_RESET);
-  if (HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, len + 2, HAL_MAX_DELAY) != HAL_OK) {
-    HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_RESET);
+  if (HAL_SPI_TransmitReceive(m_spi_handle, tx_buf, rx_buf, len + 2, HAL_MAX_DELAY) != HAL_OK) {
+    HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
     return -1;
   }
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET); // CS High
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET); // CS High
 
   // Data is received after the two dummy bytes
   memcpy(data, &rx_buf[2], len);
 
   #ifdef IMU_IO_DEBUG
     printf("Read ");
-    for (int i = 0; i <(len);i++){
+    for (uint32_t i = 0; i < len; i++){
         printf("0x%02X ", data[i]);
     }
     printf(" from address 0x%02X\n",reg_addr);
@@ -115,10 +113,7 @@ int8_t bmi270_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len) {
   return 0;
 }
 
-/**
- * @brief Platform-specific SPI write function for the BMI270 
- */
-int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
+int8_t BMI270::spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
   // The first byte sent is the register address with the write bit cleared (MSB=0)
   
   uint8_t tx_addr = reg_addr & 0x7F;
@@ -127,17 +122,17 @@ int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
   tx_buf[0] = tx_addr;
   memcpy(&tx_buf[1], data, len);
 
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_RESET); // CS Low
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_RESET); // CS Low
   // Transmit the stuff
-  if (HAL_SPI_Transmit(&hspi1, tx_buf, len + 1, HAL_MAX_DELAY) != HAL_OK) {
-    HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET);
+  if (HAL_SPI_Transmit(m_spi_handle, tx_buf, len + 1, HAL_MAX_DELAY) != HAL_OK) {
+    HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
     return -1;
   }
-  HAL_GPIO_WritePin(BMI270_CS_PORT, BMI270_CS_PIN, GPIO_PIN_SET); // CS High
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET); // CS High
 
   #ifdef IMU_IO_DEBUG
     printf("Wrote ");
-    for (int i = 0; i <(len);i++){
+    for (uint32_t i = 0; i < len; i++){
         printf("0x%02X ", data[i]);
     }
     printf(" to address 0x%02X\n",reg_addr);
@@ -146,37 +141,48 @@ int8_t bmi270_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
   return 0;
 }
 
+bool BMI270::startReadAccelerometer_DMA() {
+  // Prepare the transmit buffer. The first byte is the register address with the read bit set.
+  // The rest are dummy bytes to clock out the data.
+  memset(m_spi_tx_buf, 0, sizeof(m_spi_tx_buf));
+  m_spi_tx_buf[0] = REG_ACC_DATA | 0x80;
 
+  // Manually assert the chip select pin
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_RESET);
 
-/**
- * @brief Reads the raw accelerometer data and converts it to g's.
- * @param acc_data Pointer to a float array of size 3 to store the X, Y, Z accelerometer data.
- * @return 0 on success, -1 on failure.
- */
-void bmi270_read_accelerometer(){
-  uint8_t data[6];
-  if (bmi270_spi_read(BMI270_ACC_DATA_REG, data, 6) != 0) {
-
+  // Start a non-blocking SPI transfer with DMA.
+  // We transfer 8 bytes: 2 dummy bytes + 6 data bytes.
+  if (HAL_SPI_TransmitReceive_DMA(m_spi_handle, m_spi_tx_buf, m_spi_rx_buf, 8) != HAL_OK) {
+    // If the DMA fails to start, de-assert CS and return failure.
+    HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
+    return false;
   }
-  // The sensitivity depends on the configured range.
-  // For BMI270, with default +/- 2g range, the LSB per g is 16384.
-  const float sensitivity = 16384.0f;
 
-  // Loop for all 3 axes (X, Y, Z)
-  for (int i = 0; i < 3; i++){
-    // Combine LSB and MSB into a 16-bit signed integer
-    int16_t raw = (int16_t)((data[2*i+1]<<8)|data[2*i]);
-    // Convert raw value to g's and store it
-    float acc = (float)raw / sensitivity;
-    printf("%f ",acc);
-  }
-  printf("\n");
+  return true; // The transfer has started successfully.
 }
 
-/* Example usage in your main loop:
-  float acc[3];
-  if (bmi270_read_accelerometer(acc) == 0) {
-    // To print without float support:
-    printf("ACC X:%d Y:%d Z:%d\n", (int)(acc[0]*100), (int)(acc[1]*100), (int)(acc[2]*100));
-  }
-*/
+void BMI270::processRawData() {
+  // This function is called from the interrupt context.
+  // De-assert the chip select pin to end the transaction.
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
+
+  // --- Timestamp the data as close to its arrival as possible ---
+  uint64_t timestamp = getCurrentTimeUs();
+
+  // The actual data starts at index 2 of the receive buffer.
+  int16_t raw_x = (int16_t)((m_spi_rx_buf[3] << 8) | m_spi_rx_buf[2]);
+  int16_t raw_y = (int16_t)((m_spi_rx_buf[5] << 8) | m_spi_rx_buf[4]);
+  int16_t raw_z = (int16_t)((m_spi_rx_buf[7] << 8) | m_spi_rx_buf[6]);
+
+  // Create an AccelData struct and populate it
+  AccelData data;
+  data.Timestamp = timestamp;
+  data.Acceleration.x = (float)raw_x / ACCEL_SENSITIVITY * G_TO_MS2;
+  data.Acceleration.y = (float)raw_y / ACCEL_SENSITIVITY * G_TO_MS2;
+  data.Acceleration.z = (float)raw_z / ACCEL_SENSITIVITY * G_TO_MS2;
+
+  // For now, we just print the timestamped data.
+  // In a real system, you would post this to a thread-safe queue (like a DataManager).
+  printf("TS: %llu, DMA Accel: X=%.3f Y=%.3f Z=%.3f\n",
+         data.Timestamp, data.Acceleration.x, data.Acceleration.y, data.Acceleration.z);
+}
