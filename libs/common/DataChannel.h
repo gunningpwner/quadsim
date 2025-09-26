@@ -1,13 +1,19 @@
 #pragma once
 
-#include <deque>
 #include <vector>
-#include <mutex>
 #include <algorithm> // For std::min
 #include <type_traits> // For SFINAE/if constexpr
 #include <stdexcept>   // For std::invalid_argument
 #include <string>      // For std::string
 #include <typeinfo>    // For typeid
+
+#ifdef STM32F4xx_HAL_H // This macro is defined by the STM32 HAL, indicating an embedded build
+#include <array>
+#include <atomic>
+#else
+#include <deque>
+#include <mutex>
+#endif
 
 namespace detail {
     // Type trait to check if a type T has a member function `bool containsNaN() const`.
@@ -26,6 +32,10 @@ namespace detail {
 template <typename T>
 class DataChannel {
 public:
+#ifdef STM32F4xx_HAL_H
+    // --- Embedded-Safe, Lock-Free Ring Buffer Implementation ---
+    explicit DataChannel(size_t buffer_size) : m_head(0), m_tail(0), m_update_count(0) {}
+
     explicit DataChannel(size_t buffer_size) : m_update_count(0),m_buffer_size(buffer_size) {}
 
     // Throws std::invalid_argument if data contains NaN and T is NaN-checkable.
@@ -35,6 +45,59 @@ public:
                 throw std::invalid_argument("NaN detected in posted data of type: " + std::string(typeid(T).name()));
             }
         }
+
+        size_t current_head = m_head.load(std::memory_order_relaxed);
+        size_t next_head = (current_head + 1) % m_buffer.size();
+
+        // In this SPSC queue, if the head catches the tail, we overwrite old data.
+        // This is a common strategy for sensor data where the latest is most important.
+        if (next_head == m_tail.load(std::memory_order_acquire)) {
+            // Buffer is full, advance the tail to make space (overwrite oldest data)
+            m_tail.store( (m_tail.load(std::memory_order_relaxed) + 1) % m_buffer.size(), std::memory_order_release);
+        }
+
+        m_buffer[current_head] = data;
+        m_head.store(next_head, std::memory_order_release);
+        m_update_count.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    bool consume(std::vector<T>& samples, unsigned int& last_seen_count) {
+        unsigned int current_update_count = m_update_count.load(std::memory_order_acquire);
+        if (last_seen_count >= current_update_count) {
+            return false;
+        }
+
+        samples.clear();
+        size_t current_tail = m_tail.load(std::memory_order_relaxed);
+        size_t current_head = m_head.load(std::memory_order_acquire);
+
+        while(current_tail != current_head) {
+            samples.push_back(m_buffer[current_tail]);
+            current_tail = (current_tail + 1) % m_buffer.size();
+        }
+
+        m_tail.store(current_head, std::memory_order_release);
+        last_seen_count = current_update_count;
+        return !samples.empty();
+    }
+
+    void getLatest(T& latest_data) {
+        size_t current_head = m_head.load(std::memory_order_acquire);
+        if (current_head == m_tail.load(std::memory_order_acquire)) {
+            // Buffer is empty
+            return;
+        }
+        // Get the item just before the head
+        size_t latest_index = (current_head == 0) ? m_buffer.size() - 1 : current_head - 1;
+        latest_data = m_buffer[latest_index];
+    }
+
+#else
+    // --- Desktop/SITL, Mutex-based, Dynamic Implementation ---
+    explicit DataChannel(size_t buffer_size) : m_update_count(0), m_buffer_size(buffer_size) {}
+
+    void post(const T& data) {
+        // NaN check as before
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_buffer.push_back(data);
@@ -65,11 +128,23 @@ public:
             latest_data = m_buffer.back();
         }
     }
+#endif
 
 
 private:
+#ifdef STM32F4xx_HAL_H
+    // For embedded, we use a std::array to prevent dynamic allocation.
+    // The size must be known at compile time. We'll use a generous default.
+    // NOTE: This requires all DataChannels to have the same size.
+    static constexpr size_t COMPILE_TIME_BUFFER_SIZE = 50;
+    std::array<T, COMPILE_TIME_BUFFER_SIZE> m_buffer;
+    std::atomic<size_t> m_head;
+    std::atomic<size_t> m_tail;
+    std::atomic<unsigned int> m_update_count;
+#else
     std::deque<T> m_buffer;
     unsigned int m_update_count;
     size_t m_buffer_size;
     std::mutex m_mutex; // Each channel now has its own mutex
+#endif
 };
