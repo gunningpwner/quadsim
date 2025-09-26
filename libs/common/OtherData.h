@@ -1,9 +1,7 @@
 #ifndef OTHERDATA_H
 #define OTHERDATA_H
 
-#include "Quaternion.h"
-#include "Vector3.h"
-
+#include <Eigen/Dense>
 
 
 struct InputData
@@ -17,13 +15,13 @@ struct InputData
 struct StateData
 {
     // Position in ECEF (Earth-Centered, Earth-Fixed) coordinates
-    Vector3 position_ecef; 
+    Eigen::Vector3f position_ecef; 
     // Velocity in ECEF coordinates
-    Vector3 velocity_ecef;
+    Eigen::Vector3f velocity_ecef;
     // Orientation as a quaternion (w, x, y, z)
-    Quaternion orientation;
+    Eigen::Quaternionf orientation;
     // Angular velocity in the body frame (rad/s)
-    Vector3 angular_velocity_body;
+    Eigen::Vector3f angular_velocity_body;
 
     /**
      * @brief Checks if any of the struct's floating-point members contain NaN.
@@ -34,7 +32,10 @@ struct StateData
      */
     bool containsNaN() const
     {
-        return position_ecef.containsNaN() || velocity_ecef.containsNaN() || orientation.containsNaN() || angular_velocity_body.containsNaN();
+        return position_ecef.hasNaN() || 
+               velocity_ecef.hasNaN() || 
+               angular_velocity_body.hasNaN() ||
+               std::isnan(orientation.w()) || std::isnan(orientation.x()) || std::isnan(orientation.y()) || std::isnan(orientation.z());
     }
 };
 

@@ -22,12 +22,12 @@ void TruthFilter::run() {
         if (!gps_samples.empty()) {
             new_state.position_ecef = lla_to_ecef(gps_samples.back().lla);
         } else {
-            new_state.position_ecef = {0, 0, 0};
+            new_state.position_ecef.setZero();
         }
 
         // Set velocity and orientation to default values
-        new_state.velocity_ecef = {0, 0, 0};
-        new_state.orientation = {1, 0, 0, 0}; // Identity quaternion
+        new_state.velocity_ecef.setZero();
+        new_state.orientation.setIdentity();
 
         m_data_manager.post(new_state);
     }

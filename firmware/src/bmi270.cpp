@@ -180,9 +180,8 @@ void BMI270::processRawData() {
 
   AccelData accel_data;
   accel_data.Timestamp = timestamp;
-  accel_data.Acceleration.x = (float)raw_ax / ACCEL_SENSITIVITY * G_TO_MS2;
-  accel_data.Acceleration.y = (float)raw_ay / ACCEL_SENSITIVITY * G_TO_MS2;
-  accel_data.Acceleration.z = (float)raw_az / ACCEL_SENSITIVITY * G_TO_MS2;
+  accel_data.Acceleration << (float)raw_ax, (float)raw_ay, (float)raw_az;
+  accel_data.Acceleration = accel_data.Acceleration / ACCEL_SENSITIVITY * G_TO_MS2;
 
   // --- Process Gyroscope Data ---
   int16_t raw_gx = (int16_t)((data_ptr[7] << 8) | data_ptr[6]);
@@ -191,18 +190,17 @@ void BMI270::processRawData() {
 
   GyroData gyro_data;
   gyro_data.Timestamp = timestamp; // Use the same timestamp for both
-  gyro_data.AngularVelocity.x = (float)raw_gx / GYRO_SENSITIVITY * DEG_TO_RAD;
-  gyro_data.AngularVelocity.y = (float)raw_gy / GYRO_SENSITIVITY * DEG_TO_RAD;
-  gyro_data.AngularVelocity.z = (float)raw_gz / GYRO_SENSITIVITY * DEG_TO_RAD;
+  gyro_data.AngularVelocity << (float)raw_gx, (float)raw_gy, (float)raw_gz;
+  gyro_data.AngularVelocity = gyro_data.AngularVelocity / GYRO_SENSITIVITY * DEG_TO_RAD;
 
   // For now, we just print the timestamped data.
   // In a real system, you would post this to a thread-safe queue (like a DataManager).
   printf("TS: %.0f, Accel: X=%.3f Y=%.3f Z=%.3f, Gyro: X=%.3f Y=%.3f Z=%.3f\n",
          (double)accel_data.Timestamp,
-         (double)accel_data.Acceleration.x,
-         (double)accel_data.Acceleration.y,
-         (double)accel_data.Acceleration.z,
-         (double)gyro_data.AngularVelocity.x,
-         (double)gyro_data.AngularVelocity.y,
-         (double)gyro_data.AngularVelocity.z);
+         (double)accel_data.Acceleration.x(),
+         (double)accel_data.Acceleration.y(),
+         (double)accel_data.Acceleration.z(),
+         (double)gyro_data.AngularVelocity.x(),
+         (double)gyro_data.AngularVelocity.y(),
+         (double)gyro_data.AngularVelocity.z());
 }

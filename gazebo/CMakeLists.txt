@@ -13,6 +13,7 @@ add_executable(gazebo_link
     src/ControllerInterface.cpp
     ../libs/flight_controller/TruthFilter.cpp
     ../libs/flight_controller/EKF.cpp
+    ../libs/flight_controller/MahonyFilter.cpp
     ../libs/flight_controller/BodyRateController.cpp
     ../libs/flight_controller/PID.cpp
     ../libs/flight_controller/coord_trans.cpp

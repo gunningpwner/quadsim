@@ -42,9 +42,9 @@ void BodyRateController::run() {
 
     // Calculate errors for body rates
     // Use the estimated angular velocity from the EKF state
-    float roll_rate_error = input_data.roll - state_data.angular_velocity_body.x;
-    float pitch_rate_error = input_data.pitch - state_data.angular_velocity_body.y;
-    float yaw_rate_error = input_data.yaw - state_data.angular_velocity_body.z;
+    float roll_rate_error = input_data.roll - state_data.angular_velocity_body.x();
+    float pitch_rate_error = input_data.pitch - state_data.angular_velocity_body.y();
+    float yaw_rate_error = input_data.yaw - state_data.angular_velocity_body.z();
 
     // Calculate PID outputs
     float roll_control = m_roll_pid.calculate(roll_rate_error, dt);

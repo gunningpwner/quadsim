@@ -83,16 +83,16 @@ void GazeboInterface::imuCallback(const gz::msgs::IMU& msg) {
 
     AccelData accelData;
     accelData.Timestamp = timestamp_us;
-    accelData.Acceleration.x = msg.linear_acceleration().x();
-    accelData.Acceleration.y = msg.linear_acceleration().y();
-    accelData.Acceleration.z = msg.linear_acceleration().z();
+    accelData.Acceleration << msg.linear_acceleration().x(),
+                              msg.linear_acceleration().y(),
+                              msg.linear_acceleration().z();
     m_dataManager.post(accelData);
 
     GyroData gyroData;
     gyroData.Timestamp = timestamp_us;
-    gyroData.AngularVelocity.x = msg.angular_velocity().x();
-    gyroData.AngularVelocity.y = msg.angular_velocity().y();
-    gyroData.AngularVelocity.z = msg.angular_velocity().z();
+    gyroData.AngularVelocity << msg.angular_velocity().x(),
+                                msg.angular_velocity().y(),
+                                msg.angular_velocity().z();
     m_dataManager.post(gyroData);
 }
 
@@ -114,10 +114,9 @@ void GazeboInterface::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
     int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
     MagData magData;
     magData.Timestamp = timestamp_us;
-    magData.MagneticField.x = msg.field_tesla().x();
-    magData.MagneticField.y = msg.field_tesla().y();
-    magData.MagneticField.z = msg.field_tesla().z();
-    // magData.position_covariances={.003*.003,.003*.003,.003*.003};
+    magData.MagneticField << msg.field_tesla().x(),
+                             msg.field_tesla().y(),
+                             msg.field_tesla().z();
     m_dataManager.post(magData);
 }
 

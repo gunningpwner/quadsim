@@ -1,8 +1,8 @@
 #ifndef SENSORDATA_H
 #define SENSORDATA_H
 
-#include "Vector3.h"
 #include <cstdint>
+#include <Eigen/Dense>
 #include <array>
 struct TimestampedData {
     int64_t Timestamp = 0;
@@ -15,10 +15,10 @@ struct TimestampedData {
 // UBX-NAV-COV will give full 3x3 ned covariance
 struct GPSPositionData:TimestampedData
 {   
-    Vector3 lla;
+    Eigen::Vector3f lla;
     // Covariance of position in the local NED frame (North, East, Down).
     // Units are meters-squared (m^2).
-    Vector3 position_covariances;
+    Eigen::Vector3f position_covariances;
     int FixStatus;
     int Satellites;
 };
@@ -27,8 +27,8 @@ struct GPSPositionData:TimestampedData
 // UBX-NAV-VELNED will give covariances
 struct GPSVelocityData:TimestampedData
 {
-    Vector3 velocity; //technically just en since gps only gives you groundspeed
-    Vector3 velocity_covariances;
+    Eigen::Vector3f velocity; //technically just en since gps only gives you groundspeed
+    Eigen::Vector3f velocity_covariances;
 };
 
 
@@ -38,7 +38,7 @@ struct AccelData:TimestampedData
     /// <summary>
     /// Linear acceleration in the body frame (m/s^2).
     /// </summary>
-    Vector3 Acceleration;
+    Eigen::Vector3f Acceleration;
 };
 
 /// <summary>
@@ -49,7 +49,7 @@ struct GyroData:TimestampedData
     /// <summary>
     /// Angular velocity in the body frame (radians/s).
     /// </summary>
-    Vector3 AngularVelocity;
+    Eigen::Vector3f AngularVelocity;
 };
 
 /// <summary>
@@ -60,7 +60,7 @@ struct MagData:TimestampedData
     /// <summary>
     /// The magnetic field vector in the body frame (normalized).
     /// </summary>
-    Vector3 MagneticField;
+    Eigen::Vector3f MagneticField;
 };
 
 struct MotorRPMs:TimestampedData
