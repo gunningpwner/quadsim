@@ -14,8 +14,8 @@ add_executable(gazebo_link
     ../libs/flight_controller/TruthFilter.cpp
     ../libs/flight_controller/EKF.cpp
     ../libs/flight_controller/BodyRateController.cpp
-    ../libs/common/PID.cpp
-    ../libs/common/coord_trans.cpp
+    ../libs/flight_controller/PID.cpp
+    ../libs/flight_controller/coord_trans.cpp
 )
 target_include_directories(gazebo_link
     PRIVATE
