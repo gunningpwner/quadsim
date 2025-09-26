@@ -77,6 +77,10 @@ int8_t BMI270::init(void) {
     spi_write(REG_ACC_RANGE, (const uint8_t[]){ACCEL_RANGE}, 1);
     spi_write(REG_GYRO_RANGE, (const uint8_t[]){GYRO_RANGE}, 1);
 
+    // Pre-configure the DMA transmit buffer since it never changes.
+    // This saves a few cycles in the timer interrupt.
+    memset(m_spi_tx_buf, 0, sizeof(m_spi_tx_buf));
+    m_spi_tx_buf[0] = REG_ACC_DATA | 0x80;
 
     // Turn on the sensors
     // Enable accelerometer and gyroscope
@@ -144,11 +148,6 @@ int8_t BMI270::spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len) {
 }
 
 bool BMI270::startReadImu_DMA() {
-  // Prepare the transmit buffer. The first byte is the register address with the read bit set.
-  // The rest are dummy bytes to clock out the data.
-  memset(m_spi_tx_buf, 0, sizeof(m_spi_tx_buf));
-  m_spi_tx_buf[0] = REG_ACC_DATA | 0x80;
-
   // Manually assert the chip select pin
   HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_RESET);
 
