@@ -1,5 +1,6 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_spi.h"
+#include "common/mavlink.h"
 
 #include "usbd_core.h"
 #include "usbd_cdc.h"
@@ -14,6 +15,10 @@
 
 #include <string.h>
 #include <stdio.h>
+
+// MAVLink system and component IDs for our vehicle
+#define MAVLINK_SYSTEM_ID 1
+#define MAVLINK_COMPONENT_ID 1
 
 // Global variables
 SPI_HandleTypeDef hspi1;
@@ -291,12 +296,68 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
     }
 }
 
-extern "C" int _write(int file, char *ptr, int len) {
-  if (file != 1) { return -1; }
-  CDC_Transmit_FS((uint8_t *)ptr, len);
-  return len;
+extern "C" int _write(int file, char *ptr, int len)
+{
+    if (file != 1) { // stdout
+        return -1;
+    }
+
+#ifdef SEND_MAVLINK_STATUSTEXT
+    static char printf_buffer[MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + 1];
+    static uint16_t buffer_index = 0;
+
+    for (int i = 0; i < len; i++) {
+        if (ptr[i] == '\n' || buffer_index == MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
+            if (buffer_index > 0) {
+                printf_buffer[buffer_index] = '\0'; // Null-terminate the string
+
+                mavlink_message_t msg;
+                uint8_t mav_buf[MAVLINK_MAX_PACKET_LEN];
+                mavlink_msg_statustext_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
+                                            MAV_SEVERITY_INFO, printf_buffer);
+
+                uint16_t mav_len = mavlink_msg_to_send_buffer(mav_buf, &msg);
+                CDC_Transmit_FS(mav_buf, mav_len);
+
+                buffer_index = 0; // Reset buffer
+            }
+        } else {
+            if (buffer_index < MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
+                printf_buffer[buffer_index++] = ptr[i];
+            }
+        }
+    }
+#else
+    // Original behavior: send raw data over USB
+    CDC_Transmit_FS((uint8_t *)ptr, len);
+#endif
+
+    return len;
 }
 
+/**
+ * @brief Sends the attitude quaternion over MAVLink.
+ * @param state The state data containing the orientation.
+ */
+void send_attitude_quaternion(const StateData& state) {
+    mavlink_message_t msg;
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+
+    // Pack the message
+    mavlink_msg_attitude_quaternion_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
+                                         state.Timestamp / 1000, // time_boot_ms
+                                         state.orientation.w(),
+                                         state.orientation.x(),
+                                         state.orientation.y(),
+                                         state.orientation.z(),
+                                         0.0f, 0.0f, 0.0f); // rollspeed, pitchspeed, yawspeed (not available in StateData)
+
+    // Copy the message to a buffer
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+
+    // Send the buffer over USB VCP
+    CDC_Transmit_FS(buf, len);
+}
 
 int main(void) {
   SystemClock_Config_HSE(); // Configure the clock first.
@@ -341,9 +402,8 @@ int main(void) {
     // Check if the filter produced a new state estimate
     std::vector<StateData> state_samples;
     if (state_consumer.consume(state_samples) && !state_samples.empty()) {
-        const auto& latest_state = state_samples.back();
-        printf("Orientation: w=%.3f, x=%.3f, y=%.3f, z=%.3f\n",
-               latest_state.orientation.w(), latest_state.orientation.x(), latest_state.orientation.y(), latest_state.orientation.z());
+        // Send the latest state estimate over MAVLink
+        send_attitude_quaternion(state_samples.back());
     }
     // Let the CPU rest briefly if there's nothing to do.
     HAL_Delay(1);
