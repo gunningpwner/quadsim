@@ -21,6 +21,13 @@ void signalHandler(int signum) {
     g_run_application = false;
 }
 
+/// \brief Callback function for the set_pose service request.
+/// We don't need to do anything with the response, so the body is empty.
+void setPoseCb(const gz::msgs::Boolean &/*_rep*/, const bool /*_result*/)
+{
+    // Response received, do nothing.
+}
+
 int main(int argc, char** argv) {
     // --- Argument Parsing ---
     if (argc < 3) {
@@ -92,13 +99,8 @@ int main(int argc, char** argv) {
                     pose_msg.mutable_position()->set_y(0);
                     pose_msg.mutable_position()->set_z(0.5);
 
-                    // Make a synchronous service request with a zero timeout.
-                    // This acts as a non-blocking "fire-and-forget" call.
-                    // We provide dummy variables for the reply and result, as we don't need them.
-                    gz::msgs::Boolean rep;
-                    bool result;
-                    unsigned int timeout_ms = 0;
-                    node.Request(set_pose_service, pose_msg, timeout_ms, rep, result);
+                    // Make an asynchronous service request to set the model's pose.
+                    node.Request(set_pose_service, pose_msg, setPoseCb);
 
                     // Print a debug message every 20th attitude packet to avoid spam
                     if (attitude_msg_count % 20 == 0) {
