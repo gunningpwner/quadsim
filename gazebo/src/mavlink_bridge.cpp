@@ -56,13 +56,8 @@ int main(int argc, char** argv) {
 
     // --- Gazebo Transport Setup ---
     gz::transport::Node node;
-    const std::string poseTopic = "/model/quadcopter/pose";
-    auto pose_pub = node.Advertise<gz::msgs::Pose>(poseTopic);
-    if (!pose_pub) {
-        std::cerr << "Error advertising topic [" << poseTopic << "]" << std::endl;
-        return 1;
-    }
-    std::cout << "Publishing pose updates to Gazebo topic: " << poseTopic << std::endl;
+    const std::string set_pose_service = "/world/default/set_pose";
+    std::cout << "Will send pose updates to Gazebo service: " << set_pose_service << std::endl;
 
     // --- MAVLink Parsing Loop ---
     mavlink_message_t msg;
@@ -82,8 +77,10 @@ int main(int argc, char** argv) {
                     mavlink_attitude_quaternion_t attitude;
                     mavlink_msg_attitude_quaternion_decode(&msg, &attitude);
 
-                    // Create Gazebo Pose message
+                    // Create Gazebo Pose message for the service request
                     gz::msgs::Pose pose_msg;
+                    pose_msg.set_name("quadcopter"); // Set the model name
+
                     pose_msg.mutable_orientation()->set_w(attitude.q1);
                     pose_msg.mutable_orientation()->set_x(attitude.q2);
                     pose_msg.mutable_orientation()->set_y(attitude.q3);
@@ -95,12 +92,17 @@ int main(int argc, char** argv) {
                     pose_msg.mutable_position()->set_y(0);
                     pose_msg.mutable_position()->set_z(0.5);
 
-                    // Publish to Gazebo
-                    pose_pub.Publish(pose_msg);
+                    // Make a synchronous service request with a zero timeout.
+                    // This acts as a non-blocking "fire-and-forget" call.
+                    // We provide dummy variables for the reply and result, as we don't need them.
+                    gz::msgs::Boolean rep;
+                    bool result;
+                    unsigned int timeout_ms = 0;
+                    node.Request(set_pose_service, pose_msg, timeout_ms, rep, result);
 
                     // Print a debug message every 20th attitude packet to avoid spam
                     if (attitude_msg_count % 20 == 0) {
-                        std::cout << "Received ATTITUDE_QUATERNION, publishing to Gazebo. "
+                        std::cout << "Received ATTITUDE_QUATERNION, sending set_pose request. "
                                   << "w=" << attitude.q1 << ", x=" << attitude.q2
                                   << std::endl;
                     }
