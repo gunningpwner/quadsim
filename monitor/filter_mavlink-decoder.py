@@ -48,7 +48,7 @@ class MavlinkDecoder(DeviceMonitorFilterBase):
         msg_type = msg.get_type()
         if msg_type == "STATUSTEXT":
             # MAVLink STATUSTEXT messages are not null-terminated in the payload.
-            text = msg.text.decode(sys.getdefaultencoding(), 'ignore').rstrip('\0')
+            text = msg.text.rstrip('\0')
             return f"STATUSTEXT: {text}\n"
         elif msg_type == "ATTITUDE_QUATERNION":
             return f"ATTITUDE_QUATERNION: w={msg.q1:.3f}, x={msg.q2:.3f}, y={msg.q3:.3f}, z={msg.q4:.3f}\n"
