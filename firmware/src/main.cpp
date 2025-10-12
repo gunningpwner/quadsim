@@ -1,17 +1,11 @@
 #include "stm32f4xx_hal.h"
-#include "stm32f4xx_hal_spi.h"
-#include "common/mavlink.h"
+#include "stm32f4xx_hal_uart.h"
 
 #include "usbd_core.h"
 #include "usbd_cdc.h"
 #include "usbd_cdc_if.h"
 #include "usbd_desc.h"
-#include "bmi270.h"
-#include "timing.h"
-#include "DataManager.h"
-#include "Consumer.h"
-#include "MahonyFilter.h"
-#include "OtherData.h"
+
 
 #include <string.h>
 #include <stdio.h>
@@ -23,6 +17,7 @@
 // Global variables
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
+UART_HandleTypeDef huart3;
 USBD_HandleTypeDef hUsbDeviceFS;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern USBD_DescriptorsTypeDef FS_Desc;
@@ -30,44 +25,9 @@ extern USBD_DescriptorsTypeDef FS_Desc;
 // Function Prototypes
 void SystemClock_Config_HSE(void);
 void MX_USB_DEVICE_Init(void);
-void MX_DMA_Init(void);
-void MX_GPIO_Init(void);
-void MX_TIM2_Init(void);
-void MX_SPI1_Init(void);
+void MX_USART3_UART_Init(void);
+TIM_HandleTypeDef htim2;
 
-// Global pointer to the IMU object for the interrupt handler to use.
-BMI270* g_imu_ptr = nullptr;
-
-// Global DataManager instance, providing the time source function.
-DataManager g_data_manager(getCurrentTimeUs);
-
-// --- Robust 64-bit Timer Implementation ---
-static volatile uint32_t s_overflow_count = 0;
-static volatile uint32_t s_last_dwt_cyccnt = 0;
-
-void initTime() {
-    // Enable DWT Cycle Counter
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    s_last_dwt_cyccnt = DWT->CYCCNT;
-}
-
-void updateTime() {
-    const uint32_t current_dwt_cyccnt = DWT->CYCCNT;
-    // Check for overflow
-    if (current_dwt_cyccnt < s_last_dwt_cyccnt) {
-        s_overflow_count++;
-    }
-    s_last_dwt_cyccnt = current_dwt_cyccnt;
-}
-
-uint64_t getCurrentTimeUs() {
-    // Combine the 32-bit overflow count and the 32-bit cycle counter
-    // to create a full 64-bit cycle count.
-    const uint64_t total_cycles = ((uint64_t)s_overflow_count << 32) | DWT->CYCCNT;
-    // Scale to microseconds
-    return total_cycles / (HAL_RCC_GetHCLKFreq() / 1000000);
-}
 
 /**
   * @brief System Clock Configuration for an 8MHz HSE crystal.
@@ -105,195 +65,68 @@ void MX_USB_DEVICE_Init(void) {
   USBD_Start(&hUsbDeviceFS);
 }
 
-void MX_GPIO_Init(void) {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-}
-
 /**
-  * @brief Enable DMA controller clock
+  * @brief UART MSP Initialization
+  * This function configures the hardware resources needed for the UART:
+  * - Peripheral's clock enable
+  * - GPIO Configuration
+  * @param huart: UART handle pointer
   */
-void MX_DMA_Init(void)
+void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 {
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA2_CLK_ENABLE();
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  if(huart->Instance==USART3)
+  {
+    // 1. Enable peripheral and GPIO clocks
+    __HAL_RCC_USART3_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
 
-  /* DMA interrupt init */
-  /* DMA2_Stream0_IRQn interrupt configuration (for SPI1_RX) */
-  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-  /* DMA2_Stream3_IRQn interrupt configuration (for SPI1_TX) */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+    // 2. Configure UART GPIO pins (PC10 -> TX, PC11 -> RX)
+    GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  }
 }
 
-TIM_HandleTypeDef htim2;
-
-void MX_TIM2_Init(void) {
-    // TIM2 is on APB1, which has a timer clock of 84 MHz.
-    // We want to trigger at 100 Hz (every 10ms).
-    // For 100Hz (10ms): (839 + 1) * (999 + 1) / 84MHz = 840 * 1000 / 84M = 0.01s = 10ms.
-
-    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-    TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-    htim2.Instance = TIM2;
-    htim2.Init.Prescaler = 840 - 1; // Gives a 100kHz timer clock
-    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim2.Init.Period = 1000 - 1; // Count up to 1000 for a 10ms period (100Hz)
-    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    HAL_TIM_Base_Init(&htim2);
-
-    sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-    HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig);
-
-    sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-    sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-    HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig);
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM2) {
-        // Timer has elapsed, kick off a DMA read.
-        if (g_imu_ptr) g_imu_ptr->startReadImu_DMA();
-    }
-}
-
-
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
-{
-  if (hspi->Instance == SPI1) {
-    // This function is called when the SPI DMA transfer is complete.
-    // We can now process the raw data that the DMA has moved for us.
-    if (g_imu_ptr != nullptr) {
-      g_imu_ptr->processRawData();
-    }
+void MX_USART3_UART_Init(void) {
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 420000;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    // Initialization Error
+    while(1);
   }
 }
 
 
-void MX_SPI1_Init(void) {
-  // Used by the IMU
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  __HAL_RCC_GPIOA_CLK_ENABLE();
+void setup_freerunning_timer(void) {
+  // 1. Enable Timer Clock
+  __HAL_RCC_TIM2_CLK_ENABLE();
 
-  GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  // Configure the timer handle
+  htim2.Instance = TIM2;
+  // 2. Set the prescaler
+  htim2.Init.Prescaler = 83; // 84MHz / (83+1) = 1MHz
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  // 3. Set the period to maximum
+  htim2.Init.Period = 0xFFFFFFFF; // Max 32-bit value
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+  // Initialize the timer with the settings
+  HAL_TIM_Base_Init(&htim2);
 
-  // DMA handles must be static or global
-  static DMA_HandleTypeDef hdma_spi1_rx;
-  static DMA_HandleTypeDef hdma_spi1_tx;
-  __HAL_RCC_SPI1_CLK_ENABLE();
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 10;
-
-  // Configure DMA for SPI1 RX
-  hdma_spi1_rx.Instance = DMA2_Stream0;
-  hdma_spi1_rx.Init.Channel = DMA_CHANNEL_3;
-  hdma_spi1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
-  hdma_spi1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
-  hdma_spi1_rx.Init.MemInc = DMA_MINC_ENABLE;
-  hdma_spi1_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-  hdma_spi1_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-  hdma_spi1_rx.Init.Mode = DMA_NORMAL;
-  hdma_spi1_rx.Init.Priority = DMA_PRIORITY_HIGH;
-  hdma_spi1_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-  HAL_DMA_Init(&hdma_spi1_rx);
-  __HAL_LINKDMA(&hspi1, hdmarx, hdma_spi1_rx);
-
-  // Configure DMA for SPI1 TX
-  hdma_spi1_tx.Instance = DMA2_Stream3;
-  hdma_spi1_tx.Init.Channel = DMA_CHANNEL_3;
-  hdma_spi1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
-  hdma_spi1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
-  hdma_spi1_tx.Init.MemInc = DMA_MINC_ENABLE;
-  hdma_spi1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-  hdma_spi1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-  hdma_spi1_tx.Init.Mode = DMA_NORMAL;
-  hdma_spi1_tx.Init.Priority = DMA_PRIORITY_LOW;
-  hdma_spi1_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-  HAL_DMA_Init(&hdma_spi1_tx);
-  __HAL_LINKDMA(&hspi1, hdmatx, hdma_spi1_tx);
-
-  HAL_SPI_Init(&hspi1);
-}
-
-void MX_SPI2_Init(void){
-  // Used by the Flash storage
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  // Data pins
-  GPIO_InitStruct.Pin = GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  //CS Pin
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
-
-  __HAL_RCC_SPI2_CLK_ENABLE();
-  hspi2.Instance = SPI2;
-  hspi2.Init.Mode = SPI_MODE_MASTER;
-  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi2.Init.CRCPolynomial = 10;
-  HAL_SPI_Init(&hspi2);
-
-}
-
-void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
-    if(tim_baseHandle->Instance==TIM2) {
-        /* TIM2 clock enable */
-        __HAL_RCC_TIM2_CLK_ENABLE();
-
-        /* TIM2 interrupt Init */
-        HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
-        HAL_NVIC_EnableIRQ(TIM2_IRQn);
-    }
+  // 4. Start the timer
+  HAL_TIM_Base_Start(&htim2);
 }
 
 extern "C" int _write(int file, char *ptr, int len)
@@ -301,135 +134,126 @@ extern "C" int _write(int file, char *ptr, int len)
     if (file != 1) { // stdout
         return -1;
     }
-
-#ifdef SEND_MAVLINK_STATUSTEXT
-    static char printf_buffer[MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + 1];
-    static uint16_t buffer_index = 0;
-
-    for (int i = 0; i < len; i++) {
-        if (ptr[i] == '\n' || buffer_index == MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
-            if (buffer_index > 0) {
-                printf_buffer[buffer_index] = '\0'; // Null-terminate the string
-
-                mavlink_message_t msg;
-                uint8_t mav_buf[MAVLINK_MAX_PACKET_LEN];
-                mavlink_msg_statustext_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
-                                            MAV_SEVERITY_INFO, printf_buffer);
-
-                uint16_t mav_len = mavlink_msg_to_send_buffer(mav_buf, &msg);
-                CDC_Transmit_FS(mav_buf, mav_len);
-
-                buffer_index = 0; // Reset buffer
-            }
-        } else {
-            if (buffer_index < MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
-                printf_buffer[buffer_index++] = ptr[i];
-            }
-        }
-    }
-#else
     // Original behavior: send raw data over USB
     CDC_Transmit_FS((uint8_t *)ptr, len);
-#endif
-
     return len;
 }
 
-/**
- * @brief Sends the attitude quaternion over MAVLink.
- * @param state The state data containing the orientation.
- */
-void send_attitude_quaternion(const StateData& state) {
-    mavlink_message_t msg;
-    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-
-    // Pack the message
-    mavlink_msg_attitude_quaternion_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
-                                         state.Timestamp / 1000, // time_boot_ms
-                                         state.orientation.w(),
-                                         state.orientation.x(),
-                                         state.orientation.y(),
-                                         state.orientation.z(),
-                                         0.0f, 0.0f, 0.0f); // rollspeed, pitchspeed, yawspeed (not available in StateData)
-
-    // Copy the message to a buffer
-    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-
-    // Send the buffer over USB VCP
-    CDC_Transmit_FS(buf, len);
-}
+struct CRSFChannelDataStruct{
+    unsigned int chan0 : 11;
+    unsigned int chan1 : 11;
+    unsigned int chan2 : 11;
+    unsigned int chan3 : 11;
+    unsigned int chan4 : 11;
+    unsigned int chan5 : 11;
+    unsigned int chan6 : 11;
+    unsigned int chan7 : 11;
+    unsigned int chan8 : 11;
+    unsigned int chan9 : 11;
+    unsigned int chan10 : 11;
+    unsigned int chan11 : 11;
+    unsigned int chan12 : 11;
+    unsigned int chan13 : 11;
+    unsigned int chan14 : 11;
+    unsigned int chan15 : 11;
+} __attribute__ ((__packed__));
+typedef struct CRSFChannelDataStruct CRSFChannelData;
 
 int main(void) {
   SystemClock_Config_HSE(); // Configure the clock first.
   HAL_Init(); // Then initialize the HAL, which sets up the SysTick based on the new clock.
-
-  initTime(); // Initialize our robust 64-bit timer
-
-  MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_SPI1_Init();
-  MX_TIM2_Init();
   MX_USB_DEVICE_Init();
+  MX_USART3_UART_Init();
+  setup_freerunning_timer();
 
   // Create an instance of the BMI270 driver
-  BMI270 imu(&hspi1, GPIOC, GPIO_PIN_4);
-  g_imu_ptr = &imu; // Set the global pointer
 
   HAL_Delay(2000); // Wait for USB to enumerate
-  printf("\n--- BMI270 Initialization ---\n");
 
-  if (imu.init() == 0) {
-      printf("BMI270 Initialized Successfully.\n");
-  } else {
-      printf("BMI270 Initialization Failed!\n");
-      // It's good practice to halt if essential hardware fails
-      while(1);
-  }
+  uint8_t rx_byte; // Buffer to hold one received byte
 
-  // Start the timer. It will now trigger DMA reads automatically in the background.
-  HAL_TIM_Base_Start_IT(&htim2);
+  enum CrsfState {
+    IDLE,
+    LENGTH,
+    TYPE,
+    RECEIVING,
+  };
 
-  // --- Instantiate the Orientation Filter ---
-  MahonyFilter mahony_filter(g_data_manager);
-
-  // Create a consumer to read the state data produced by the filter
-  Consumer<StateData> state_consumer(g_data_manager);
-
+  CrsfState state = IDLE;
+  uint32_t frame_start = __HAL_TIM_GET_COUNTER(&htim2);
+  int byte_count=0;
+  int bytes_left=0;
+  int message_type = 0;
+  uint8_t  rx_buffer[22];
   while (1) {
     // Run the filter. This will consume new IMU data and post a new state estimate.
-    mahony_filter.run();
-
-    // Check if the filter produced a new state estimate
-    std::vector<StateData> state_samples;
-    if (state_consumer.consume(state_samples) && !state_samples.empty()) {
-        // Send the latest state estimate over MAVLink
-        send_attitude_quaternion(state_samples.back());
-    }
     // Let the CPU rest briefly if there's nothing to do.
-    HAL_Delay(1);
+    // Check for incoming data on UART3.
+    // This is a blocking call that will wait for 1 byte for up to 10ms.
+    // If no data arrives, it will time out and the loop will continue.
+    HAL_StatusTypeDef status = HAL_UART_Receive(&huart3, &rx_byte, 1, 1);
+
+
+    if (status == HAL_OK)
+    {
+    uint32_t current_time = __HAL_TIM_GET_COUNTER(&htim2);
+    uint32_t elapsed_time = current_time - frame_start;
+    if (elapsed_time>=1500){
+            state=IDLE;
+            printf("Timeout\n");
+            
+    }
+    frame_start=current_time;
+
+      if (state == IDLE) {
+        frame_start = __HAL_TIM_GET_COUNTER(&htim2);
+        state = LENGTH;
+        byte_count=0;
+        bytes_left=0;
+      }
+      else if (state == LENGTH) {
+        bytes_left = rx_byte;
+        state = TYPE;
+      }
+      else if (state == TYPE) {
+        message_type = rx_byte;
+        state = RECEIVING;
+        bytes_left--;
+        if (message_type!=0x16){
+            printf("Got type 0x%X\n",message_type);
+        }
+      }
+      else if (state == RECEIVING) {
+        if (message_type==0x16){
+            rx_buffer[byte_count]=rx_byte;
+        }
+        byte_count++;
+        bytes_left--;
+        if (bytes_left==0){
+            state=IDLE;
+            if (message_type==0x16){
+                printf("RAW 0: %X\n",rx_buffer[0]);
+                CRSFChannelData* data = (CRSFChannelData*)&rx_buffer;
+                
+                printf("Channel 1: %d\n",data->chan0);
+            }
+        }
+        
+      }
+    
+    }
+    else if (status == HAL_TIMEOUT)
+    {
+    }
   }
+  
+
 }
 
 extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
-  updateTime(); // Update our overflow counter
 }
 
 extern "C" void OTG_FS_IRQHandler(void) {
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
-}
-
-extern "C" void TIM2_IRQHandler(void) {
-    // This is the interrupt handler for TIM2
-    HAL_TIM_IRQHandler(&htim2);
-}
-
-extern "C" void DMA2_Stream0_IRQHandler(void) {
-    // This is the interrupt handler for SPI1_RX
-    HAL_DMA_IRQHandler(hspi1.hdmarx);
-}
-
-extern "C" void DMA2_Stream3_IRQHandler(void) {
-    // This is the interrupt handler for SPI1_TX
-    HAL_DMA_IRQHandler(hspi1.hdmatx);
 }

@@ -3,3 +3,4 @@
 */build/**
 .pio
 ./lib/*
+*/__pycache__/**
