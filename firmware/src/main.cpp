@@ -1,193 +1,83 @@
 #include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal_spi.h"
 #include "stm32f4xx_hal_uart.h"
+#include "common/mavlink.h"
 
 #include "usbd_core.h"
 #include "usbd_cdc.h"
 #include "usbd_cdc_if.h"
 #include "usbd_desc.h"
+#include "bmi270.h"
+#include "timing.h"
+#include "DataManager.h"
+#include "Consumer.h"
+#include "MahonyFilter.h"
+#include "OtherData.h"
+#include "Crsf.h"
 
 #include <string.h>
 #include <stdio.h>
 
-// Function Prototypes
-void SystemClock_Config_HSE(void);
-void MX_USB_DEVICE_Init(void);
-void MX_USART3_UART_Init(void);
-void setup_freerunning_timer(void);
+// MAVLink system and component IDs for our vehicle
+#define MAVLINK_SYSTEM_ID 1
+#define MAVLINK_COMPONENT_ID 1
 
 // Global variables
-UART_HandleTypeDef huart3;
+SPI_HandleTypeDef hspi1;
+UART_HandleTypeDef huart3; // For CRSF
+TIM_HandleTypeDef htim5;   // For CRSF timeout
 USBD_HandleTypeDef hUsbDeviceFS;
-TIM_HandleTypeDef htim2;
-
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern USBD_DescriptorsTypeDef FS_Desc;
 
+// Function Prototypes
+void SystemClock_Config_HSE(void);
+void MX_USART3_UART_Init(void);
+void MX_TIM5_Init(void);
+void MX_USB_DEVICE_Init(void);
+void MX_DMA_Init(void);
+void MX_GPIO_Init(void);
+void MX_TIM2_Init(void);
+void MX_SPI1_Init(void);
 
-// --- NEW: CRSF Parsing Globals ---
+// --- CRSF Integration ---
+Crsf* g_crsf_ptr = nullptr;
+uint8_t g_crsf_rx_byte; // Single byte buffer for the HAL_UART_Receive_IT function
+// --- End CRSF Integration ---
 
-// Use a volatile flag to signal a new frame from the ISR to the main loop
-volatile bool new_crsf_frame_ready = false;
+// Global pointer to the IMU object for the interrupt handler to use.
+BMI270* g_imu_ptr = nullptr;
 
-// Buffers and state for the ISR to parse incoming frames
-uint8_t crsf_rx_buffer[64];      // Buffer to build the incoming frame
-uint8_t crsf_frame_position = 0; // Current position in the rx buffer
-uint32_t crsf_frame_start_time = 0; // Timestamp of the first byte
+// Global DataManager instance, providing the time source function.
+DataManager g_data_manager(getCurrentTimeUs);
 
-// A separate buffer to hold the last complete, validated frame for the main loop to process
-uint8_t crsf_latest_frame[64];
-uint8_t crsf_latest_frame_len = 0;
-uint8_t rx_isr_byte; // Single byte buffer for the HAL_UART_Receive_IT function
+// --- Robust 64-bit Timer Implementation ---
+static volatile uint32_t s_overflow_count = 0;
+static volatile uint32_t s_last_dwt_cyccnt = 0;
 
-// CRSF defines from Betaflight for clarity
-#define CRSF_TIME_NEEDED_PER_FRAME_US 1750
-#define CRSF_FRAMETYPE_RC_CHANNELS_PACKED 0x16
-#define CRSF_FRAME_LENGTH_ADDRESS 1
-#define CRSF_FRAME_LENGTH_FRAMELENGTH 1
-#define CRSF_FRAME_LENGTH_TYPE_CRC 2 // Type and CRC are 2 bytes
-
-// Packed struct for CRSF channel data (11 bits per channel)
-struct CRSFChannelDataStruct{
-    unsigned int chan0 : 11;
-    unsigned int chan1 : 11;
-    unsigned int chan2 : 11;
-    unsigned int chan3 : 11;
-    unsigned int chan4 : 11;
-    unsigned int chan5 : 11;
-    unsigned int chan6 : 11;
-    unsigned int chan7 : 11;
-    unsigned int chan8 : 11;
-    unsigned int chan9 : 11;
-    unsigned int chan10 : 11;
-    unsigned int chan11 : 11;
-    unsigned int chan12 : 11;
-    unsigned int chan13 : 11;
-    unsigned int chan14 : 11;
-    unsigned int chan15 : 11;
-} __attribute__ ((__packed__));
-typedef struct CRSFChannelDataStruct CRSFChannelData;
-
-
-// --- NEW: CRC8 calculation function ---
-// This is the standard CRC8-DVB-S2 used by CRSF
-uint8_t crc8_dvb_s2(uint8_t crc, unsigned char a) {
-    crc ^= a;
-    for (int ii = 0; ii < 8; ++ii) {
-        if (crc & 0x80) {
-            crc = (crc << 1) ^ 0xD5;
-        } else {
-            crc = crc << 1;
-        }
-    }
-    return crc;
+void initTime() {
+    // Enable DWT Cycle Counter
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    s_last_dwt_cyccnt = DWT->CYCCNT;
 }
 
-// --- NEW: UART Interrupt Callback ---
-// This function is called by the HAL driver every time a byte is received.
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance == USART3) {
-        uint32_t current_time = __HAL_TIM_GET_COUNTER(&htim2);
-
-        // Check for a timeout between bytes. If it's too long, reset.
-        // This prevents the parser from getting stuck on a partial frame.
-        if (crsf_frame_position > 0 && (current_time - crsf_frame_start_time) > CRSF_TIME_NEEDED_PER_FRAME_US) {
-            crsf_frame_position = 0;
-        }
-
-        if (crsf_frame_position == 0) {
-            // This must be the first byte of a new frame.
-            // Note: CRSF sync byte (the address) is not checked here but is included in the frame.
-            crsf_frame_start_time = current_time;
-        }
-        
-        // The full frame length is the value of the 'length' byte plus the address and length bytes themselves.
-        // We guess a minimum length until we've received the actual length byte.
-        const int full_frame_length = crsf_frame_position < 2 ? 5 : crsf_rx_buffer[1] + CRSF_FRAME_LENGTH_ADDRESS + CRSF_FRAME_LENGTH_FRAMELENGTH;
-
-        if (crsf_frame_position < sizeof(crsf_rx_buffer)) {
-            crsf_rx_buffer[crsf_frame_position++] = rx_isr_byte;
-
-            if (crsf_frame_position >= full_frame_length) {
-                // We have a complete frame, now validate CRC
-                uint8_t calculated_crc = 0;
-                // CRC includes Type and Payload
-                for (int i = 2; i < full_frame_length - 1; i++) {
-                     calculated_crc = crc8_dvb_s2(calculated_crc, crsf_rx_buffer[i]);
-                }
-                uint8_t received_crc = crsf_rx_buffer[full_frame_length - 1];
-
-                if (calculated_crc == received_crc) {
-                    // CRC is valid! Copy to the main buffer and set the flag.
-                    memcpy(crsf_latest_frame, crsf_rx_buffer, full_frame_length);
-                    crsf_latest_frame_len = full_frame_length;
-                    new_crsf_frame_ready = true;
-                }
-                // Reset for the next frame regardless of CRC outcome
-                crsf_frame_position = 0;
-            }
-        } else {
-             // Buffer overflow, reset
-            crsf_frame_position = 0;
-        }
-
-        // IMPORTANT: Re-arm the interrupt to receive the next byte
-        HAL_UART_Receive_IT(&huart3, &rx_isr_byte, 1);
+void updateTime() {
+    const uint32_t current_dwt_cyccnt = DWT->CYCCNT;
+    // Check for overflow
+    if (current_dwt_cyccnt < s_last_dwt_cyccnt) {
+        s_overflow_count++;
     }
+    s_last_dwt_cyccnt = current_dwt_cyccnt;
 }
 
-
-int main(void) {
-  SystemClock_Config_HSE();
-  HAL_Init();
-  MX_USB_DEVICE_Init();
-  MX_USART3_UART_Init();
-  setup_freerunning_timer();
-
-  HAL_Delay(2000); // Wait for USB to enumerate
-  printf("CRSF Parser Initialized.\r\n");
-
-  // --- MODIFIED: Start interrupt-driven UART reception ---
-  // This kicks off the process. The callback will re-arm the interrupt each time.
-  HAL_UART_Receive_IT(&huart3, &rx_isr_byte, 1);
-
-
-  while (1) {
-    // --- MODIFIED: Main loop logic ---
-    // The main loop is now non-blocking. It just checks a flag.
-    
-    if (new_crsf_frame_ready) {
-        // A new, CRC-validated frame has been received by the ISR.
-        // Let's process it.
-
-        // Reset the flag so we only process this frame once
-        new_crsf_frame_ready = false;
-
-        // The 'type' is the 3rd byte (index 2) of the frame
-        uint8_t frame_type = crsf_latest_frame[2];
-
-        if (frame_type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
-            // The frame payload starts after address, length, and type bytes.
-            CRSFChannelData* data = (CRSFChannelData*)&crsf_latest_frame[3];
-            
-            // Print out one of the channels to verify
-            printf("Ch0: %4u | Ch1: %4u | Ch2: %4u | Ch3: %4u\r\n", 
-                    data->chan0, data->chan1, data->chan2, data->chan3);
-        }
-        else {
-            // You can add handlers for other frame types here if needed
-            printf("Received frame of type: 0x%02X\r\n", frame_type);
-        }
-    }
-
-    // The CPU is now free to do other things here, like:
-    // - Run sensor fusion algorithms
-    // - Calculate PID loops
-    // - Log telemetry data
-    // etc.
-  }
+uint64_t getCurrentTimeUs() {
+    // Combine the 32-bit overflow count and the 32-bit cycle counter
+    // to create a full 64-bit cycle count.
+    const uint64_t total_cycles = ((uint64_t)s_overflow_count << 32) | DWT->CYCCNT;
+    // Scale to microseconds
+    return total_cycles / (HAL_RCC_GetHCLKFreq() / 1000000);
 }
-
-// System configuration functions (no changes needed)
 
 /**
   * @brief System Clock Configuration for an 8MHz HSE crystal.
@@ -225,23 +115,164 @@ void MX_USB_DEVICE_Init(void) {
   USBD_Start(&hUsbDeviceFS);
 }
 
+void MX_GPIO_Init(void) {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+}
+
 /**
-  * @brief UART MSP Initialization
-  * This function configures the hardware resources needed for the UART:
-  * - Peripheral's clock enable
-  * - GPIO Configuration
-  * @param huart: UART handle pointer
+  * @brief Enable DMA controller clock
   */
+void MX_DMA_Init(void)
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream0_IRQn interrupt configuration (for SPI1_RX) */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+  /* DMA2_Stream3_IRQn interrupt configuration (for SPI1_TX) */
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+}
+
+TIM_HandleTypeDef htim2;
+
+void MX_TIM2_Init(void) {
+    // TIM2 is on APB1, which has a timer clock of 84 MHz.
+    // We want to trigger at 100 Hz (every 10ms).
+    // For 100Hz (10ms): (839 + 1) * (999 + 1) / 84MHz = 840 * 1000 / 84M = 0.01s = 10ms.
+
+    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+    TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+    htim2.Instance = TIM2;
+    htim2.Init.Prescaler = 840 - 1; // Gives a 100kHz timer clock
+    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim2.Init.Period = 1000 - 1; // Count up to 1000 for a 10ms period (100Hz)
+    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_Base_Init(&htim2);
+
+    sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+    HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig);
+
+    sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+    sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+    HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+    if (htim->Instance == TIM2) {
+        // Timer has elapsed, kick off a DMA read.
+        if (g_imu_ptr) g_imu_ptr->startReadImu_DMA();
+    }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART3) {
+        if (g_crsf_ptr) {
+            g_crsf_ptr->handleRxByte(g_crsf_rx_byte);
+        }
+        HAL_UART_Receive_IT(&huart3, &g_crsf_rx_byte, 1); // Re-arm interrupt
+    }
+}
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi->Instance == SPI1) {
+    // This function is called when the SPI DMA transfer is complete.
+    // We can now process the raw data that the DMA has moved for us.
+    if (g_imu_ptr != nullptr) {
+      g_imu_ptr->processRawData();
+    }
+  }
+}
+
+
+void MX_SPI1_Init(void) {
+  // Used by the IMU
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+
+  // DMA handles must be static or global
+  static DMA_HandleTypeDef hdma_spi1_rx;
+  static DMA_HandleTypeDef hdma_spi1_tx;
+  __HAL_RCC_SPI1_CLK_ENABLE();
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+
+  // Configure DMA for SPI1 RX
+  hdma_spi1_rx.Instance = DMA2_Stream0;
+  hdma_spi1_rx.Init.Channel = DMA_CHANNEL_3;
+  hdma_spi1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+  hdma_spi1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+  hdma_spi1_rx.Init.MemInc = DMA_MINC_ENABLE;
+  hdma_spi1_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  hdma_spi1_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+  hdma_spi1_rx.Init.Mode = DMA_NORMAL;
+  hdma_spi1_rx.Init.Priority = DMA_PRIORITY_HIGH;
+  hdma_spi1_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+  HAL_DMA_Init(&hdma_spi1_rx);
+  __HAL_LINKDMA(&hspi1, hdmarx, hdma_spi1_rx);
+
+  // Configure DMA for SPI1 TX
+  hdma_spi1_tx.Instance = DMA2_Stream3;
+  hdma_spi1_tx.Init.Channel = DMA_CHANNEL_3;
+  hdma_spi1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+  hdma_spi1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+  hdma_spi1_tx.Init.MemInc = DMA_MINC_ENABLE;
+  hdma_spi1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  hdma_spi1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+  hdma_spi1_tx.Init.Mode = DMA_NORMAL;
+  hdma_spi1_tx.Init.Priority = DMA_PRIORITY_LOW;
+  hdma_spi1_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+  HAL_DMA_Init(&hdma_spi1_tx);
+  __HAL_LINKDMA(&hspi1, hdmatx, hdma_spi1_tx);
+
+  HAL_SPI_Init(&hspi1);
+}
+
 void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   if(huart->Instance==USART3)
   {
-    // 1. Enable peripheral and GPIO clocks
     __HAL_RCC_USART3_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
 
-    // 2. Configure UART GPIO pins (PC10 -> TX, PC11 -> RX)
+    // PC10 -> TX, PC11 -> RX
     GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
@@ -249,8 +280,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
     
-    // --- NEW: Enable UART Interrupt ---
-    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(USART3_IRQn, 1, 0); // Lower priority than IMU
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   }
 }
@@ -261,40 +291,33 @@ void MX_USART3_UART_Init(void) {
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.Mode = UART_MODE_RX; // We only need to receive from the RC receiver
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    // Initialization Error
-    while(1);
-  }
+  HAL_UART_Init(&huart3);
 }
 
-
-void setup_freerunning_timer(void) {
-  // 1. Enable Timer Clock
-  __HAL_RCC_TIM2_CLK_ENABLE();
-
-  // Configure the timer handle
-  htim2.Instance = TIM2;
-  // 2. Set the prescaler
-  htim2.Init.Prescaler = 83; // 84MHz / (83+1) = 1MHz
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  // 3. Set the period to maximum
-  htim2.Init.Period = 0xFFFFFFFF; // Max 32-bit value
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-
-  // Initialize the timer with the settings
-  HAL_TIM_Base_Init(&htim2);
-
-  // 4. Start the timer
-  HAL_TIM_Base_Start(&htim2);
+void MX_TIM5_Init(void) {
+  __HAL_RCC_TIM5_CLK_ENABLE();
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 84 - 1; // 84MHz / 84 = 1MHz timer clock (1us per tick)
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 0xFFFFFFFF; // 32-bit free-running
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  HAL_TIM_Base_Init(&htim5);
+  HAL_TIM_Base_Start(&htim5);
 }
 
-extern "C" void USART3_IRQHandler(void) {
-    HAL_UART_IRQHandler(&huart3);
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
+    if(tim_baseHandle->Instance==TIM2) {
+        /* TIM2 clock enable */
+        __HAL_RCC_TIM2_CLK_ENABLE();
+
+        /* TIM2 interrupt Init */
+        HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+        HAL_NVIC_EnableIRQ(TIM2_IRQn);
+    }
 }
 
 extern "C" int _write(int file, char *ptr, int len)
@@ -302,14 +325,154 @@ extern "C" int _write(int file, char *ptr, int len)
     if (file != 1) { // stdout
         return -1;
     }
+
+#ifdef SEND_MAVLINK_STATUSTEXT
+    static char printf_buffer[MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + 1];
+    static uint16_t buffer_index = 0;
+
+    for (int i = 0; i < len; i++) {
+        if (ptr[i] == '\n' || buffer_index == MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
+            if (buffer_index > 0) {
+                printf_buffer[buffer_index] = '\0'; // Null-terminate the string
+
+                mavlink_message_t msg;
+                uint8_t mav_buf[MAVLINK_MAX_PACKET_LEN];
+                mavlink_msg_statustext_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
+                                            MAV_SEVERITY_INFO, printf_buffer);
+
+                uint16_t mav_len = mavlink_msg_to_send_buffer(mav_buf, &msg);
+                CDC_Transmit_FS(mav_buf, mav_len);
+
+                buffer_index = 0; // Reset buffer
+            }
+        } else {
+            if (buffer_index < MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
+                printf_buffer[buffer_index++] = ptr[i];
+            }
+        }
+    }
+#else
+    // Original behavior: send raw data over USB
     CDC_Transmit_FS((uint8_t *)ptr, len);
+#endif
+
     return len;
+}
+
+/**
+ * @brief Sends the attitude quaternion over MAVLink.
+ * @param state The state data containing the orientation.
+ */
+void send_attitude_quaternion(const StateData& state) {
+    mavlink_message_t msg;
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+
+    // Pack the message
+    mavlink_msg_attitude_quaternion_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
+                                         state.Timestamp / 1000, // time_boot_ms
+                                         state.orientation.w(),
+                                         state.orientation.x(),
+                                         state.orientation.y(),
+                                         state.orientation.z(),
+                                         0.0f, 0.0f, 0.0f); // rollspeed, pitchspeed, yawspeed (not available in StateData)
+
+    // Copy the message to a buffer
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+
+    // Send the buffer over USB VCP
+    CDC_Transmit_FS(buf, len);
+}
+
+int main(void) {
+  SystemClock_Config_HSE(); // Configure the clock first.
+  HAL_Init(); // Then initialize the HAL, which sets up the SysTick based on the new clock.
+
+  initTime(); // Initialize our robust 64-bit timer
+
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_SPI1_Init();
+  MX_TIM2_Init();
+  MX_TIM5_Init(); // For CRSF
+  MX_USART3_UART_Init(); // For CRSF
+  MX_USB_DEVICE_Init();
+
+  // Create an instance of the BMI270 driver
+  BMI270 imu(&hspi1, GPIOC, GPIO_PIN_4);
+  g_imu_ptr = &imu; // Set the global pointer
+  Crsf crsf_receiver(&huart3, &htim5);
+  g_crsf_ptr = &crsf_receiver;
+
+  HAL_Delay(2000); // Wait for USB to enumerate
+  printf("\n--- BMI270 Initialization ---\n");
+
+  if (imu.init() == 0) {
+      printf("BMI270 Initialized Successfully.\n");
+  } else {
+      printf("BMI270 Initialization Failed!\n");
+      // It's good practice to halt if essential hardware fails
+      while(1);
+  }
+
+  // Start CRSF receiver (kicks off the first interrupt-driven receive)
+  HAL_UART_Receive_IT(&huart3, &g_crsf_rx_byte, 1);
+  printf("CRSF Receiver Started.\n");
+
+  // Start the timer. It will now trigger DMA reads automatically in the background.
+  HAL_TIM_Base_Start_IT(&htim2);
+
+  // --- Instantiate the Orientation Filter ---
+  MahonyFilter mahony_filter(g_data_manager);
+
+  // Create a consumer to read the state data produced by the filter
+  Consumer<StateData> state_consumer(g_data_manager);
+
+  while (1) {
+    // Run the filter. This will consume new IMU data and post a new state estimate.
+    mahony_filter.run();
+
+    // Check if the filter produced a new state estimate
+    std::vector<StateData> state_samples;
+    if (state_consumer.consume(state_samples) && !state_samples.empty()) {
+        // Send the latest state estimate over MAVLink
+        // send_attitude_quaternion(state_samples.back());
+    }
+
+    // Check for and process new RC commands
+    if (crsf_receiver.processFrame()) {
+        const auto& channels = crsf_receiver.getChannels();
+        // For now, just print the first 4 channels
+        printf("RC: %4u, %4u, %4u, %4u\n", channels.chan0, channels.chan1, channels.chan2, channels.chan3);
+    }
+    // Let the CPU rest briefly if there's nothing to do.
+    HAL_Delay(1);
+  }
 }
 
 extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
+  updateTime(); // Update our overflow counter
 }
 
 extern "C" void OTG_FS_IRQHandler(void) {
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
+}
+
+extern "C" void USART3_IRQHandler(void) {
+    HAL_UART_IRQHandler(&huart3);
+}
+
+extern "C" void TIM2_IRQHandler(void) {
+    // This is the interrupt handler for TIM2
+    HAL_TIM_IRQHandler(&htim2);
+}
+
+extern "C" void DMA2_Stream0_IRQHandler(void) {
+    // This is the interrupt handler for SPI1_RX
+    HAL_DMA_IRQHandler(hspi1.hdmarx);
+}
+
+extern "C" void DMA2_Stream3_IRQHandler(void) {
+    // This is the interrupt handler for SPI1_TX
+    HAL_DMA_IRQHandler(hspi1.hdmatx);
 }
