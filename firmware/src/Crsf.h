@@ -2,6 +2,7 @@
 #define CRSF_H
 
 #include "stm32f4xx_hal.h"
+#include "SensorData.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -11,34 +12,14 @@
 #define CRSF_FRAME_LENGTH_ADDRESS 1
 #define CRSF_FRAME_LENGTH_FRAMELENGTH 1
 #define CRSF_FRAME_LENGTH_TYPE_CRC 2 // Type and CRC are 2 bytes
-
-// Packed struct for CRSF channel data (11 bits per channel)
-struct CRSFChannelDataStruct {
-    unsigned int chan0 : 11;
-    unsigned int chan1 : 11;
-    unsigned int chan2 : 11;
-    unsigned int chan3 : 11;
-    unsigned int chan4 : 11;
-    unsigned int chan5 : 11;
-    unsigned int chan6 : 11;
-    unsigned int chan7 : 11;
-    unsigned int chan8 : 11;
-    unsigned int chan9 : 11;
-    unsigned int chan10 : 11;
-    unsigned int chan11 : 11;
-    unsigned int chan12 : 11;
-    unsigned int chan13 : 11;
-    unsigned int chan14 : 11;
-    unsigned int chan15 : 11;
-} __attribute__((__packed__));
-typedef struct CRSFChannelDataStruct CRSFChannelData;
+typedef CRSFPackedChannels CRSFChannelData; // Alias for backward compatibility if needed
 
 class Crsf {
 public:
     Crsf(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim);
     void init();
     bool processFrame();
-    const CRSFChannelData& getChannels() const;
+    const CRSFPackedChannels& getChannels() const;
 
     // Public method to be called from the UART ISR
     void handleRxByte(uint8_t byte);
@@ -54,7 +35,7 @@ private:
 
     uint8_t m_latest_frame[64];
     uint8_t m_latest_frame_len;
-    CRSFChannelData m_channel_data;
+    RCChannelsData m_rc_channels_data;
 };
 
 #endif // CRSF_H
