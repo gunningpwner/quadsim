@@ -86,6 +86,19 @@ public:
         return samples_consumed;
     }
 
+    void getLatest(T& latest_data) {
+        // If no data has ever been posted, do nothing.
+        if (m_update_count.load(std::memory_order_acquire) == 0) {
+            return;
+        }
+
+        // The latest data is at the index just before the current head.
+        // We use memory_order_acquire to ensure we see the data written by the producer.
+        size_t current_head = m_head.load(std::memory_order_acquire);
+        size_t latest_index = (current_head == 0) ? COMPILE_TIME_BUFFER_SIZE - 1 : current_head - 1;
+        latest_data = m_buffer[latest_index];
+    }
+
 #else
     // --- Desktop/SITL, Mutex-based, Dynamic Implementation ---
     explicit DataChannel(size_t buffer_size) : m_update_count(0), m_buffer_size(buffer_size) {}

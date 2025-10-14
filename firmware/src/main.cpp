@@ -13,6 +13,7 @@
 #include "Consumer.h"
 #include "MahonyFilter.h"
 #include "OtherData.h"
+#include "SensorData.h"
 #include "BodyRateController.h"
 #include "Crsf.h"
 
@@ -440,6 +441,7 @@ int main(void) {
 
   // --- State Machine Initialization ---
   FlightState current_state = FlightState::DISARMED;
+  RCChannelsData last_rc_frame;
   uint64_t last_rc_frame_time = 0;
   const uint64_t rc_timeout_us = 500000; // 500ms
 
@@ -452,7 +454,8 @@ int main(void) {
 
     // 2. Check for and process new RC commands. This is the primary input for state transitions.
     if (crsf_receiver.processFrame()) {
-        last_rc_frame_time = getCurrentTimeUs();
+        g_data_manager.getLatest(last_rc_frame);
+        last_rc_frame_time = last_rc_frame.Timestamp;
     }
 
     // 3. Check for RC link failure (Failsafe)
