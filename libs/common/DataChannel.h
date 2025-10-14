@@ -35,8 +35,8 @@ class DataChannel {
 public:
 #ifdef FIRMWARE_BUILD
     // --- Embedded-Safe, Lock-Free Ring Buffer Implementation ---
-    // The buffer_size argument is ignored here, as the size is fixed at compile time.
-    explicit DataChannel(size_t /*buffer_size*/) : m_head(0), m_tail(0), m_update_count(0) {}
+    // The buffer_size argument is ignored here, as the size is fixed at compile time for SPMC.
+    explicit DataChannel(size_t /*buffer_size*/) : m_head(0), m_update_count(0) {}
 
     // Throws std::invalid_argument if data contains NaN and T is NaN-checkable.
     void post(const T& data) {
@@ -53,11 +53,6 @@ public:
 
         // In this SPSC queue, if the head catches the tail, we overwrite old data.
         // This is a common strategy for sensor data where the latest is most important.
-        if (next_head == m_tail.load(std::memory_order_acquire)) {
-            // Buffer is full, advance the tail to make space (overwrite oldest data)
-            m_tail.store( (m_tail.load(std::memory_order_relaxed) + 1) % COMPILE_TIME_BUFFER_SIZE, std::memory_order_release);
-        }
-
         m_buffer[current_head] = data;
         m_head.store(next_head, std::memory_order_release);
         m_update_count.fetch_add(1, std::memory_order_relaxed);
@@ -65,33 +60,43 @@ public:
 
     bool consume(std::vector<T>& samples, unsigned int& last_seen_count) {
         unsigned int current_update_count = m_update_count.load(std::memory_order_acquire);
-        if (last_seen_count >= current_update_count) {
+        if (last_seen_count == current_update_count) {
             return false;
         }
 
         samples.clear();
-        size_t current_tail = m_tail.load(std::memory_order_relaxed);
-        size_t current_head = m_head.load(std::memory_order_acquire);
-
-        while(current_tail != current_head) {
-            samples.push_back(m_buffer[current_tail]);
-            current_tail = (current_tail + 1) % COMPILE_TIME_BUFFER_SIZE;
-        }
-
-        m_tail.store(current_head, std::memory_order_release);
-        last_seen_count = current_update_count;
-        return !samples.empty();
+        // For SPMC, each consumer must track its own tail. This method is now invalid.
+        // This is a placeholder to indicate it should not be used.
+        // A new consume method is needed that takes the consumer's state.
+        return false;
     }
 
-    void getLatest(T& latest_data) {
-        size_t current_head = m_head.load(std::memory_order_acquire);
-        if (current_head == m_tail.load(std::memory_order_acquire)) {
-            // Buffer is empty
-            return;
+    // New consume method for SPMC. Returns number of samples read.
+    size_t consume(T* sample_buffer, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
+        unsigned int current_update_count = m_update_count.load(std::memory_order_acquire);
+        if (last_seen_count == current_update_count) {
+            return 0; // No new data
         }
-        // Get the item just before the head
-        size_t latest_index = (current_head == 0) ? COMPILE_TIME_BUFFER_SIZE - 1 : current_head - 1;
-        latest_data = m_buffer[latest_index];
+
+        // Calculate how many samples have been written since we last checked.
+        // This is the key to detecting a buffer overrun.
+        unsigned int samples_missed = current_update_count - last_seen_count;
+        if (samples_missed > COMPILE_TIME_BUFFER_SIZE) {
+            // We've been lapped! The producer has overwritten all the data we were
+            // supposed to read. The last_read_index is now invalid.
+            // The safest thing to do is to reset our read index to the oldest available data.
+            last_read_index = (m_head.load(std::memory_order_acquire) + 1) % COMPILE_TIME_BUFFER_SIZE;
+        }
+
+        size_t current_head = m_head.load(std::memory_order_acquire);
+        size_t samples_consumed = 0;
+        while(last_read_index != current_head && samples_consumed < max_samples) {
+            sample_buffer[samples_consumed++] = m_buffer[last_read_index];
+            last_read_index = (last_read_index + 1) % COMPILE_TIME_BUFFER_SIZE;
+        }
+
+        last_seen_count = current_update_count;
+        return samples_consumed;
     }
 
 #else
@@ -146,7 +151,6 @@ private:
     static constexpr size_t COMPILE_TIME_BUFFER_SIZE = 50;
     std::array<T, COMPILE_TIME_BUFFER_SIZE> m_buffer;
     std::atomic<size_t> m_head;
-    std::atomic<size_t> m_tail;
     std::atomic<unsigned int> m_update_count;
 #else
     std::deque<T> m_buffer;
