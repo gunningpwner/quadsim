@@ -58,19 +58,6 @@ public:
         m_update_count.fetch_add(1, std::memory_order_relaxed);
     }
 
-    bool consume(std::vector<T>& samples, unsigned int& last_seen_count) {
-        unsigned int current_update_count = m_update_count.load(std::memory_order_acquire);
-        if (last_seen_count == current_update_count) {
-            return false;
-        }
-
-        samples.clear();
-        // For SPMC, each consumer must track its own tail. This method is now invalid.
-        // This is a placeholder to indicate it should not be used.
-        // A new consume method is needed that takes the consumer's state.
-        return false;
-    }
-
     // New consume method for SPMC. Returns number of samples read.
     size_t consume(T* sample_buffer, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
         unsigned int current_update_count = m_update_count.load(std::memory_order_acquire);

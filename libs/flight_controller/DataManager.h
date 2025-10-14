@@ -20,6 +20,7 @@ constexpr size_t GPS_BUFFER_SIZE = 10; // GPS updates less frequently
 constexpr size_t INPUT_BUFFER_SIZE = 2;
 constexpr size_t STATE_BUFFER_SIZE = 2;
 constexpr size_t MOTOR_COMMAND_BUFFER_SIZE = 2;
+constexpr size_t RC_CHANNELS_BUFFER_SIZE = 5; // RC frames can come in bursts, a slightly larger buffer is safer.
 
 using TimeSource = std::function<uint64_t()>;
 
@@ -39,7 +40,8 @@ public:
     m_gps_channel(GPS_BUFFER_SIZE),
     m_input_channel(INPUT_BUFFER_SIZE),
     m_state_channel(STATE_BUFFER_SIZE),
-    m_motor_command_channel(MOTOR_COMMAND_BUFFER_SIZE){}
+    m_motor_command_channel(MOTOR_COMMAND_BUFFER_SIZE),
+    m_rc_channels_channel(RC_CHANNELS_BUFFER_SIZE){}
 
     // --- WRITE Methods (Called by Producers like HAL and FlightController) ---
 
@@ -50,6 +52,7 @@ public:
     void post(const InputData& data){m_input_channel.post(data);};
     void post(const StateData& data){m_state_channel.post(data);};
     void post(const MotorCommands& data){m_motor_command_channel.post(data);};
+    void post(const RCChannelsData& data){m_rc_channels_channel.post(data);};
 
 
     // --- READ Methods (For simple consumers wanting only the latest value) ---
@@ -61,6 +64,7 @@ public:
     void getLatest(InputData& latest_data){m_input_channel.getLatest(latest_data);};
     void getLatest(StateData& latest_data){m_state_channel.getLatest(latest_data);};
     void getLatest(MotorCommands& latest_data){m_motor_command_channel.getLatest(latest_data);};
+    void getLatest(RCChannelsData& latest_data){m_rc_channels_channel.getLatest(latest_data);};
 
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
@@ -85,6 +89,9 @@ public:
     };
     bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count){
         return m_motor_command_channel.consume(samples,last_seen_count);
+    };
+    bool consume(std::vector<RCChannelsData>& samples, unsigned int& last_seen_count){
+        return m_rc_channels_channel.consume(samples, last_seen_count);
     };
 
 
@@ -123,6 +130,7 @@ private:
     DataChannel<InputData> m_input_channel;
     DataChannel<StateData> m_state_channel;
     DataChannel<MotorCommands> m_motor_command_channel;
+    DataChannel<RCChannelsData> m_rc_channels_channel;
 
 #ifndef FIRMWARE_BUILD
     std::mutex m_time_mutex;
