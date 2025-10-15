@@ -1,5 +1,6 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_spi.h"
+#include "stm32f4xx_hal_tim.h"
 #include "stm32f4xx_hal_uart.h"
 #include "common/mavlink.h"
 
@@ -16,6 +17,8 @@
 #include "SensorData.h"
 #include "BodyRateController.h"
 #include "Crsf.h"
+#include "DShot.h"
+#include "MotorDriver.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -37,6 +40,7 @@ enum class FlightState {
 // Global variables
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3; // For CRSF
+TIM_HandleTypeDef htim1;   // For DShot
 TIM_HandleTypeDef htim5;   // For CRSF timeout
 USBD_HandleTypeDef hUsbDeviceFS;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -45,6 +49,7 @@ extern USBD_DescriptorsTypeDef FS_Desc;
 // Function Prototypes
 void SystemClock_Config_HSE(void);
 void MX_USART3_UART_Init(void);
+void MX_TIM1_Init(void);
 void MX_TIM5_Init(void);
 void MX_USB_DEVICE_Init(void);
 void MX_DMA_Init(void);
@@ -152,6 +157,10 @@ void MX_DMA_Init(void)
   /* DMA2_Stream3_IRQn interrupt configuration (for SPI1_TX) */
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+
+  /* DMA2_Stream5_IRQn interrupt configuration (for TIM1_UP) */
+  HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 }
 
 TIM_HandleTypeDef htim2;
@@ -276,6 +285,65 @@ void MX_SPI1_Init(void) {
   HAL_SPI_Init(&hspi1);
 }
 
+void MX_TIM1_Init(void) {
+    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+    TIM_MasterConfigTypeDef sMasterConfig = {0};
+    TIM_OC_InitTypeDef sConfigOC = {0};
+    TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+    htim1.Instance = TIM1;
+    // DShot600 requires a 1.67us period.
+    // APB2 Timer clock is 168MHz. 168MHz / 1 = 168MHz.
+    // Period = 105 -> 168MHz / 105 = 1.6MHz bit clock. Bit period = 0.625us.
+    // DShot frame is 16 bits, so 16 * 0.625us = 10us per frame.
+    // This is much faster than DShot600, let's re-calculate.
+    // DShot600 bit period = 1.67us.
+    // Timer clock = 168MHz. Prescaler = 0.
+    // Period = 168 * 1.67 = 280.56. Let's use 280.
+    // Bit 0 (1/3 high) = 280 / 3 = 93
+    // Bit 1 (2/3 high) = 2 * 280 / 3 = 186
+    // Let's use the values from Betaflight which are well-tested.
+    // For DShot600 and 168MHz clock, Period=280, T0H=93, T1H=186
+    htim1.Init.Prescaler = 0;
+    htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim1.Init.Period = 280 - 1;
+    htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim1.Init.RepetitionCounter = 0;
+    htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_Base_Init(&htim1);
+
+    sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+    HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig);
+    HAL_TIM_PWM_Init(&htim1);
+
+    sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+    sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+    HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig);
+
+    sConfigOC.OCMode = TIM_OCMODE_PWM1;
+    sConfigOC.Pulse = 0;
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+    sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+    sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+    sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4);
+
+    sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+    sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+    sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+    sBreakDeadTimeConfig.DeadTime = 0;
+    sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+    sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+    sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+    HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig);
+
+    HAL_TIM_MspPostInit(&htim1);
+}
+
 void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -323,6 +391,54 @@ void MX_TIM5_Init(void) {
 
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
     if(tim_baseHandle->Instance==TIM2) {
+        /* TIM2 clock enable */
+        __HAL_RCC_TIM2_CLK_ENABLE();
+
+        /* TIM2 interrupt Init */
+        HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+        HAL_NVIC_EnableIRQ(TIM2_IRQn);
+    }
+}
+
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  if(htim->Instance==TIM1)
+  {
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    /**TIM1 GPIO Configuration
+    PA8     ------> TIM1_CH1
+    PA9     ------> TIM1_CH2
+    PA10     ------> TIM1_CH3
+    PA11     ------> TIM1_CH4
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF1_TIM1;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  }
+}
+
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
+    if(tim_baseHandle->Instance==TIM1) {
+        __HAL_RCC_TIM1_CLK_ENABLE();
+        // DMA for TIM1_UP
+        static DMA_HandleTypeDef hdma_tim1_up;
+        hdma_tim1_up.Instance = DMA2_Stream5;
+        hdma_tim1_up.Init.Channel = DMA_CHANNEL_6;
+        hdma_tim1_up.Init.Direction = DMA_MEMORY_TO_PERIPH;
+        hdma_tim1_up.Init.PeriphInc = DMA_PINC_DISABLE;
+        hdma_tim1_up.Init.MemInc = DMA_MINC_ENABLE;
+        hdma_tim1_up.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
+        hdma_tim1_up.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;
+        hdma_tim1_up.Init.Mode = DMA_NORMAL;
+        hdma_tim1_up.Init.Priority = DMA_PRIORITY_HIGH;
+        hdma_tim1_up.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+        HAL_DMA_Init(&hdma_tim1_up);
+        __HAL_LINKDMA(tim_baseHandle, hdma[TIM_DMA_ID_UPDATE], hdma_tim1_up);
+    } else if(tim_baseHandle->Instance==TIM2) {
         /* TIM2 clock enable */
         __HAL_RCC_TIM2_CLK_ENABLE();
 
@@ -404,6 +520,7 @@ int main(void) {
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM5_Init(); // For CRSF
   MX_USART3_UART_Init(); // For CRSF
@@ -414,6 +531,8 @@ int main(void) {
   g_imu_ptr = &imu; // Set the global pointer
   Crsf crsf_receiver(&huart3, &htim5);
   g_crsf_ptr = &crsf_receiver;
+  DShot dshot_driver(&htim1);
+
 
   HAL_Delay(2000); // Wait for USB to enumerate
   printf("\n--- BMI270 Initialization ---\n");
@@ -424,6 +543,13 @@ int main(void) {
       printf("BMI270 Initialization Failed!\n");
       // It's good practice to halt if essential hardware fails
       while(1);
+  }
+
+  printf("--- DShot Initialization ---\n");
+  if (dshot_driver.init() == 0) {
+      printf("DShot Initialized Successfully.\n");
+  } else {
+      printf("DShot Initialization Failed!\n");
   }
 
   // Start CRSF receiver (kicks off the first interrupt-driven receive)
@@ -439,6 +565,9 @@ int main(void) {
   // --- Instantiate Controllers ---
   BodyRateController rate_controller(g_data_manager);
 
+  // --- Instantiate Motor Driver ---
+  MotorDriver motor_driver(g_data_manager, dshot_driver);
+
   // --- State Machine Initialization ---
   FlightState current_state = FlightState::DISARMED;
   RCChannelsData last_rc_frame;
@@ -451,6 +580,9 @@ int main(void) {
     // 1. Run the orientation filter. It consumes IMU data and produces state estimates
     //    that are needed by controllers and for telemetry.
     mahony_filter.run();
+
+    // Run the motor driver. It consumes MotorCommands and outputs DShot signals.
+    motor_driver.run();
 
     // 2. Check for and process new RC commands. This is the primary input for state transitions.
     if (crsf_receiver.processFrame()) {
@@ -559,4 +691,9 @@ extern "C" void DMA2_Stream0_IRQHandler(void) {
 extern "C" void DMA2_Stream3_IRQHandler(void) {
     // This is the interrupt handler for SPI1_TX
     HAL_DMA_IRQHandler(hspi1.hdmatx);
+}
+
+extern "C" void DMA2_Stream5_IRQHandler(void) {
+    // This is the interrupt handler for TIM1_UP
+    HAL_DMA_IRQHandler(htim1.hdma[TIM_DMA_ID_UPDATE]);
 }
