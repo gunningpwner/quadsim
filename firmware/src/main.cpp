@@ -13,6 +13,8 @@
 #include "Consumer.h"
 #include "MahonyFilter.h"
 #include "OtherData.h"
+#include "SensorData.h"
+#include "BodyRateController.h"
 #include "Crsf.h"
 
 #include <string.h>
@@ -21,6 +23,16 @@
 // MAVLink system and component IDs for our vehicle
 #define MAVLINK_SYSTEM_ID 1
 #define MAVLINK_COMPONENT_ID 1
+
+// --- Flight State Machine ---
+enum class FlightState {
+    UNINITIALIZED,
+    DISARMED,
+    ARMING,
+    ARMED_RATE,
+    // Add future modes here: ARMED_ANGLE, ARMED_POS_HOLD, etc.
+    FAILSAFE
+};
 
 // Global variables
 SPI_HandleTypeDef hspi1;
@@ -424,28 +436,100 @@ int main(void) {
   // --- Instantiate the Orientation Filter ---
   MahonyFilter mahony_filter(g_data_manager);
 
-  // Create a consumer to read the state data produced by the filter
-  Consumer<StateData> state_consumer(g_data_manager);
+  // --- Instantiate Controllers ---
+  BodyRateController rate_controller(g_data_manager);
+
+  // --- State Machine Initialization ---
+  FlightState current_state = FlightState::DISARMED;
+  RCChannelsData last_rc_frame;
+  uint64_t last_rc_frame_time = 0;
+  const uint64_t rc_timeout_us = 500000; // 500ms
 
   while (1) {
-    // Run the filter. This will consume new IMU data and post a new state estimate.
+    // --- Universal Tasks (Run in every state) ---
+
+    // 1. Run the orientation filter. It consumes IMU data and produces state estimates
+    //    that are needed by controllers and for telemetry.
     mahony_filter.run();
 
-    // Check if the filter produced a new state estimate
-    std::vector<StateData> state_samples;
-    if (state_consumer.consume(state_samples) && !state_samples.empty()) {
-        // Send the latest state estimate over MAVLink
-        // send_attitude_quaternion(state_samples.back());
+    // 2. Check for and process new RC commands. This is the primary input for state transitions.
+    if (crsf_receiver.processFrame()) {
+        g_data_manager.getLatest(last_rc_frame);
+        last_rc_frame_time = last_rc_frame.Timestamp;
     }
 
-    // Check for and process new RC commands
-    if (crsf_receiver.processFrame()) {
-        const auto& channels = crsf_receiver.getChannels();
-        // For now, just print the first 4 channels
-        printf("RC: %4u, %4u, %4u, %4u\n", channels.chan0, channels.chan1, channels.chan2, channels.chan3);
+    // 3. Check for RC link failure (Failsafe)
+    if (current_state != FlightState::DISARMED && (getCurrentTimeUs() - last_rc_frame_time > rc_timeout_us)) {
+        current_state = FlightState::FAILSAFE;
     }
-    // Let the CPU rest briefly if there's nothing to do.
-    HAL_Delay(1);
+
+    // --- Main State Machine ---
+    switch (current_state) {
+        case FlightState::UNINITIALIZED:
+            // Should not be in this state after setup.
+            // Maybe flash an error LED pattern.
+            break;
+
+        case FlightState::DISARMED:
+        {
+            // Action: Ensure motors are off.
+            MotorCommands zero_commands = {}; // All motors at 0.0f
+            g_data_manager.post(zero_commands);
+
+            // Transition: Check for arming sequence.
+            // Example: Throttle low (chan2 < 200) and Arm switch high (chan4 > 1800)
+            // CRSF values range from ~172 to 1811.
+            const auto& channels = crsf_receiver.getChannels();
+            if (channels.chan2 < 200 && channels.chan4 > 1800) {
+                printf("ARMING...\n");
+                current_state = FlightState::ARMED_RATE;
+            }
+            break;
+        }
+
+        case FlightState::ARMED_RATE:
+        {
+            // Action: Run the body rate controller.
+            rate_controller.run();
+
+            // Transition: Check for disarming sequence.
+            // Example: Arm switch low (chan4 < 200)
+            const auto& channels = crsf_receiver.getChannels();
+            if (channels.chan4 < 200) {
+                printf("DISARMING...\n");
+                current_state = FlightState::DISARMED;
+            }
+
+            // Transition: Check for mode switch (future).
+            // if (channels.chan5 > 1800) { current_state = FlightState::ARMED_ANGLE; }
+
+            break;
+        }
+
+        case FlightState::FAILSAFE:
+        {
+            // Action: Failsafe behavior. For now, just cut the motors.
+            // A more advanced implementation might try to auto-land.
+            printf("FAILSAFE: RC link lost!\n");
+            MotorCommands zero_commands = {};
+            g_data_manager.post(zero_commands);
+
+            // Transition: Check if RC link is restored.
+            if (getCurrentTimeUs() - last_rc_frame_time < rc_timeout_us) {
+                printf("RC link restored. Returning to DISARMED state.\n");
+                current_state = FlightState::DISARMED; // Go to a safe state
+            }
+            break;
+        }
+
+        default:
+            // Should not happen. Go to a safe state.
+            printf("Unknown state! Forcing DISARMED.\n");
+            current_state = FlightState::DISARMED;
+            break;
+    }
+
+
   }
 }
 

@@ -1,5 +1,11 @@
 #include "Crsf.h"
 #include <string.h> // For memcpy
+#include "timing.h"
+#include "DataManager.h"
+
+// Make the global DataManager instance from main.cpp available here.
+// This allows the non-ISR context function to post data.
+extern DataManager g_data_manager;
 
 // This is the standard CRC8-DVB-S2 used by CRSF
 static uint8_t crc8_dvb_s2(uint8_t crc, unsigned char a) {
@@ -21,7 +27,7 @@ Crsf::Crsf(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim)
       m_frame_position(0),
       m_frame_start_time(0),
       m_latest_frame_len(0) {
-    memset(&m_channel_data, 0, sizeof(m_channel_data));
+    memset(&m_rc_channels_data, 0, sizeof(m_rc_channels_data));
 }
 
 void Crsf::init() {
@@ -83,13 +89,21 @@ bool Crsf::processFrame() {
 
     if (frame_type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
         // The frame payload starts after address, length, and type bytes.
-        memcpy(&m_channel_data, &m_latest_frame[3], sizeof(CRSFChannelData));
+        // We copy directly into the 'channels' member of our timestamped struct.
+        memcpy(&m_rc_channels_data.channels, &m_latest_frame[3], sizeof(CRSFPackedChannels));
+
+        // Set the timestamp for this new data.
+        m_rc_channels_data.Timestamp = getCurrentTimeUs();
+
+        // Post the new, timestamped RC data to the central DataManager.
+        g_data_manager.post(m_rc_channels_data);
+
         return true;
     }
 
     return false; // Not a channel data frame
 }
 
-const CRSFChannelData& Crsf::getChannels() const {
-    return m_channel_data;
+const CRSFPackedChannels& Crsf::getChannels() const {
+    return m_rc_channels_data.channels;
 }

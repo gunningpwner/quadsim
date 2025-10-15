@@ -12,7 +12,8 @@ struct TimestampedData {
         Accel,
         Gyro,
         Mag,
-        MotorRPMs
+        MotorRPMs,
+        RCChannels
     };
 
     int64_t Timestamp = 0;
@@ -84,4 +85,35 @@ struct MotorRPMs:TimestampedData
     MotorRPMs() { type = Type::MotorRPMs; }
     std::array<float, 4> rpms;
 };
+
+
+// This struct directly maps to the 22-byte payload of a CRSF "Packed RC Channels" frame.
+// It should not be modified without understanding the CRSF protocol.
+struct CRSFPackedChannels {
+    unsigned int chan0 : 11;
+    unsigned int chan1 : 11;
+    unsigned int chan2 : 11;
+    unsigned int chan3 : 11;
+    unsigned int chan4 : 11;
+    unsigned int chan5 : 11;
+    unsigned int chan6 : 11;
+    unsigned int chan7 : 11;
+    unsigned int chan8 : 11;
+    unsigned int chan9 : 11;
+    unsigned int chan10 : 11;
+    unsigned int chan11 : 11;
+    unsigned int chan12 : 11;
+    unsigned int chan13 : 11;
+    unsigned int chan14 : 11;
+    unsigned int chan15 : 11;
+} __attribute__((__packed__));
+
+/// <summary>
+/// Holds a timestamped set of RC channel values.
+/// </summary>
+struct RCChannelsData : TimestampedData {
+    RCChannelsData() { type = Type::RCChannels; }
+    CRSFPackedChannels channels;
+};
+
 #endif // SENSORDATA_H
