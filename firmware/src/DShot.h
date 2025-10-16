@@ -4,6 +4,29 @@
 #include <array>
 #include <cstdint>
 
+
+enum class DShot_Command : uint16_t {
+    MOTOR_STOP = 0,
+    BEEP1 = 1,
+    BEEP2 = 2,
+    BEEP3 = 3,
+    BEEP4 = 4,
+    BEEP5 = 5,
+    ESC_INFO = 6, 
+    SPIN_DIRECTION_1 = 7,
+    SPIN_DIRECTION_2 = 8,
+    MODE_3D_OFF = 9,
+    MODE_3D_ON = 10,
+    SETTINGS_REQUEST = 11, // V2
+    SAVE_SETTINGS = 12,
+    SPIN_DIRECTION_NORMAL = 20,
+    SPIN_DIRECTION_REVERSED = 21,
+    LED0_ON = 22,
+    LED1_ON = 23,
+    LED2_ON = 24,
+    LED3_ON = 25,
+};
+
 class DShot {
 public:
     /**
@@ -23,6 +46,13 @@ public:
      * @param motor_values An array of 4 motor values, range 0-1999.
      */
     void write(const std::array<uint16_t, 4>& motor_values);
+
+    /**
+     * @brief Sends a specific command to all 4 ESCs.
+     * @param command The DShot command to send.
+     * @param telemetry Whether to request telemetry on this command packet.
+     */
+    void write_command(DShot_Command command, bool telemetry = false);
 
 private:
     /**

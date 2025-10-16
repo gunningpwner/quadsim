@@ -543,6 +543,8 @@ int main(void) {
       printf("DShot Initialization Failed!\n");
   }
 
+  dshot_driver.write_command(DShot_Command::BEEP3);
+
   // Start CRSF receiver (kicks off the first interrupt-driven receive)
   HAL_UART_Receive_IT(&huart3, &g_crsf_rx_byte, 1);
   printf("CRSF Receiver Started.\n");
@@ -564,7 +566,7 @@ int main(void) {
   RCChannelsData last_rc_frame;
   uint64_t last_rc_frame_time = 0;
   const uint64_t rc_timeout_us = 500000; // 500ms
-
+  
   while (1) {
     // --- Universal Tasks (Run in every state) ---
 
@@ -596,9 +598,9 @@ int main(void) {
         case FlightState::DISARMED:
         {
             // Action: Ensure motors are off.
-            MotorCommands zero_commands = {}; // All motors at 0.0f
-            g_data_manager.post(zero_commands);
-
+            // MotorCommands zero_commands = {}; // All motors at 0.0f
+            // g_data_manager.post(zero_commands);
+            dshot_driver.write_command(DShot_Command::MOTOR_STOP);
             // Transition: Check for arming sequence.
             // Example: Throttle low (chan2 < 200) and Arm switch high (chan4 > 1800)
             // CRSF values range from ~172 to 1811.
