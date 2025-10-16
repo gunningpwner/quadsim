@@ -41,6 +41,7 @@ enum class FlightState {
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3; // For CRSF
 TIM_HandleTypeDef htim1;   // For DShot
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim5;   // For CRSF timeout
 USBD_HandleTypeDef hUsbDeviceFS;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -163,7 +164,7 @@ void MX_DMA_Init(void)
   HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 }
 
-TIM_HandleTypeDef htim2;
+
 
 void MX_TIM2_Init(void) {
     // TIM2 is on APB1, which has a timer clock of 84 MHz.
@@ -389,16 +390,6 @@ void MX_TIM5_Init(void) {
   HAL_TIM_Base_Start(&htim5);
 }
 
-void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
-    if(tim_baseHandle->Instance==TIM2) {
-        /* TIM2 clock enable */
-        __HAL_RCC_TIM2_CLK_ENABLE();
-
-        /* TIM2 interrupt Init */
-        HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
-        HAL_NVIC_EnableIRQ(TIM2_IRQn);
-    }
-}
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
 {
