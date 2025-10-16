@@ -574,8 +574,6 @@ int main(void) {
     //    that are needed by controllers and for telemetry.
     mahony_filter.run();
 
-    // Run the motor driver. It consumes MotorCommands and outputs DShot signals.
-    motor_driver.run();
 
     // 2. Check for and process new RC commands. This is the primary input for state transitions.
     if (crsf_receiver.processFrame()) {
@@ -611,12 +609,14 @@ int main(void) {
             }
             break;
         }
-
+        
         case FlightState::ARMED_RATE:
         {
             // Action: Run the body rate controller.
             rate_controller.run();
 
+            // Run the motor driver. It consumes MotorCommands and outputs DShot signals.
+            motor_driver.run();
             // Transition: Check for disarming sequence.
             // Example: Arm switch low (chan4 < 200)
             const auto& channels = crsf_receiver.getChannels();
@@ -636,8 +636,7 @@ int main(void) {
             // Action: Failsafe behavior. For now, just cut the motors.
             // A more advanced implementation might try to auto-land.
             printf("FAILSAFE: RC link lost!\n");
-            MotorCommands zero_commands = {};
-            g_data_manager.post(zero_commands);
+            dshot_driver.write_command(DShot_Command::MOTOR_STOP);
 
             // Transition: Check if RC link is restored.
             if (getCurrentTimeUs() - last_rc_frame_time < rc_timeout_us) {
