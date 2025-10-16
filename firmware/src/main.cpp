@@ -543,7 +543,6 @@ int main(void) {
       printf("DShot Initialization Failed!\n");
   }
 
-  dshot_driver.write_command(DShot_Command::BEEP3);
 
   // Start CRSF receiver (kicks off the first interrupt-driven receive)
   HAL_UART_Receive_IT(&huart3, &g_crsf_rx_byte, 1);
@@ -562,7 +561,8 @@ int main(void) {
   MotorDriver motor_driver(g_data_manager, dshot_driver);
 
   // --- State Machine Initialization ---
-  FlightState current_state = FlightState::DISARMED;
+  FlightState current_state = FlightState::UNINITIALIZED;
+  FlightState previous_state = FlightState::UNINITIALIZED;
   RCChannelsData last_rc_frame;
   uint64_t last_rc_frame_time = 0;
   const uint64_t rc_timeout_us = 500000; // 500ms
@@ -577,6 +577,9 @@ int main(void) {
 
     // 2. Check for and process new RC commands. This is the primary input for state transitions.
     if (crsf_receiver.processFrame()) {
+        if(current_state == FlightState::UNINITIALIZED){
+            current_state = FlightState::DISARMED;
+        }
         g_data_manager.getLatest(last_rc_frame);
         last_rc_frame_time = last_rc_frame.Timestamp;
     }
@@ -587,73 +590,89 @@ int main(void) {
     }
 
     // --- Main State Machine ---
-    switch (current_state) {
+    // This structure separates one-time "on-enter" actions from continuous "run" actions.
+    if (current_state != previous_state) {
+        // --- ON-EXIT LOGIC (from previous_state) ---
+        switch (previous_state) {
+            case FlightState::ARMED_RATE:
+                // Example: Log that we are leaving armed state
+                printf("Exiting ARMED_RATE state.\n");
+                break;
+            case FlightState::UNINITIALIZED:
+                dshot_driver.write_command(DShot_Command::BEEP3);
+                break;
+            default:
+                break;
+        }
+        // --- ON-ENTER LOGIC (to current_state) ---
+        switch (current_state) {
+            case FlightState::DISARMED:
+                printf("Entering DISARMED state.\n");
+                // Ensure motors are commanded to stop immediately upon entering this state.
+                dshot_driver.write_command(DShot_Command::MOTOR_STOP);
+                break;
+            case FlightState::ARMED_RATE:
+                printf("Entering ARMED_RATE state.\n");
+                // Example: This is a great place for one-time arming actions,
+                // like resetting integrators in the controller.
+                rate_controller.reset();
+                break;
+            case FlightState::FAILSAFE:
+                printf("ENTERING FAILSAFE: RC link lost!\n");
+                // Immediately cut motors.
+                dshot_driver.write_command(DShot_Command::MOTOR_STOP);
+                break;
+            default:
+                break;
+        }
+        previous_state = current_state;
+    }
+
+    // --- RUN LOGIC (while in current_state) ---
+    switch(current_state) {
         case FlightState::UNINITIALIZED:
-            // Should not be in this state after setup.
-            // Maybe flash an error LED pattern.
             break;
 
         case FlightState::DISARMED:
         {
-            // Action: Ensure motors are off.
-            // MotorCommands zero_commands = {}; // All motors at 0.0f
-            // g_data_manager.post(zero_commands);
-            dshot_driver.write_command(DShot_Command::MOTOR_STOP);
             // Transition: Check for arming sequence.
             // Example: Throttle low (chan2 < 200) and Arm switch high (chan4 > 1800)
             // CRSF values range from ~172 to 1811.
             const auto& channels = crsf_receiver.getChannels();
             if (channels.chan2 < 200 && channels.chan4 > 1800) {
-                printf("ARMING...\n");
-                current_state = FlightState::ARMED_RATE;
+                next_state = FlightState::ARMED_RATE;
             }
             break;
         }
         
         case FlightState::ARMED_RATE:
         {
-            // Action: Run the body rate controller.
+            // Run the controllers and motor outputs.
             rate_controller.run();
-
-            // Run the motor driver. It consumes MotorCommands and outputs DShot signals.
             motor_driver.run();
             // Transition: Check for disarming sequence.
             // Example: Arm switch low (chan4 < 200)
             const auto& channels = crsf_receiver.getChannels();
             if (channels.chan4 < 200) {
-                printf("DISARMING...\n");
-                current_state = FlightState::DISARMED;
+                next_state = FlightState::DISARMED;
             }
-
-            // Transition: Check for mode switch (future).
-            // if (channels.chan5 > 1800) { current_state = FlightState::ARMED_ANGLE; }
-
             break;
         }
 
         case FlightState::FAILSAFE:
         {
-            // Action: Failsafe behavior. For now, just cut the motors.
-            // A more advanced implementation might try to auto-land.
-            printf("FAILSAFE: RC link lost!\n");
-            dshot_driver.write_command(DShot_Command::MOTOR_STOP);
-
             // Transition: Check if RC link is restored.
             if (getCurrentTimeUs() - last_rc_frame_time < rc_timeout_us) {
                 printf("RC link restored. Returning to DISARMED state.\n");
-                current_state = FlightState::DISARMED; // Go to a safe state
+                next_state = FlightState::DISARMED; // Go to a safe state
             }
             break;
         }
 
         default:
-            // Should not happen. Go to a safe state.
-            printf("Unknown state! Forcing DISARMED.\n");
-            current_state = FlightState::DISARMED;
+            next_state = FlightState::DISARMED;
             break;
     }
-
-
   }
 }
 
