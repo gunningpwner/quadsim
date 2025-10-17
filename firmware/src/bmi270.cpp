@@ -8,8 +8,7 @@
 
 // Make the global DataManager instance from main.cpp available here.
 // This allows the ISR-context function to post data.
-extern DataManager g_data_manager;
-
+extern DataManager* g_data_manager_ptr;
 
 BMI270::BMI270(SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin)
     : m_spi_handle(spi_handle), m_cs_port(cs_port), m_cs_pin(cs_pin) {}
@@ -201,6 +200,8 @@ void BMI270::processRawData() {
 
   // Post the processed data to the central DataManager.
   // This is safe to do from an ISR because the DataChannel uses a lock-free ring buffer.
-  g_data_manager.post(accel_data);
-  g_data_manager.post(gyro_data);
+  if (g_data_manager_ptr) {
+    g_data_manager_ptr->post(accel_data);
+    g_data_manager_ptr->post(gyro_data);
+  }
 }
