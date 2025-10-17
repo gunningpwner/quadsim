@@ -40,7 +40,7 @@ public:
     m_gps_channel(GPS_BUFFER_SIZE),
     m_input_channel(INPUT_BUFFER_SIZE),
     m_state_channel(STATE_BUFFER_SIZE),
-    m_motor_command_channel(MOTOR_COMMAND_BUFFER_SIZE),
+    m_motor_commands_channel(MOTOR_COMMAND_BUFFER_SIZE), // Renamed and type changed
     m_rc_channels_channel(RC_CHANNELS_BUFFER_SIZE){}
 
     // --- WRITE Methods (Called by Producers like HAL and FlightController) ---
@@ -50,8 +50,13 @@ public:
     void post(const MagData& data){m_mag_channel.post(data);};
     void post(const GPSPositionData& data){m_gps_channel.post(data);};
     void post(const InputData& data){m_input_channel.post(data);};
-    void post(const StateData& data){m_state_channel.post(data);};
-    void post(const MotorCommands& data){m_motor_command_channel.post(data);};
+    void post(const StateData& data){m_state_channel.post(data);}; 
+    void post(const MotorCommands& data){
+        m_motor_commands_channel.post(data);
+        if (m_motor_command_post_callback) {
+            m_motor_command_post_callback();
+        }
+    };
     void post(const RCChannelsData& data){m_rc_channels_channel.post(data);};
 
 
@@ -62,8 +67,8 @@ public:
     void getLatest(MagData& latest_data){m_mag_channel.getLatest(latest_data);};
     void getLatest(GPSPositionData& latest_data){m_gps_channel.getLatest(latest_data);};
     void getLatest(InputData& latest_data){m_input_channel.getLatest(latest_data);};
-    void getLatest(StateData& latest_data){m_state_channel.getLatest(latest_data);};
-    void getLatest(MotorCommands& latest_data){m_motor_command_channel.getLatest(latest_data);};
+    void getLatest(StateData& latest_data){m_state_channel.getLatest(latest_data);}; 
+    void getLatest(MotorCommands& latest_data){m_motor_commands_channel.getLatest(latest_data);};
     void getLatest(RCChannelsData& latest_data){m_rc_channels_channel.getLatest(latest_data);};
 
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
@@ -87,8 +92,8 @@ public:
     bool consume(std::vector<StateData>& samples, unsigned int& last_seen_count){
         return m_state_channel.consume(samples,last_seen_count);
     };
-    bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count){
-        return m_motor_command_channel.consume(samples,last_seen_count);
+    bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count){ // New consume for MotorCommands
+        return m_motor_commands_channel.consume(samples,last_seen_count);
     };
     bool consume(std::vector<RCChannelsData>& samples, unsigned int& last_seen_count){
         return m_rc_channels_channel.consume(samples, last_seen_count);
@@ -118,19 +123,26 @@ public:
         m_time_source = time_source_func;
     }
 
+    // Register a callback to be invoked when new MotorCommands are posted.
+    void registerMotorCommandPostCallback(std::function<void()> callback) {
+        m_motor_command_post_callback = callback;
+    }
+
 
 private:
 
     TimeSource m_time_source;
 
-    DataChannel<GyroData>  m_gyro_channel;
-    DataChannel<AccelData> m_accel_channel;
-    DataChannel<MagData>   m_mag_channel;
-    DataChannel<GPSPositionData>   m_gps_channel;
-    DataChannel<InputData> m_input_channel;
-    DataChannel<StateData> m_state_channel;
-    DataChannel<MotorCommands> m_motor_command_channel;
-    DataChannel<RCChannelsData> m_rc_channels_channel;
+    DataChannel<GyroData>           m_gyro_channel;
+    DataChannel<AccelData>          m_accel_channel;
+    DataChannel<MagData>            m_mag_channel;
+    DataChannel<GPSPositionData>    m_gps_channel;
+    DataChannel<InputData>          m_input_channel;
+    DataChannel<StateData>          m_state_channel;
+    DataChannel<MotorCommands>      m_motor_commands_channel; // Changed to MotorCommands
+    DataChannel<RCChannelsData>     m_rc_channels_channel;
+
+    std::function<void()> m_motor_command_post_callback; // Callback for motor commands
 
 #ifndef FIRMWARE_BUILD
     std::mutex m_time_mutex;

@@ -1,6 +1,5 @@
 #include "stm32f4xx_hal.h"
 #include "common/mavlink.h"
-
 #include "usbd_cdc_if.h"
 #include "bmi270.h"
 #include "timing.h"
@@ -8,7 +7,6 @@
 #include "DShot.h"
 #include "MCE.h"
 #include "peripherals.h"
-
 #include <string.h>
 #include <stdio.h>
 
@@ -172,7 +170,8 @@ int main(void) {
   g_crsf_ptr = &crsf_receiver;
   DShot dshot_driver(&htim1);
 
-
+  // Register the DShot driver's callback for motor commands
+  g_data_manager_ptr->registerMotorCommandPostCallback([&dshot_driver](){ dshot_driver.onMotorCommandPosted(); });
   HAL_Delay(2000); // Wait for USB to enumerate
   printf("\n--- BMI270 Initialization ---\n");
 

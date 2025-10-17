@@ -1,6 +1,7 @@
 #ifndef OTHERDATA_H
 #define OTHERDATA_H
 
+#include <cstdint>
 #include <Eigen/Dense>
 
 
@@ -40,9 +41,34 @@ struct StateData
     }
 };
 
+enum class DShot_Command : uint16_t {
+    MOTOR_STOP = 0,
+    BEEP1 = 1,
+    BEEP2 = 2,
+    BEEP3 = 3,
+    BEEP4 = 4,
+    BEEP5 = 5,
+    ESC_INFO = 6, 
+    SPIN_DIRECTION_1 = 7,
+    SPIN_DIRECTION_2 = 8,
+    MODE_3D_OFF = 9,
+    MODE_3D_ON = 10,
+    SETTINGS_REQUEST = 11, // V2
+    SAVE_SETTINGS = 12,
+    SPIN_DIRECTION_NORMAL = 20,
+    SPIN_DIRECTION_REVERSED = 21,
+    LED0_ON = 22,
+    LED1_ON = 23,
+    LED2_ON = 24,
+    LED3_ON = 25,
+};
+
 struct MotorCommands
 {
-    float motor_speed[4]; // Array to hold speeds for 4 motors
+    uint64_t Timestamp;
+    bool is_throttle_command; // true for throttle values, false for a command
+    uint16_t throttle[4];     // Throttle values (0-2047)
+    DShot_Command command;    // Command to be sent to all motors
 };
 
 

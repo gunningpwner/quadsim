@@ -66,6 +66,40 @@ State* DisarmedState::instance() {
 }
 
 State* DisarmedState::on_enter(MonolithicControlEntity* mce){
-    //TODO: Figure out how to pipe the motor stop command in a way that it is hardware agnostic
-    // Maybe a new channel idk
-};
+    printf("Entering DISARMED state.\n");
+    // Post a motor command to stop all motors.
+    MotorCommands motor_command = {}; // Zero-initialize
+    motor_command.Timestamp = mce->getDataManager().getCurrentTimeUs();
+    motor_command.is_throttle_command = false;
+    motor_command.command = DShot_Command::MOTOR_STOP;
+    mce->getDataManager().post(motor_command);
+}
+
+State* DisarmedState::on_run(MonolithicControlEntity* mce) {
+    // TODO: Transition to ARMED_RATE state based on RC channels
+    return this;
+}
+
+State* FailsafeState::instance() {
+    static FailsafeState instance;
+    return &instance;
+}
+
+void FailsafeState::on_enter(MonolithicControlEntity* mce) {
+    printf("ENTERING FAILSAFE: RC link lost!\n");
+    // Post a motor command to stop all motors.
+    MotorCommands motor_command = {}; // Zero-initialize
+    motor_command.Timestamp = mce->getDataManager().getCurrentTimeUs();
+    motor_command.is_throttle_command = false;
+    motor_command.command = DShot_Command::MOTOR_STOP;
+    mce->getDataManager().post(motor_command);
+}
+
+State* FailsafeState::on_run(MonolithicControlEntity* mce) {
+    // Transition: Check if RC link is restored.
+    if (mce->getDataManager().getCurrentTimeUs() - mce->last_rc_frame_time < mce->rc_timeout_us) {
+        printf("RC link restored. Returning to DISARMED state.\n");
+        return DisarmedState::instance(); // Go to a safe state
+    }
+    return this;
+}
