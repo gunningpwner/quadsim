@@ -55,7 +55,7 @@ public:
         // This is a common strategy for sensor data where the latest is most important.
         m_buffer[current_head] = data;
         m_head.store(next_head, std::memory_order_release);
-        m_update_count.fetch_add(1, std::memory_order_relaxed);
+        m_update_count.fetch_add(1, std::memory_order_release); // Use release to sync with consumers
     }
 
     // New consume method for SPMC. Returns number of samples read.

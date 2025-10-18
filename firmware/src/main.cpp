@@ -196,7 +196,6 @@ int main(void) {
 
   // Start the timer. It will now trigger DMA reads automatically in the background.
   HAL_TIM_Base_Start_IT(&htim2);
-
   
 
   while (1) {

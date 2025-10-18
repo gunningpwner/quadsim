@@ -21,9 +21,17 @@ void MonolithicControlEntity::run() {
     if (m_data_manager.getLatest(last_rc_frame)) {
         last_rc_frame_time = last_rc_frame.Timestamp;
     }
-
+    uint64_t current_time = m_data_manager.getCurrentTimeUs();
+    // Print 64-bit time as two 32-bit parts to avoid issues with printf not supporting %llu
+    // printf("Time H:%lu L:%lu\n", (unsigned long)(current_time >> 32), (unsigned long)(current_time & 0xFFFFFFFF));
+    // printf("Last RC Frame TimeH:%lu L:%lu\n", (unsigned long)(last_rc_frame_time >> 32), (unsigned long)(last_rc_frame_time & 0xFFFFFFFF));
     // 3. Check for RC link failure (Failsafe)
-    if (m_current_state != FailsafeState::instance() && (m_data_manager.getCurrentTimeUs() - last_rc_frame_time > rc_timeout_us)) {
+    // Only check for failsafe if we have received at least one frame (i.e., last_rc_frame_time is not 0)
+    
+    if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 &&
+        (m_data_manager.getCurrentTimeUs() - last_rc_frame_time > rc_timeout_us)) {
+        printf("Time H:%lu L:%lu\n", (unsigned long)(current_time >> 32), (unsigned long)(current_time & 0xFFFFFFFF));
+        printf("Last RC Frame TimeH:%lu L:%lu\n", (unsigned long)(last_rc_frame_time >> 32), (unsigned long)(last_rc_frame_time & 0xFFFFFFFF));
         transition_to(FailsafeState::instance());
     }
 
