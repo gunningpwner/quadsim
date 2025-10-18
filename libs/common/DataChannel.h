@@ -86,10 +86,10 @@ public:
         return samples_consumed;
     }
 
-    void getLatest(T& latest_data) {
+    bool getLatest(T& latest_data) {
         // If no data has ever been posted, do nothing.
         if (m_update_count.load(std::memory_order_acquire) == 0) {
-            return;
+            return false;
         }
 
         // The latest data is at the index just before the current head.
@@ -97,6 +97,7 @@ public:
         size_t current_head = m_head.load(std::memory_order_acquire);
         size_t latest_index = (current_head == 0) ? COMPILE_TIME_BUFFER_SIZE - 1 : current_head - 1;
         latest_data = m_buffer[latest_index];
+        return true;
     }
 
     // Stub for the vector-based consume, which should not be used in firmware builds.
@@ -147,11 +148,13 @@ public:
         return true;
     }
 
-    void getLatest(T& latest_data) {
+    bool getLatest(T& latest_data) {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (!m_buffer.empty()) {
             latest_data = m_buffer.back();
+            return true;
         }
+        return false;
     }
 
     // Stub for the raw-pointer-based consume, which should not be used in desktop builds.

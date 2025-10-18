@@ -62,14 +62,14 @@ public:
 
     // --- READ Methods (For simple consumers wanting only the latest value) ---
 
-    void getLatest(GyroData& latest_data){m_gyro_channel.getLatest(latest_data);};
-    void getLatest(AccelData& latest_data){m_accel_channel.getLatest(latest_data);};
-    void getLatest(MagData& latest_data){m_mag_channel.getLatest(latest_data);};
-    void getLatest(GPSPositionData& latest_data){m_gps_channel.getLatest(latest_data);};
-    void getLatest(InputData& latest_data){m_input_channel.getLatest(latest_data);};
-    void getLatest(StateData& latest_data){m_state_channel.getLatest(latest_data);}; 
-    void getLatest(MotorCommands& latest_data){m_motor_commands_channel.getLatest(latest_data);};
-    void getLatest(RCChannelsData& latest_data){m_rc_channels_channel.getLatest(latest_data);};
+    bool getLatest(GyroData& latest_data){return m_gyro_channel.getLatest(latest_data);};
+    bool getLatest(AccelData& latest_data){return m_accel_channel.getLatest(latest_data);};
+    bool getLatest(MagData& latest_data){return m_mag_channel.getLatest(latest_data);};
+    bool getLatest(GPSPositionData& latest_data){return m_gps_channel.getLatest(latest_data);};
+    bool getLatest(InputData& latest_data){return m_input_channel.getLatest(latest_data);};
+    bool getLatest(StateData& latest_data){return m_state_channel.getLatest(latest_data);}; 
+    bool getLatest(MotorCommands& latest_data){return m_motor_commands_channel.getLatest(latest_data);};
+    bool getLatest(RCChannelsData& latest_data){return m_rc_channels_channel.getLatest(latest_data);};
 
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
