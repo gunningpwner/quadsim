@@ -11,26 +11,26 @@ void MonolithicControlEntity::initialize(TimeSource time_source_func){
 }
 
 void MonolithicControlEntity::run() {
+    // Get a single, consistent timestamp for this entire execution cycle.
+    
+
     // 1. Run the orientation filter.
     if (m_filter) {
         m_filter->run();
     }
-
-    // 2. Check for and process new RC commands.
+    uint64_t now_time= m_data_manager.getCurrentTimeUs();
+    // 2. Check for new RC frames and update the last seen time.
     RCChannelsData last_rc_frame;
     if (m_data_manager.getLatest(last_rc_frame)) {
         last_rc_frame_time = last_rc_frame.Timestamp;
     }
-    uint64_t current_time = m_data_manager.getCurrentTimeUs();
-    // Print 64-bit time as two 32-bit parts to avoid issues with printf not supporting %llu
-    // printf("Time H:%lu L:%lu\n", (unsigned long)(current_time >> 32), (unsigned long)(current_time & 0xFFFFFFFF));
-    // printf("Last RC Frame TimeH:%lu L:%lu\n", (unsigned long)(last_rc_frame_time >> 32), (unsigned long)(last_rc_frame_time & 0xFFFFFFFF));
-    // 3. Check for RC link failure (Failsafe)
-    // Only check for failsafe if we have received at least one frame (i.e., last_rc_frame_time is not 0)
-    
-    if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 &&
-        (m_data_manager.getCurrentTimeUs() - last_rc_frame_time > rc_timeout_us)) {
-        printf("Time H:%lu L:%lu\n", (unsigned long)(current_time >> 32), (unsigned long)(current_time & 0xFFFFFFFF));
+    const uint64_t current_time = m_data_manager.getCurrentTimeUs();
+
+    // 3. Check for RC link failure (Failsafe) using the consistent timestamp.
+    if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && (current_time - last_rc_frame_time > rc_timeout_us)) {
+        
+        
+        printf("Now time eH:%lu L:%lu\n", (unsigned long)( current_time>> 32), (unsigned long)(current_time & 0xFFFFFFFF));
         printf("Last RC Frame TimeH:%lu L:%lu\n", (unsigned long)(last_rc_frame_time >> 32), (unsigned long)(last_rc_frame_time & 0xFFFFFFFF));
         transition_to(FailsafeState::instance());
     }
@@ -74,7 +74,6 @@ State* DisarmedState::instance() {
 }
 
 void DisarmedState::on_enter(MonolithicControlEntity* mce){
-    printf("Entering DISARMED state.\n");
     // Post a motor command to stop all motors.
     MotorCommands motor_command = {}; // Zero-initialize
     motor_command.Timestamp = mce->getDataManager().getCurrentTimeUs();

@@ -68,7 +68,7 @@ class MonolithicControlEntity{
 
         // Public members for states to access
         uint64_t last_rc_frame_time;
-        const uint64_t rc_timeout_us = 500000; // 500ms
+        const uint64_t rc_timeout_us = 50000; // 500ms
 
     private:    
         DataManager m_data_manager;

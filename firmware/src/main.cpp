@@ -36,19 +36,25 @@ void initTime() {
     s_last_dwt_cyccnt = DWT->CYCCNT;
 }
 
-void updateTime() {
+uint64_t getCurrentTimeUs() {
+    // This is the most critical section for robust timekeeping.
+    // We must read the hardware counter and check for an overflow atomically.
+    // Disabling interrupts briefly is the standard, safest way to do this.
+    __disable_irq();
+
     const uint32_t current_dwt_cyccnt = DWT->CYCCNT;
-    // Check for overflow
+
+    // Check for overflow against the last known value
     if (current_dwt_cyccnt < s_last_dwt_cyccnt) {
         s_overflow_count++;
     }
     s_last_dwt_cyccnt = current_dwt_cyccnt;
-}
 
-uint64_t getCurrentTimeUs() {
-    // Combine the 32-bit overflow count and the 32-bit cycle counter
-    // to create a full 64-bit cycle count.
-    const uint64_t total_cycles = ((uint64_t)s_overflow_count << 32) | DWT->CYCCNT;
+    // Construct the 64-bit time value *after* the overflow check.
+    const uint64_t total_cycles = ((uint64_t)s_overflow_count << 32) | current_dwt_cyccnt;
+
+    __enable_irq();
+
     // Scale to microseconds
     return total_cycles / (HAL_RCC_GetHCLKFreq() / 1000000);
 }
@@ -208,7 +214,7 @@ int main(void) {
 
 extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
-  updateTime(); // Update our overflow counter
+  // The overflow counter is now updated atomically within getCurrentTimeUs().
 }
 
 extern "C" void OTG_FS_IRQHandler(void) {
