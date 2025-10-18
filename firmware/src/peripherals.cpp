@@ -283,17 +283,6 @@ void MX_USART3_UART_Init(void) {
   HAL_UART_Init(&huart3);
 }
 
-void MX_TIM5_Init(void) {
-  __HAL_RCC_TIM5_CLK_ENABLE();
-  htim5.Instance = TIM5;
-  htim5.Init.Prescaler = 84 - 1; // 84MHz / 84 = 1MHz timer clock (1us per tick)
-  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim5.Init.Period = 0xFFFFFFFF; // 32-bit free-running
-  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  HAL_TIM_Base_Init(&htim5);
-  HAL_TIM_Base_Start(&htim5);
-}
 
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle) {
     if(tim_baseHandle->Instance==TIM1) {

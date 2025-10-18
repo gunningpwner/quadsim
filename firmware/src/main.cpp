@@ -153,8 +153,7 @@ int main(void) {
   MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
-  MX_TIM2_Init();
-  MX_TIM5_Init(); 
+  MX_TIM2_Init(); 
   MX_USART3_UART_Init(); 
   MX_USB_DEVICE_Init();
 
@@ -166,7 +165,7 @@ int main(void) {
 
   BMI270 imu(&hspi1, GPIOC, GPIO_PIN_4);
   g_imu_ptr = &imu; 
-  Crsf crsf_receiver(&huart3, &htim5);
+  Crsf crsf_receiver(&huart3);
   g_crsf_ptr = &crsf_receiver;
   DShot dshot_driver(&htim1);
 

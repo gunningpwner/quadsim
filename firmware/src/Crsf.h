@@ -16,7 +16,7 @@ typedef CRSFPackedChannels CRSFChannelData; // Alias for backward compatibility 
 
 class Crsf {
 public:
-    Crsf(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim);
+    Crsf(UART_HandleTypeDef* huart);
     void init();
     bool processFrame();
     const CRSFPackedChannels& getChannels() const;
@@ -26,12 +26,11 @@ public:
 
 private:
     UART_HandleTypeDef* m_huart;
-    TIM_HandleTypeDef* m_htim; // For inter-byte timeout
 
     volatile bool m_new_frame_ready;
     uint8_t m_rx_buffer[64];
     uint8_t m_frame_position;
-    uint32_t m_frame_start_time;
+    uint64_t m_frame_start_time;
 
     uint8_t m_latest_frame[64];
     uint8_t m_latest_frame_len;

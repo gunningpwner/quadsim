@@ -20,9 +20,8 @@ static uint8_t crc8_dvb_s2(uint8_t crc, unsigned char a) {
     return crc;
 }
 
-Crsf::Crsf(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim)
+Crsf::Crsf(UART_HandleTypeDef* huart)
     : m_huart(huart),
-      m_htim(htim),
       m_new_frame_ready(false),
       m_frame_position(0),
       m_frame_start_time(0),
@@ -35,7 +34,7 @@ void Crsf::init() {
 }
 
 void Crsf::handleRxByte(uint8_t byte) {
-    uint32_t current_time = __HAL_TIM_GET_COUNTER(m_htim);
+    uint64_t current_time = getCurrentTimeUs();
 
     // Check for a timeout between bytes. If it's too long, reset.
     if (m_frame_position > 0 && (current_time - m_frame_start_time) > CRSF_TIME_NEEDED_PER_FRAME_US) {
