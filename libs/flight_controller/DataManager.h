@@ -74,30 +74,49 @@ public:
     // --- CONSUME Methods (For stateful consumers like the EKF) ---
 
     // This pattern allows a consumer to get all new data since it last checked.
-    bool consume(std::vector<GyroData>& samples, unsigned int& last_seen_count){
-        return m_gyro_channel.consume(samples, last_seen_count);
+    bool consume(std::vector<GyroData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_gyro_channel.consume(samples, last_seen_count, last_read_index);
     };
-    bool consume(std::vector<AccelData>& samples, unsigned int& last_seen_count){
-        return m_accel_channel.consume(samples, last_seen_count);
+    bool consume(std::vector<AccelData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_accel_channel.consume(samples, last_seen_count, last_read_index);
     };
-    bool consume(std::vector<MagData>& samples, unsigned int& last_seen_count){
-        return m_mag_channel.consume(samples, last_seen_count);
+    bool consume(std::vector<MagData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_mag_channel.consume(samples, last_seen_count, last_read_index);
     };
-    bool consume(std::vector<GPSPositionData>& samples, unsigned int& last_seen_count){
-        return m_gps_channel.consume(samples, last_seen_count);
+    bool consume(std::vector<GPSPositionData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_gps_channel.consume(samples, last_seen_count, last_read_index);
     };
-    bool consume(std::vector<InputData>& samples, unsigned int& last_seen_count){
-        return m_input_channel.consume(samples, last_seen_count);
+    bool consume(std::vector<InputData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_input_channel.consume(samples, last_seen_count, last_read_index);
     };
-    bool consume(std::vector<StateData>& samples, unsigned int& last_seen_count){
-        return m_state_channel.consume(samples,last_seen_count);
+    bool consume(std::vector<StateData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_state_channel.consume(samples,last_seen_count, last_read_index);
     };
-    bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count){ // New consume for MotorCommands
-        return m_motor_commands_channel.consume(samples,last_seen_count);
+    bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count, size_t& last_read_index){ // New consume for MotorCommands
+        return m_motor_commands_channel.consume(samples,last_seen_count, last_read_index);
     };
-    bool consume(std::vector<RCChannelsData>& samples, unsigned int& last_seen_count){
-        return m_rc_channels_channel.consume(samples, last_seen_count);
+    bool consume(std::vector<RCChannelsData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
+        return m_rc_channels_channel.consume(samples, last_seen_count, last_read_index);
     };
+
+    // Overloads for raw pointers (for firmware/allocation-free consumers)
+    size_t consume(GyroData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
+        return m_gyro_channel.consume(samples, max_samples, last_seen_count, last_read_index);
+    }
+    size_t consume(AccelData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
+        return m_accel_channel.consume(samples, max_samples, last_seen_count, last_read_index);
+    }
+    size_t consume(MagData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
+        return m_mag_channel.consume(samples, max_samples, last_seen_count, last_read_index);
+    }
+    size_t consume(GPSPositionData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
+        return m_gps_channel.consume(samples, max_samples, last_seen_count, last_read_index);
+    }
+    size_t consume(RCChannelsData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
+        return m_rc_channels_channel.consume(samples, max_samples, last_seen_count, last_read_index);
+    }
+    // Add other raw pointer overloads as needed for other data types...
+
 
 
     uint64_t getCurrentTimeUs() const {

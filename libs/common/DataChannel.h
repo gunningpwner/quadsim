@@ -99,9 +99,22 @@ public:
         latest_data = m_buffer[latest_index];
     }
 
-#else
+    // Stub for the vector-based consume, which should not be used in firmware builds.
+    // Leaving it unimplemented will cause a linker error if it's ever called.
+    bool consume(std::vector<T>&, unsigned int&, size_t&) {
+        // This should never be called in a firmware build.
+        // If you get a linker error pointing here, it means a Consumer
+        // is incorrectly trying to use a std::vector on firmware.
+        return false;
+    }
+
+#else 
     // --- Desktop/SITL, Mutex-based, Dynamic Implementation ---
     explicit DataChannel(size_t buffer_size) : m_update_count(0), m_buffer_size(buffer_size) {}
+
+    // Public API declarations - available for both builds
+    size_t consume(T* sample_buffer, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index);
+    bool consume(std::vector<T>& samples, unsigned int& last_seen_count, size_t& last_read_index);
 
     void post(const T& data) {
         // On desktop, we can safely throw an exception for NaN data.
@@ -119,7 +132,7 @@ public:
         m_update_count++;
     }
 
-    bool consume(std::vector<T>& samples, unsigned int& last_seen_count) {
+    bool consume(std::vector<T>& samples, unsigned int& last_seen_count, size_t& /*last_read_index*/) {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (last_seen_count >= m_update_count) {
             return false;
@@ -140,8 +153,14 @@ public:
             latest_data = m_buffer.back();
         }
     }
-#endif
 
+    // Stub for the raw-pointer-based consume, which should not be used in desktop builds.
+    size_t consume(T*, size_t, unsigned int&, size_t&) {
+        // This should never be called in a non-firmware build.
+        // If you get a linker error here, something is wrong in the Consumer/DataManager logic.
+        return 0;
+    }
+#endif
 
 private:
 #ifdef FIRMWARE_BUILD
