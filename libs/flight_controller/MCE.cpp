@@ -65,7 +65,7 @@ State* DisarmedState::instance() {
     return &instance;
 }
 
-State* DisarmedState::on_enter(MonolithicControlEntity* mce){
+void DisarmedState::on_enter(MonolithicControlEntity* mce){
     printf("Entering DISARMED state.\n");
     // Post a motor command to stop all motors.
     MotorCommands motor_command = {}; // Zero-initialize

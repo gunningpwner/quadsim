@@ -60,7 +60,7 @@ class MonolithicControlEntity{
     // Will setup and expose DataManager for hardware to communicate through. 
     // Essentially just a main for the software but containerized
     public:
-        MonolithicControlEntity() : m_data_manager([](){ return 0; }), m_filter(nullptr), m_current_state(nullptr), last_rc_frame_time(0) {}
+        MonolithicControlEntity() : m_data_manager([](){ return 0; }), m_filter(nullptr), last_rc_frame_time(0), m_current_state(nullptr) {}
         void initialize(TimeSource time_source_func);
         void transition_to(State* new_state);
         void run();

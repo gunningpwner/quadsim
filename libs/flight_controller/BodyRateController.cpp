@@ -57,18 +57,25 @@ void BodyRateController::run() {
     // Motor 2: Front-Left
     // Motor 3: Rear-Right
 
-    MotorCommands motor_commands;
     float base_throttle = input_data.throttle;
 
+    // Calculate motor outputs as floats first
+    float motor_outputs[4];
     // Apply mixing. These coefficients might need tuning based on physical setup.
-    motor_commands.motor_speed[0] = base_throttle - pitch_control - roll_control - yaw_control; // Front-Right
-    motor_commands.motor_speed[1] = base_throttle - pitch_control + roll_control + yaw_control; // Front-Left
-    motor_commands.motor_speed[2] = base_throttle + pitch_control + roll_control - yaw_control; // Rear-Left
-    motor_commands.motor_speed[3] = base_throttle + pitch_control - roll_control + yaw_control; // Rear-Right
+    motor_outputs[0] = base_throttle - pitch_control - roll_control - yaw_control; // Front-Right
+    motor_outputs[1] = base_throttle - pitch_control + roll_control + yaw_control; // Front-Left
+    motor_outputs[2] = base_throttle + pitch_control + roll_control - yaw_control; // Rear-Left
+    motor_outputs[3] = base_throttle + pitch_control - roll_control + yaw_control; // Rear-Right
 
-    // Normalize and clamp motor speeds to 0-1 range
+    // Populate the MotorCommands struct for the DShot driver
+    MotorCommands motor_commands;
+    motor_commands.Timestamp = m_current_time_us;
+    motor_commands.is_throttle_command = true;
+
+    // Clamp motor outputs to 0.0-1.0 range and scale to 0-1999 for DShot
     for (int i = 0; i < 4; ++i) {
-        motor_commands.motor_speed[i] = std::clamp(motor_commands.motor_speed[i], 0.0f, 1.0f);
+        float clamped_output = std::clamp(motor_outputs[i], 0.0f, 1.0f);
+        motor_commands.throttle[i] = static_cast<uint16_t>(clamped_output * 1999.0f);
     }
 
     m_data_manager.post(motor_commands);
