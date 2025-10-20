@@ -1,8 +1,8 @@
 # Overview
-[Insert cool name here] is a bare bones flight control software that I wrote from scratch as a platform to prototype and experiment with guidance and controls algorithms.
-Hardware related stuff is in the firmware folder
-Currently unfinished SITL using Gazebo is in gazebo folder
-Flight Algorithms are in libs/flight_controller
+[Insert cool name here] is a bare bones flight control software that I wrote from scratch as a platform to prototype and experiment with guidance and controls algorithms.  
+Hardware related stuff is in the firmware folder.  
+Currently unfinished SITL using Gazebo is in gazebo folder.  
+Flight Algorithms are in libs/flight_controller.  
 
 # Components
 The firmware currently only supports the components and sensors I've used to build my quadcopter. It will probably work with others but has only been tested with the below:  
