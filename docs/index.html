@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900 text-white">
+<head>
+    <meta charset="UTF-R-8">
+    <!-- This is critical for mobile browsers -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAVLink 3D Attitude Visualizer</title>
+    <!-- 1. Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Make the canvas fill its container */
+        #scene-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="bg-gray-800 p-4 shadow-md text-center">
+        <h1 class="text-2xl font-bold">MAVLink 3D Visualizer</h1>
+    </header>
+
+    <!-- Data Display Bar -->
+    <div class="bg-gray-700 p-3 flex justify-center gap-6 shadow-lg text-sm md:text-base flex-wrap">
+        <div>Roll: <span id="roll-value" class="font-mono font-bold text-cyan-400">0.00</span>°</div>
+        <div>Pitch: <span id="pitch-value" class="font-mono font-bold text-cyan-400">0.00</span>°</div>
+        <div>Yaw: <span id="yaw-value" class="font-mono font-bold text-cyan-400">0.00</span>°</div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow flex-shrink min-h-0 relative">
+        <!-- This container will hold the 3D scene -->
+        <div id="scene-container" class="absolute inset-0"></div>
+    </main>
+
+    <!-- Footer / Control Bar -->
+    <footer class="bg-gray-800 p-4 flex justify-center items-center shadow-inner">
+        <button id="connect-button" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-lg transition-all">
+            Connect to Quadcopter
+        </button>
+        <div id="status-message" class="ml-4 text-gray-400"></div>
+    </footer>
+
+    <!-- 
+      2. Load Libraries as ES Modules
+      - three.js: For 3D rendering
+      - mavlink-browser: For MAVLink parsing. We use esm.sh as a CDN.
+    -->
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+        
+        // This is the magic part. We import the MAVLink parser from a CDN.
+        // This specific library is an event emitter, which is perfect for this.
+        import { MAVLink20Processor } from 'https://esm.sh/mavlink-browser';
+
+        // --- Global Variables ---
+        let scene, camera, renderer, quadModel;
+        let port, reader, mavlinkParser;
+
+        const connectButton = document.getElementById('connect-button');
+        const statusMessage = document.getElementById('status-message');
+        const rollValue = document.getElementById('roll-value');
+        const pitchValue = document.getElementById('pitch-value');
+        const yawValue = document.getElementById('yaw-value');
+        const sceneContainer = document.getElementById('scene-container');
+
+        // --- 1. Three.js Scene Setup ---
+        function initThreeJS() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222); // Dark background
+
+            // Camera
+            const aspect = sceneContainer.clientWidth / sceneContainer.clientHeight;
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+            camera.position.set(0, 1.5, 3.5); // Position camera to look at the quad
+            camera.lookAt(0, 0, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight);
+            sceneContainer.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xaaaaaa);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+            
+            // Add a grid helper to the scene
+            const gridHelper = new THREE.GridHelper(10, 10, 0x888888, 0x444444);
+            scene.add(gridHelper);
+
+            // Create the Rudimentary Quadcopter Model
+            quadModel = new THREE.Group();
+
+            // Body (a flat box)
+            const bodyGeo = new THREE.BoxGeometry(1, 0.1, 1);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            quadModel.add(body);
+
+            // Arms (thin boxes)
+            const armGeo = new THREE.BoxGeometry(0.15, 0.05, 2.5);
+            const armMat = new THREE.MeshStandardMaterial({ color: 0x999999 });
+            
+            const arm1 = new THREE.Mesh(armGeo, armMat);
+            arm1.rotation.y = Math.PI / 4; // 45 degrees
+            quadModel.add(arm1);
+
+            const arm2 = new THREE.Mesh(armGeo, armMat);
+            arm2.rotation.y = -Math.PI / 4; // -45 degrees
+            quadModel.add(arm2);
+
+            // "Propellers" (simple cylinders)
+            const propGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.03, 16);
+            const propMat = new THREE.MeshStandardMaterial({ color: 0x555555, transparent: true, opacity: 0.8 });
+            const frontPropMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); // Green for front
+            
+            // Position props at the end of the arms
+            const armLength = 1.25 * Math.sin(Math.PI / 4) * 1.414; // Tuned position
+            
+            const prop1 = new THREE.Mesh(propGeo, frontPropMat); // Front-Right
+            prop1.position.set(armLength, 0.05, -armLength);
+            quadModel.add(prop1);
+
+            const prop2 = new THREE.Mesh(propGeo, frontPropMat); // Front-Left
+            prop2.position.set(-armLength, 0.05, -armLength);
+            quadModel.add(prop2);
+
+            const prop3 = new THREE.Mesh(propGeo, propMat); // Back-Right
+            prop3.position.set(armLength, 0.05, armLength);
+            quadModel.add(prop3);
+
+            const prop4 = new THREE.Mesh(propGeo, propMat); // Back-Left
+            prop4.position.set(-armLength, 0.05, armLength);
+            quadModel.add(prop4);
+
+            scene.add(quadModel);
+
+            // Handle window resizing
+            window.addEventListener('resize', onWindowResize);
+            
+            // Start the animation loop
+            animate();
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // Handle resizing
+        function onWindowResize() {
+            camera.aspect = sceneContainer.clientWidth / sceneContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight);
+        }
+
+        // --- 2. Web Serial and MAVLink Logic ---
+
+        // Check for Web Serial support
+        if (!('serial' in navigator)) {
+            statusMessage.textContent = 'Error: Web Serial API not supported. Use Chrome or Edge.';
+            connectButton.disabled = true;
+            connectButton.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        connectButton.addEventListener('click', async () => {
+            if (!port) {
+                await connectSerial();
+            } else {
+                await disconnectSerial();
+            }
+        });
+
+        async function connectSerial() {
+            try {
+                // Request user to select a serial port
+                port = await navigator.serial.requestPort();
+                
+                // Open the port. MAVLink often uses 115200 or 57600 baud.
+                await port.open({ baudRate: 115200 }); 
+
+                statusMessage.textContent = 'Connected. Waiting for data...';
+                connectButton.textContent = 'Disconnect';
+                connectButton.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                connectButton.classList.add('bg-red-600', 'hover:bg-red-500');
+
+                // Initialize the MAVLink parser
+                // This parser is an EventEmitter, so we can listen for messages.
+                mavlinkParser = new MAVLink20Processor();
+                mavlinkParser.on('message', handleMavlinkMessage);
+
+                // Start the read loop
+                readFromSerial();
+
+            } catch (err) {
+                statusMessage.textContent = `Error: ${err.message}`;
+            }
+        }
+
+        async function disconnectSerial() {
+            if (reader) {
+                await reader.cancel(); // Stop the read loop
+                reader.releaseLock();
+                reader = null;
+            }
+            if (port) {
+                await port.close();
+                port = null;
+            }
+            statusMessage.textContent = 'Disconnected';
+            connectButton.textContent = 'Connect to Quadcopter';
+            connectButton.classList.remove('bg-red-600', 'hover:bg-red-500');
+            connectButton.classList.add('bg-blue-600', 'hover:bg-blue-500');
+        }
+
+        async function readFromSerial() {
+            while (port && port.readable) {
+                reader = port.readable.getReader();
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            // Reader has been canceled
+                            break;
+                        }
+                        // Feed the incoming data chunks into the parser
+                        if (mavlinkParser) {
+                            mavlinkParser.parseBuffer(value);
+                        }
+                    }
+                } catch (err) {
+                    statusMessage.textContent = `Read error: ${err.message}`;
+                } finally {
+                    if (reader) {
+                        reader.releaseLock();
+                    }
+                }
+            }
+        }
+
+        // --- 3. Data Handling ---
+
+        function handleMavlinkMessage(message) {
+            // We only care about the ATTITUDE message (ID #30)
+            if (message.name === 'ATTITUDE') {
+                statusMessage.textContent = 'Receiving Attitude Data...';
+
+                const roll = message.roll;   // Radians
+                const pitch = message.pitch; // Radians
+                const yaw = message.yaw;     // Radians
+
+                // Update the 3D model
+                update3DModel(roll, pitch, yaw);
+
+                // Update the text display (convert radians to degrees)
+                rollValue.textContent = (roll * 180 / Math.PI).toFixed(2);
+                pitchValue.textContent = (pitch * 180 / Math.PI).toFixed(2);
+                yawValue.textContent = (yaw * 180 / Math.PI).toFixed(2);
+            }
+        }
+
+        function update3DModel(roll, pitch, yaw) {
+            if (quadModel) {
+                // This is the coordinate system conversion:
+                // MAVLink (Roll=X, Pitch=Y, Yaw=Z, Clockwise Yaw)
+                // to
+                // Three.js (Roll=X, Pitch=Z, Yaw=Y, Counter-Clockwise Yaw)
+                
+                quadModel.rotation.x = roll;
+                quadModel.rotation.z = pitch;
+                quadModel.rotation.y = -yaw; // Invert Yaw
+            }
+        }
+
+        // --- Start Everything ---
+        initThreeJS();
+
+    </script>
+</body>
+</html>
