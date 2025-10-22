@@ -183,8 +183,14 @@
         async function connectSerial() {
             try {
                 console.log("Attempting to connect to serial port...");
-                // Request user to select a serial port
-                port = await navigator.serial.requestPort();
+                // Request user to select a serial port.
+                // Providing filters is crucial for mobile browsers to recognize the device.
+                port = await navigator.serial.requestPort({ 
+                    filters: [
+                        // This filter targets the common STMicroelectronics Virtual COM Port.
+                        { usbVendorId: 0x0483, usbProductId: 0x5740 } 
+                    ]
+                });
                 
                 // Open the port. MAVLink often uses 115200 or 57600 baud.
                 await port.open({ baudRate: 57600 }); 
