@@ -2,10 +2,12 @@
 #include "usbd_cdc_if.h" // For CDC_Transmit_FS
 #include "DataManager.h"
 #include "SensorData.h"
+#include "OtherData.h"
 extern DataManager* g_data_manager_ptr;
 
 MavlinkPublisher::MavlinkPublisher(uint8_t system_id, uint8_t component_id)
-    : m_system_id(system_id), m_component_id(component_id) {}
+    : m_state_consumer(g_data_manager_ptr->getStateChannel()),
+      m_system_id(system_id), m_component_id(component_id) {}
 
 /**
  * @brief Fetches the latest state and publishes the attitude message.
@@ -15,9 +17,9 @@ void MavlinkPublisher::run() {
         return;
     }
 
-    StateData current_state;
-    if (g_data_manager_ptr->getLatest(current_state)) {
+    if (m_state_consumer.consumeLatest()) {
         mavlink_message_t msg;
+        const StateData& current_state = m_state_consumer.get_span().first[0];
         uint8_t buf[MAVLINK_MAX_PACKET_LEN];
 
         // Pack the message
