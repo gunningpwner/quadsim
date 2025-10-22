@@ -1,50 +1,71 @@
 #pragma once
-#include "DataManager.h" // One-way dependency
+#include "DataChannel.h" // Dependency on DataChannel
+#include <array>         // For std::array
+// #include <span>          // For std::span (C++20), or custom Span for C++17
+#include <utility>       // For std::pair
 
-// Use a more robust check for an embedded ARM GCC environment.
-#ifdef FIRMWARE_BUILD
-#include <array>
-#endif
+// If C++20 std::span is not available, a simple custom Span can be used.
+// For this example, we'll use std::pair<const T*, size_t> for C++17 compatibility.
+template<typename T>
+using DataSpan = std::pair<const T*, size_t>;
 
-template <typename T>
+template<typename T>
+class IDataChannel; // Forward declaration of the base interface
+
+template <typename T, size_t InternalBufferSize>
 class Consumer {
 public:
-    // Constructor takes the DataManager it will wrap
-    explicit Consumer(DataManager& data_manager)
-        : m_data_manager(data_manager), m_last_seen_count(0)
-        , m_last_read_index(0)
-    {}
+    /**
+     * @brief Constructs a Consumer for a specific DataChannel.
+     * @param channel A reference to an object that implements the IDataChannel interface.
+     */
+    explicit Consumer(IDataChannel<T>& channel)
+        : m_channel(channel), m_last_seen_count(0), m_last_read_index(0), m_valid_sample_count(0) {}
 
-    bool consume(std::vector<T>& samples) {
-#ifdef FIRMWARE_BUILD
-        // For firmware, we consume into a static internal buffer to avoid allocations
-        // within the lock-free DataChannel, then copy to the user's vector.
-        size_t num_consumed = consume_into_internal_buffer();
+    /**
+     * @brief Consumes all new samples from the DataChannel, placing them into the internal buffer.
+     *        The internal buffer will contain up to InternalBufferSize samples.
+     * @return The number of new samples that were consumed. Returns 0 if no new data.
+     */
+    size_t consumeAll() {
+        m_valid_sample_count = m_channel.consume(m_internal_buffer.data(), InternalBufferSize, m_last_seen_count, m_last_read_index);
+        return m_valid_sample_count;
+    }
+
+    /**
+     * @brief Consumes only the single latest sample from the DataChannel, placing it
+     *        at the start of the internal buffer. Marks all new data as seen.
+     * @return True if a new sample was consumed, false otherwise.
+     */
+    bool consumeLatest() {
+        // First, try to get the latest data. This will update m_last_seen_count and m_last_read_index
+        // within the DataChannel's consume method, effectively marking all prior data as seen.
+        size_t num_consumed = m_channel.consume(m_internal_buffer.data(), InternalBufferSize, m_last_seen_count, m_last_read_index);
+
         if (num_consumed > 0) {
-            // This assignment may allocate, but it happens after the critical
-            // data consumption step.
-            samples.assign(m_internal_buffer.begin(), m_internal_buffer.begin() + num_consumed);
+            // If new data was consumed, the *latest* sample will be the last one in the buffer.
+            // We move it to the first position and set valid count to 1.
+            m_internal_buffer[0] = m_internal_buffer[num_consumed - 1];
+            m_valid_sample_count = 1;
             return true;
         }
+        m_valid_sample_count = 0;
         return false;
-#else
-        // For desktop/SITL, we can call the std::vector-based consume method directly.
-        return m_data_manager.consume(samples, m_last_seen_count);
-#endif
+    }
+
+    /**
+     * @brief Provides a non-owning view of the valid data in the internal buffer.
+     *        Call this after a successful consumeAll() or consumeLatest().
+     * @return A DataSpan (pair of pointer and size) viewing the consumed data.
+     */
+    DataSpan<const T> get_span() const {
+        return {m_internal_buffer.data(), m_valid_sample_count};
     }
 
 private:
-#ifdef FIRMWARE_BUILD
-    // This helper calls the firmware-specific overload of DataManager::consume.
-    size_t consume_into_internal_buffer() {
-        return m_data_manager.consume(m_internal_buffer.data(), m_internal_buffer.size(), m_last_seen_count, m_last_read_index);
-    }
-#endif
-
-    DataManager& m_data_manager;
+    IDataChannel<T>& m_channel; // Reference to the DataChannel interface
     unsigned int m_last_seen_count;
     size_t m_last_read_index; // Each consumer now tracks its own read index.
-#ifdef FIRMWARE_BUILD
-    std::array<T, 50> m_internal_buffer; // Pre-allocated buffer to avoid dynamic memory.
-#endif
+    std::array<T, InternalBufferSize> m_internal_buffer; // Pre-allocated buffer for consumed data.
+    size_t m_valid_sample_count; // Number of valid samples currently in m_internal_buffer.
 };

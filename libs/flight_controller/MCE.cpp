@@ -19,10 +19,9 @@ void MonolithicControlEntity::run() {
         m_filter->run();
     }
     uint64_t now_time= m_data_manager.getCurrentTimeUs();
-    // 2. Check for new RC frames and update the last seen time.
-    RCChannelsData last_rc_frame;
-    if (m_data_manager.getLatest(last_rc_frame)) {
-        last_rc_frame_time = last_rc_frame.Timestamp;
+    // 2. Check for new RC frames using the consumer and update the last seen time.
+    if (m_rc_consumer.consumeLatest()) {
+        last_rc_frame_time = m_rc_consumer.get_span().first[0].Timestamp;
     }
     const uint64_t current_time = m_data_manager.getCurrentTimeUs();
 

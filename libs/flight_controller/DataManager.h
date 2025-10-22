@@ -4,13 +4,8 @@
 #include "SensorData.h"
 #include "DataChannel.h"
 #include "OtherData.h"
-#include <vector>
 #include <stdexcept>
 #include <functional> // Required for std::function
-
-#ifndef FIRMWARE_BUILD
-#include <mutex>
-#endif
 
 
 
@@ -34,16 +29,16 @@ public:
 
     DataManager(TimeSource time_source_func):
     m_time_source(time_source_func),
-    m_gyro_channel(IMU_BUFFER_SIZE),
-    m_accel_channel(IMU_BUFFER_SIZE),
-    m_mag_channel(IMU_BUFFER_SIZE),
-    m_gps_channel(GPS_BUFFER_SIZE),
-    m_input_channel(INPUT_BUFFER_SIZE),
-    m_state_channel(STATE_BUFFER_SIZE),
-    m_motor_commands_channel(MOTOR_COMMAND_BUFFER_SIZE), // Renamed and type changed
-    m_rc_channels_channel(RC_CHANNELS_BUFFER_SIZE){}
+    m_gyro_channel(), // DataChannel now takes BufferSize as template arg, not constructor arg
+    m_accel_channel(),
+    m_mag_channel(),
+    m_gps_channel(),
+    m_input_channel(),
+    m_state_channel(),
+    m_motor_commands_channel(),
+    m_rc_channels_channel(){}
 
-    // --- WRITE Methods (Called by Producers like HAL and FlightController) ---
+    // --- WRITE Methods (Called by Producers like HAL and FlightController to post data) ---
 
     void post(const GyroData& data){m_gyro_channel.post(data);};
     void post(const AccelData& data){m_accel_channel.post(data);};
@@ -59,76 +54,27 @@ public:
     };
     void post(const RCChannelsData& data){m_rc_channels_channel.post(data);};
 
-
-    // --- READ Methods (For simple consumers wanting only the latest value) ---
-
-    bool getLatest(GyroData& latest_data){return m_gyro_channel.getLatest(latest_data);};
-    bool getLatest(AccelData& latest_data){return m_accel_channel.getLatest(latest_data);};
-    bool getLatest(MagData& latest_data){return m_mag_channel.getLatest(latest_data);};
-    bool getLatest(GPSPositionData& latest_data){return m_gps_channel.getLatest(latest_data);};
-    bool getLatest(InputData& latest_data){return m_input_channel.getLatest(latest_data);};
-    bool getLatest(StateData& latest_data){return m_state_channel.getLatest(latest_data);}; 
-    bool getLatest(MotorCommands& latest_data){return m_motor_commands_channel.getLatest(latest_data);};
-    bool getLatest(RCChannelsData& latest_data){return m_rc_channels_channel.getLatest(latest_data);};
-
-    // --- CONSUME Methods (For stateful consumers like the EKF) ---
-
-    // This pattern allows a consumer to get all new data since it last checked.
-    bool consume(std::vector<GyroData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_gyro_channel.consume(samples, last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<AccelData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_accel_channel.consume(samples, last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<MagData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_mag_channel.consume(samples, last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<GPSPositionData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_gps_channel.consume(samples, last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<InputData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_input_channel.consume(samples, last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<StateData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_state_channel.consume(samples,last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<MotorCommands>& samples, unsigned int& last_seen_count, size_t& last_read_index){ // New consume for MotorCommands
-        return m_motor_commands_channel.consume(samples,last_seen_count, last_read_index);
-    };
-    bool consume(std::vector<RCChannelsData>& samples, unsigned int& last_seen_count, size_t& last_read_index){
-        return m_rc_channels_channel.consume(samples, last_seen_count, last_read_index);
-    };
-
-    // Overloads for raw pointers (for firmware/allocation-free consumers)
-    size_t consume(GyroData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
-        return m_gyro_channel.consume(samples, max_samples, last_seen_count, last_read_index);
-    }
-    size_t consume(AccelData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
-        return m_accel_channel.consume(samples, max_samples, last_seen_count, last_read_index);
-    }
-    size_t consume(MagData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
-        return m_mag_channel.consume(samples, max_samples, last_seen_count, last_read_index);
-    }
-    size_t consume(GPSPositionData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
-        return m_gps_channel.consume(samples, max_samples, last_seen_count, last_read_index);
-    }
-    size_t consume(RCChannelsData* samples, size_t max_samples, unsigned int& last_seen_count, size_t& last_read_index) {
-        return m_rc_channels_channel.consume(samples, max_samples, last_seen_count, last_read_index);
-    }
-    // Add other raw pointer overloads as needed for other data types...
-
+    // --- READ Access (For Consumers to get a reference to the DataChannel) ---
+    // These methods provide access to the underlying DataChannels for Consumer objects.
+    DataChannel<GyroData, IMU_BUFFER_SIZE>& getGyroChannel() { return m_gyro_channel; }
+    DataChannel<AccelData, IMU_BUFFER_SIZE>& getAccelChannel() { return m_accel_channel; }
+    DataChannel<MagData, IMU_BUFFER_SIZE>& getMagChannel() { return m_mag_channel; }
+    DataChannel<GPSPositionData, GPS_BUFFER_SIZE>& getGpsChannel() { return m_gps_channel; }
+    DataChannel<InputData, INPUT_BUFFER_SIZE>& getInputChannel() { return m_input_channel; }
+    DataChannel<StateData, STATE_BUFFER_SIZE>& getStateChannel() { return m_state_channel; }
+    DataChannel<MotorCommands, MOTOR_COMMAND_BUFFER_SIZE>& getMotorCommandsChannel() { return m_motor_commands_channel; }
+    DataChannel<RCChannelsData, RC_CHANNELS_BUFFER_SIZE>& getRCChannelsChannel() { return m_rc_channels_channel; }
 
 
     uint64_t getCurrentTimeUs() const {
         // Check if the time source function is valid before calling it.
         if (!m_time_source) {
-#ifdef FIRMWARE_BUILD
-            // On embedded, we can't throw. Halt the system on critical error.
-            while(1);
-#else
-            // Handle the error appropriately. Throwing an exception is a common choice.
-            throw std::runtime_error("Time source not initialized in DataManager.");
-#endif
+            // In a unified build, we need a consistent error handling strategy.
+            // For critical errors like this, a system halt is often appropriate for flight control.
+            // For SITL, this could be configured to throw an exception or log and exit.
+            // For now, we'll use a simple while(1) as a placeholder for a system halt.
+            // A more sophisticated system might have a global error handler.
+            while(1); 
         }
         
         // Execute the stored function and return its value.
@@ -136,9 +82,6 @@ public:
     }
     
     void setTimeSource(TimeSource time_source_func) {
-#ifndef FIRMWARE_BUILD
-        std::lock_guard<std::mutex> lock(m_time_mutex);
-#endif
         m_time_source = time_source_func;
     }
 
@@ -150,20 +93,17 @@ public:
 
 private:
 
-    TimeSource m_time_source;
+    TimeSource m_time_source; // Function pointer for getting current time
 
-    DataChannel<GyroData>           m_gyro_channel;
-    DataChannel<AccelData>          m_accel_channel;
-    DataChannel<MagData>            m_mag_channel;
-    DataChannel<GPSPositionData>    m_gps_channel;
-    DataChannel<InputData>          m_input_channel;
-    DataChannel<StateData>          m_state_channel;
-    DataChannel<MotorCommands>      m_motor_commands_channel; // Changed to MotorCommands
-    DataChannel<RCChannelsData>     m_rc_channels_channel;
+    // DataChannels for various sensor and system data types
+    DataChannel<GyroData, IMU_BUFFER_SIZE>           m_gyro_channel;
+    DataChannel<AccelData, IMU_BUFFER_SIZE>          m_accel_channel;
+    DataChannel<MagData, IMU_BUFFER_SIZE>            m_mag_channel;
+    DataChannel<GPSPositionData, GPS_BUFFER_SIZE>    m_gps_channel;
+    DataChannel<InputData, INPUT_BUFFER_SIZE>          m_input_channel;
+    DataChannel<StateData, STATE_BUFFER_SIZE>          m_state_channel;
+    DataChannel<MotorCommands, MOTOR_COMMAND_BUFFER_SIZE>      m_motor_commands_channel;
+    DataChannel<RCChannelsData, RC_CHANNELS_BUFFER_SIZE>     m_rc_channels_channel;
 
     std::function<void()> m_motor_command_post_callback; // Callback for motor commands
-
-#ifndef FIRMWARE_BUILD
-    std::mutex m_time_mutex;
-#endif
 };

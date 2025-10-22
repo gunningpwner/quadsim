@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FilterBase.h"
+#include "DataManager.h" // For IMU_BUFFER_SIZE
 #include "Consumer.h"
 #include "SensorData.h"
 #include <Eigen/Dense>
@@ -21,8 +22,8 @@ public:
 
 private:
     // --- Data Consumers ---
-    Consumer<GyroData> m_gyro_consumer;
-    Consumer<AccelData> m_accel_consumer;
+    Consumer<GyroData, IMU_BUFFER_SIZE> m_gyro_consumer;
+    Consumer<AccelData, IMU_BUFFER_SIZE> m_accel_consumer;
 
     // --- Filter State ---
     Eigen::Quaternionf m_q;      // Estimated orientation

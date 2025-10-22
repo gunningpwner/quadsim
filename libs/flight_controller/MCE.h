@@ -1,5 +1,7 @@
 #include "DataManager.h"
 #include "FilterBase.h"
+#include "Consumer.h"
+#include "SensorData.h"
 
 
 using TimeSource = std::function<uint64_t()>;
@@ -59,8 +61,14 @@ class MonolithicControlEntity{
     // Responsible for managing hardware independent processing.
     // Will setup and expose DataManager for hardware to communicate through. 
     // Essentially just a main for the software but containerized
-    public:
-        MonolithicControlEntity() : m_data_manager([](){ return 0; }), m_filter(nullptr), last_rc_frame_time(0), m_current_state(nullptr) {}
+public:
+    MonolithicControlEntity() :
+        m_data_manager([]() { return 0; }),
+        m_filter(nullptr),
+        m_rc_consumer(m_data_manager.getRCChannelsChannel()),
+        last_rc_frame_time(0),
+        m_current_state(nullptr) {}
+        
         void initialize(TimeSource time_source_func);
         void transition_to(State* new_state);
         void run();
@@ -68,10 +76,11 @@ class MonolithicControlEntity{
 
         // Public members for states to access
         uint64_t last_rc_frame_time;
-        const uint64_t rc_timeout_us = 50000; // 500ms
+        const uint64_t rc_timeout_us = 500000; // 500ms
 
     private:    
         DataManager m_data_manager;
         FilterBase* m_filter;
         State* m_current_state;
+        Consumer<RCChannelsData, 1> m_rc_consumer;
 };

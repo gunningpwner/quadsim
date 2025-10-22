@@ -2,6 +2,7 @@
 
 #include "stm32f4xx_hal.h"
 #include "OtherData.h" // For DShot_Command enum
+#include "Consumer.h"  // For Consumer class
 #include <array>
 #include <cstdint>
 
@@ -40,6 +41,7 @@ private:
     void prepare_dma_buffer(const std::array<uint16_t, 4>& motor_frames);
 
     TIM_HandleTypeDef* _htim;
+    Consumer<MotorCommands, 1> m_motor_commands_consumer;
 
     // DShot timing constants for DShot600 at 168MHz timer clock
     // For DShot600 and 168MHz clock, Period=280, T0H=93, T1H=186

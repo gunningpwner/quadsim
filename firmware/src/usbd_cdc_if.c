@@ -1,7 +1,7 @@
 // In src/usbd_cdc_if.c
 
 #include "usbd_cdc_if.h"
-#include <string.h>
+#include <stdbool.h>
 
 #define APP_RX_DATA_SIZE  2048
 #define APP_TX_DATA_SIZE  2048
@@ -14,6 +14,7 @@ uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 // Circular buffer pointers
 static volatile uint32_t tx_head = 0;
 static volatile uint32_t tx_tail = 0;
+static volatile bool g_vcp_connected = false;
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
@@ -66,6 +67,9 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
     case CDC_GET_LINE_CODING:
       break;
     case CDC_SET_CONTROL_LINE_STATE:
+      // The host sets the DTR (Data Terminal Ready) line when it opens the port.
+      // We can use this to know if the VCP is connected.
+      g_vcp_connected = (pbuf[0] & 0x01) ? true : false;
       break;
     case CDC_SEND_BREAK:
       break;
@@ -134,4 +138,12 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
       CDC_TxComplete_FS(NULL, NULL, 0); // This will trigger the first send
   }
   return USBD_OK;
+}
+
+/**
+  * @brief  Checks if the USB VCP is connected to a host.
+  * @retval true if connected, false otherwise.
+  */
+bool is_usb_vcp_connected(void) {
+    return g_vcp_connected;
 }

@@ -6,6 +6,7 @@
 #include "Crsf.h"
 #include "DShot.h"
 #include "MCE.h"
+#include "MavlinkPublisher.h"
 #include "peripherals.h"
 #include <string.h>
 #include <stdio.h>
@@ -125,30 +126,6 @@ extern "C" int _write(int file, char *ptr, int len)
     return len;
 }
 
-/**
- * @brief Sends the attitude quaternion over MAVLink.
- * @param state The state data containing the orientation.
- */
-void send_attitude_quaternion(const StateData& state) {
-    mavlink_message_t msg;
-    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-
-    // Pack the message
-    mavlink_msg_attitude_quaternion_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
-                                         state.Timestamp / 1000, // time_boot_ms
-                                         state.orientation.w(),
-                                         state.orientation.x(),
-                                         state.orientation.y(),
-                                         state.orientation.z(),
-                                         0.0f, 0.0f, 0.0f); // rollspeed, pitchspeed, yawspeed (not available in StateData)
-
-    // Copy the message to a buffer
-    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-
-    // Send the buffer over USB VCP
-    CDC_Transmit_FS(buf, len);
-}
-
 int main(void) {
   SystemClock_Config_HSE(); 
   HAL_Init(); 
@@ -174,6 +151,7 @@ int main(void) {
   Crsf crsf_receiver(&huart3);
   g_crsf_ptr = &crsf_receiver;
   DShot dshot_driver(&htim1);
+  MavlinkPublisher mavlink_publisher(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID);
 
   // Register the DShot driver's callback for motor commands
   g_data_manager_ptr->registerMotorCommandPostCallback([&dshot_driver](){ dshot_driver.onMotorCommandPosted(); });
@@ -203,12 +181,21 @@ int main(void) {
   HAL_TIM_Base_Start_IT(&htim2);
   
 
+  uint64_t last_mavlink_send_time = 0;
+  const uint64_t mavlink_send_interval_us = 20000; // 50 Hz
+
   while (1) {
     // Process any new CRSF frames that have been received.
     crsf_receiver.processFrame();
     
     // Run the main flight software logic.
     mce.run();
+
+    // Periodically send MAVLink attitude message
+    if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
+        mavlink_publisher.run();
+        last_mavlink_send_time = getCurrentTimeUs();
+    }
   }
 }
 
