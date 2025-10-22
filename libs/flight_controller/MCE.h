@@ -73,6 +73,7 @@ public:
         void transition_to(State* new_state);
         void run();
         DataManager& getDataManager() { return m_data_manager; }
+        const State* getCurrentState() const { return m_current_state; }
 
         // Public members for states to access
         uint64_t last_rc_frame_time;

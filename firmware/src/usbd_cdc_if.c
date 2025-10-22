@@ -97,13 +97,15 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   */
 static int8_t CDC_TxComplete_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 {
-  if (tx_head != tx_tail) {
-    uint16_t len = 0;
-    // Check if data wraps around the buffer
-    if (tx_head > tx_tail) {
-      len = APP_TX_DATA_SIZE - tx_head;
+  uint32_t local_tx_tail = tx_tail; // Read volatile variable once for consistent check
+  if (tx_head != local_tx_tail) {
+    uint16_t len;
+    // If head is behind tail, we can send all data up to the tail or the end of the buffer.
+    if (tx_head < local_tx_tail) {
+      len = local_tx_tail - tx_head;
     } else {
-      len = tx_tail - tx_head;
+      // Data has wrapped around, send from head to the end of the buffer
+      len = APP_TX_DATA_SIZE - tx_head;
     }
 
     USBD_CDC_SetTxBuffer(&hUsbDeviceFS, &UserTxBufferFS[tx_head], len);
@@ -111,32 +113,46 @@ static int8_t CDC_TxComplete_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
       tx_head = (tx_head + len) % APP_TX_DATA_SIZE;
     }
   }
+
+  // If after that transmission, head and tail are different, it means we have more data to send
+  // (likely from a wrap-around). We can trigger the next transmission immediately without waiting for another interrupt.
+  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+  if (hcdc->TxState == 0 && tx_head != tx_tail) {
+      CDC_TxComplete_FS(NULL, NULL, 0);
+  }
+
   return (USBD_OK);
 }
 
 uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 {
-  // Check if there is enough space in the buffer
-  uint32_t next_tail = (tx_tail + Len) % APP_TX_DATA_SIZE;
-  if (next_tail == tx_head) { // Simple check for buffer full
-      return USBD_FAIL; // Or handle buffer full error appropriately
+  // Calculate the space available in the buffer. The buffer is full when there's 1 byte left.
+  uint32_t buff_space;
+  uint32_t local_tx_head = tx_head; // Read volatile variable once
+  if (local_tx_head > tx_tail) {
+      buff_space = local_tx_head - tx_tail - 1;
+  } else {
+      buff_space = APP_TX_DATA_SIZE - (tx_tail - local_tx_head) - 1;
   }
+
+  if (Len > buff_space) {
+      return USBD_FAIL; // Not enough space in the buffer
+  }
+
+  uint32_t next_tail = (tx_tail + Len) % APP_TX_DATA_SIZE;
 
   // Copy data to the circular buffer
-  if (tx_tail + Len > APP_TX_DATA_SIZE) { // Handle wrap-around case
-      uint16_t first_part_len = APP_TX_DATA_SIZE - tx_tail;
-      memcpy(&UserTxBufferFS[tx_tail], Buf, first_part_len);
-      memcpy(&UserTxBufferFS[0], Buf + first_part_len, Len - first_part_len);
-  } else {
-      memcpy(&UserTxBufferFS[tx_tail], Buf, Len);
+  for (uint16_t i = 0; i < Len; i++) {
+    UserTxBufferFS[(tx_tail + i) % APP_TX_DATA_SIZE] = Buf[i];
   }
-  tx_tail = next_tail;
 
+  __disable_irq(); // --- Enter critical section ---
+  tx_tail = next_tail; // Update tail *after* data is copied
   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
-  // If the USB peripheral is not busy, start the transmission.
   if (hcdc->TxState == 0) {
-      CDC_TxComplete_FS(NULL, NULL, 0); // This will trigger the first send
+      CDC_TxComplete_FS(NULL, NULL, 0);
   }
+  __enable_irq(); // --- Exit critical section ---
   return USBD_OK;
 }
 

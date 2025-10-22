@@ -98,21 +98,28 @@ extern "C" int _write(int file, char *ptr, int len)
     static uint16_t buffer_index = 0;
 
     for (int i = 0; i < len; i++) {
-        if (ptr[i] == '\n' || buffer_index == MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
-            if (buffer_index > 0) {
-                printf_buffer[buffer_index] = '\0'; // Null-terminate the string
+        bool is_newline = (ptr[i] == '\n');
+        bool is_buffer_full = (buffer_index == MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN);
 
-                mavlink_message_t msg;
-                uint8_t mav_buf[MAVLINK_MAX_PACKET_LEN];
-                mavlink_msg_statustext_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg,
-                                            MAV_SEVERITY_INFO, printf_buffer);
+        // Send the buffer if it's full OR if we encounter a newline and it's not empty.
+        if (is_buffer_full || (is_newline && buffer_index > 0)) {
+            printf_buffer[buffer_index] = '\0'; // Null-terminate the string
 
-                uint16_t mav_len = mavlink_msg_to_send_buffer(mav_buf, &msg);
-                CDC_Transmit_FS(mav_buf, mav_len);
+            mavlink_message_t msg;
+            uint8_t mav_buf[MAVLINK_MAX_PACKET_LEN];
+            // The pack function populates the msg structure.
+            mavlink_msg_statustext_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg, 
+                                        MAV_SEVERITY_INFO, printf_buffer);
 
-                buffer_index = 0; // Reset buffer
-            }
-        } else {
+            // mavlink_msg_to_send_buffer serializes the message and returns the correct final length.
+            const uint16_t mav_len = mavlink_msg_to_send_buffer(mav_buf, &msg);
+            CDC_Transmit_FS(mav_buf, mav_len);
+
+            buffer_index = 0; // Reset buffer for the next message
+        }
+
+        // Add the character to the buffer if it's not a newline.
+        if (!is_newline) {
             if (buffer_index < MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
                 printf_buffer[buffer_index++] = ptr[i];
             }
@@ -182,7 +189,7 @@ int main(void) {
   
 
   uint64_t last_mavlink_send_time = 0;
-  const uint64_t mavlink_send_interval_us = 20000; // 50 Hz
+  const uint64_t mavlink_send_interval_us = 1000000; // 50 Hz
 
   while (1) {
     // Process any new CRSF frames that have been received.
@@ -190,11 +197,18 @@ int main(void) {
     
     // Run the main flight software logic.
     mce.run();
-
+    
     // Periodically send MAVLink attitude message
     if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
         mavlink_publisher.run();
         last_mavlink_send_time = getCurrentTimeUs();
+    }
+
+    // Control the on-board LED based on the MCE state
+    if (mce.getCurrentState() == DisarmedState::instance()) {
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // Turn LED ON when disarmed
+    } else {
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET); // Turn LED OFF otherwise
     }
   }
 }
