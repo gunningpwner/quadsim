@@ -152,6 +152,7 @@
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
+
             renderer.render(scene, camera);
         }
 
@@ -181,13 +182,15 @@
 
         async function connectSerial() {
             try {
+                console.log("Attempting to connect to serial port...");
                 // Request user to select a serial port
                 port = await navigator.serial.requestPort();
                 
                 // Open the port. MAVLink often uses 115200 or 57600 baud.
-                await port.open({ baudRate: 115200 }); 
+                await port.open({ baudRate: 57600 }); 
 
                 statusMessage.textContent = 'Connected. Waiting for data...';
+                console.log("Serial port connected and opened.");
                 connectButton.textContent = 'Disconnect';
                 connectButton.classList.remove('bg-blue-600', 'hover:bg-blue-500');
                 connectButton.classList.add('bg-red-600', 'hover:bg-red-500');
@@ -201,11 +204,13 @@
                 readFromSerial();
 
             } catch (err) {
+                console.error("Connection failed:", err);
                 statusMessage.textContent = `Error: ${err.message}`;
             }
         }
 
         async function disconnectSerial() {
+            console.log("Disconnecting from serial port...");
             if (reader) {
                 await reader.cancel(); // Stop the read loop
                 reader.releaseLock();
@@ -219,6 +224,7 @@
             connectButton.textContent = 'Connect to Quadcopter';
             connectButton.classList.remove('bg-red-600', 'hover:bg-red-500');
             connectButton.classList.add('bg-blue-600', 'hover:bg-blue-500');
+            console.log("Disconnected.");
         }
 
         async function readFromSerial() {
@@ -231,12 +237,14 @@
                             // Reader has been canceled
                             break;
                         }
+                        // console.log("Received raw data chunk:", value);
                         // Feed the incoming data chunks into the parser
                         if (mavlinkParser) {
                             mavlinkParser.parseBuffer(value);
                         }
                     }
                 } catch (err) {
+                    console.error("Read loop error:", err);
                     statusMessage.textContent = `Read error: ${err.message}`;
                 } finally {
                     if (reader) {
@@ -249,34 +257,40 @@
         // --- 3. Data Handling ---
 
         function handleMavlinkMessage(message) {
-            // We only care about the ATTITUDE message (ID #30)
-            if (message.name === 'ATTITUDE') {
+            // Log every message received to see what's coming in
+            console.log(`Received MAVLink message: ${message._name} (ID: ${message._id})`, message);
+
+            // We are looking for ATTITUDE_QUATERNION (ID #31) from the firmware
+            if (message._name === 'ATTITUDE_QUATERNION') {
                 statusMessage.textContent = 'Receiving Attitude Data...';
 
-                const roll = message.roll;   // Radians
-                const pitch = message.pitch; // Radians
-                const yaw = message.yaw;     // Radians
+                // 1. Create a quaternion from the incoming MAVLink data (NED frame)
+                const nedQuaternion = new THREE.Quaternion(message.q1, message.q2, message.q3, message.q4);
+
+                // 2. Define the transformation from NED to the Three.js world frame (FLU).
+                // This is a fixed rotation: -90 degrees around X, then -90 degrees around Z.
+                const nedToFlu = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2));
+
+                // 3. Apply the transformation to get the final orientation for the model.
+                const fluQuaternion = nedQuaternion.clone().premultiply(nedToFlu);
+
+                // Create an Euler object to store the converted angles
+                const euler = new THREE.Euler().setFromQuaternion(fluQuaternion, 'XYZ'); // Use 'XYZ' for Roll, Pitch, Yaw
 
                 // Update the 3D model
-                update3DModel(roll, pitch, yaw);
+                update3DModel(fluQuaternion);
 
                 // Update the text display (convert radians to degrees)
-                rollValue.textContent = (roll * 180 / Math.PI).toFixed(2);
-                pitchValue.textContent = (pitch * 180 / Math.PI).toFixed(2);
-                yawValue.textContent = (yaw * 180 / Math.PI).toFixed(2);
+                rollValue.textContent = (euler.x * 180 / Math.PI).toFixed(2); // Roll
+                pitchValue.textContent = (euler.y * 180 / Math.PI).toFixed(2); // Pitch
+                yawValue.textContent = (euler.z * 180 / Math.PI).toFixed(2); // Yaw
             }
         }
 
-        function update3DModel(roll, pitch, yaw) {
+        function update3DModel(fluQuaternion) {
             if (quadModel) {
-                // This is the coordinate system conversion:
-                // MAVLink (Roll=X, Pitch=Y, Yaw=Z, Clockwise Yaw)
-                // to
-                // Three.js (Roll=X, Pitch=Z, Yaw=Y, Counter-Clockwise Yaw)
-                
-                quadModel.rotation.x = roll;
-                quadModel.rotation.z = pitch;
-                quadModel.rotation.y = -yaw; // Invert Yaw
+                // Directly apply the correctly transformed quaternion to the model.
+                quadModel.setRotationFromQuaternion(fluQuaternion);
             }
         }
 
