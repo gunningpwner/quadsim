@@ -7,8 +7,8 @@
 
 MahonyFilter::MahonyFilter(DataManager& data_manager) :
     FilterBase(data_manager),
-    m_gyro_consumer(data_manager),
-    m_accel_consumer(data_manager)
+    m_gyro_consumer(data_manager.getGyroChannel()),
+    m_accel_consumer(data_manager.getAccelChannel())
 {
     init_filter();
 }
@@ -29,17 +29,19 @@ void MahonyFilter::init_filter() {
 void MahonyFilter::run() {
     // --- 1. GATHER ALL NEW DATA ---
     std::vector<std::unique_ptr<TimestampedData>> data_log;
-
-    std::vector<GyroData> gyro_samples;
-    if (m_gyro_consumer.consume(gyro_samples)) {
-        for (const auto& sample : gyro_samples) {
+    
+    if (m_gyro_consumer.consumeAll() > 0) {
+        auto span = m_gyro_consumer.get_span();
+        for (size_t i = 0; i < span.second; ++i) {
+            const auto& sample = span.first[i];
             data_log.push_back(std::make_unique<GyroData>(sample));
         }
     }
 
-    std::vector<AccelData> accel_samples;
-    if (m_accel_consumer.consume(accel_samples)) {
-        for (const auto& sample : accel_samples) {
+    if (m_accel_consumer.consumeAll() > 0) {
+        auto span = m_accel_consumer.get_span();
+        for (size_t i = 0; i < span.second; ++i) {
+            const auto& sample = span.first[i];
             data_log.push_back(std::make_unique<AccelData>(sample));
         }
     }
