@@ -7,7 +7,8 @@ extern DataManager* g_data_manager_ptr;
 
 // Note: The DMA buffer must be in a region accessible by the DMA controller (e.g., SRAM1/SRAM2).
 DShot::DShot(TIM_HandleTypeDef* htim)
-    : _htim(htim)
+    : _htim(htim),
+      m_motor_commands_consumer(g_data_manager_ptr->getMotorCommandsChannel())
 {
     _dma_buffer.fill(0);
 }
@@ -76,9 +77,10 @@ void DShot::onMotorCommandPosted() {
         return; // DataManager not available
     }
 
-    MotorCommands latest_commands;
-    // Retrieve the latest motor commands from the DataManager
-    g_data_manager_ptr->getLatest(latest_commands);
+    if (!m_motor_commands_consumer.consumeLatest()) {
+        return; // No new motor commands
+    }
+    const MotorCommands& latest_commands = m_motor_commands_consumer.get_span().first[0];
 
     std::array<uint16_t, 4> frames;
 
