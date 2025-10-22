@@ -1,7 +1,6 @@
 // In src/usbd_cdc_if.c
 
 #include "usbd_cdc_if.h"
-#include <string.h>
 #include <stdbool.h>
 
 #define APP_RX_DATA_SIZE  2048

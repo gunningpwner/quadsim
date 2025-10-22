@@ -1,7 +1,7 @@
 #pragma once
 #include "DataChannel.h" // Dependency on DataChannel
 #include <array>         // For std::array
-#include <span>          // For std::span (C++20), or custom Span for C++17
+// #include <span>          // For std::span (C++20), or custom Span for C++17
 #include <utility>       // For std::pair
 
 // If C++20 std::span is not available, a simple custom Span can be used.
