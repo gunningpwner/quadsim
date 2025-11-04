@@ -137,6 +137,76 @@ extern "C" int _write(int file, char *ptr, int len)
     return len;
 }
 
+/**
+ * @brief Handles sending various CRSF telemetry packets.
+ *
+ * This function is designed to be called periodically. It alternates between sending
+ * different types of telemetry data to avoid flooding the CRSF link.
+ *
+ * @param crsf_receiver A reference to the Crsf object used for sending packets.
+ */
+void handle_telemetry(Crsf& crsf_receiver) {
+    static int telemetry_phase = 0;
+
+    switch (telemetry_phase) {
+        case 0: {
+            // Phase 0: Send Battery Sensor packet (CRSF Frame Type 0x08)
+            // Payload:
+            // uint16_t voltage (100mV units)
+            // uint16_t current (100mA units)
+            // uint24_t capacity (mAh)
+            // uint8_t  remaining (%)
+            uint8_t battery_payload[8];
+            uint16_t voltage = 168; // Placeholder for 16.8V
+            uint16_t current = 15;  // Placeholder for 1.5A
+            uint32_t capacity_drawn = 500; // Placeholder for 500mAh drawn
+            uint8_t remaining_percentage = 75; // Placeholder for 75%
+
+            battery_payload[0] = (voltage >> 8) & 0xFF;
+            battery_payload[1] = voltage & 0xFF;
+            battery_payload[2] = (current >> 8) & 0xFF;
+            battery_payload[3] = current & 0xFF;
+            battery_payload[4] = (capacity_drawn >> 16) & 0xFF;
+            battery_payload[5] = (capacity_drawn >> 8) & 0xFF;
+            battery_payload[6] = capacity_drawn & 0xFF;
+            battery_payload[7] = remaining_percentage;
+
+            crsf_receiver.sendPacket(CRSF_FRAMETYPE_BATTERY_SENSOR, battery_payload, sizeof(battery_payload));
+            break;
+        }
+        case 1: {
+            // Phase 1: Send GPS packet (CRSF Frame Type 0x02)
+            // Payload:
+            // int32_t latitude, int32_t longitude (degrees * 1e7)
+            // uint16_t groundspeed (km/h * 10)
+            // uint16_t heading (deg * 100)
+            // uint16_t altitude (meters, offset 1000)
+            // uint8_t satellites
+            uint8_t gps_payload[15];
+            // Using memcpy for strict aliasing safety with multi-byte types.
+            int32_t lat = 476432130; // Placeholder for 47.6432130 degrees
+            int32_t lon = -1221034230; // Placeholder for -122.1034230 degrees
+            uint16_t groundspeed = 500; // Placeholder for 50.0 km/h
+            uint16_t heading = 18000; // Placeholder for 180.00 degrees
+            uint16_t altitude = 1123; // Placeholder for 123m (1000m offset)
+            uint8_t satellites = 15; // Placeholder for 15 satellites
+
+            memcpy(&gps_payload[0], &lat, 4);
+            memcpy(&gps_payload[4], &lon, 4);
+            memcpy(&gps_payload[8], &groundspeed, 2);
+            memcpy(&gps_payload[10], &heading, 2);
+            memcpy(&gps_payload[12], &altitude, 2);
+            gps_payload[14] = satellites;
+
+            crsf_receiver.sendPacket(CRSF_FRAMETYPE_GPS, gps_payload, sizeof(gps_payload));
+            break;
+        }
+    }
+
+    // Cycle to the next telemetry type for the next call
+    telemetry_phase = (telemetry_phase + 1) % 2;
+}
+
 int main(void) {
   SystemClock_Config_HSE(); 
   HAL_Init(); 
@@ -196,12 +266,21 @@ int main(void) {
   
 
   uint64_t last_mavlink_send_time = 0;
-  const uint64_t mavlink_send_interval_us = 1000000; // 50 Hz
+  const uint64_t mavlink_send_interval_us = 1000000; // 1 Hz
+
+  uint64_t last_crsf_telemetry_time = 0;
+  const uint64_t crsf_telemetry_interval_us = 100000; // 10 Hz
 
   while (1) {
     // Run the main flight software logic.
     mce.run();
     
+    // Periodically send CRSF telemetry
+    if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {
+        handle_telemetry(crsf_receiver);
+        last_crsf_telemetry_time = getCurrentTimeUs();
+    }
+
     // Periodically send MAVLink attitude message
     if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
         mavlink_publisher.run();

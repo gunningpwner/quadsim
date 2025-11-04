@@ -101,3 +101,24 @@ bool Crsf::processFrame(const uint8_t* frame_buffer, uint8_t frame_len) {
 const CRSFPackedChannels& Crsf::getChannels() const {
     return m_rc_channels_data.channels;
 }
+
+void Crsf::sendPacket(uint8_t type, const uint8_t* payload, uint8_t len) {
+    // Max CRSF payload is 60 bytes, so a 64-byte buffer is safe.
+    uint8_t tx_buffer[64];
+
+    // Frame length = Type (1) + Payload (len) + CRC (1)
+    uint8_t frame_len = len + 2;
+
+    tx_buffer[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+    tx_buffer[1] = frame_len;
+    tx_buffer[2] = type;
+    memcpy(&tx_buffer[3], payload, len);
+
+    uint8_t crc = crc8_dvb_s2(0, type);
+    for (uint8_t i = 0; i < len; i++) {
+        crc = crc8_dvb_s2(crc, payload[i]);
+    }
+    tx_buffer[3 + len] = crc;
+
+    HAL_UART_Transmit(m_huart, tx_buffer, frame_len + 2, 10); // +2 for address and length bytes
+}
