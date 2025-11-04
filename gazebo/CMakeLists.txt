@@ -30,7 +30,7 @@ add_library(serial_lib STATIC ${SERIAL_SRC})
 # The library needs its own include directory to find its headers.
 target_include_directories(serial_lib PUBLIC ${serial_SOURCE_DIR}/include)
 
-set(MAVLINK_DIR ${CMAKE_SOURCE_DIR}/../.pio/libdeps/genericSTM32F405RG/MAVLink\ v2\ C\ library)
+
 find_package(gz-transport14 REQUIRED)
 find_package(gz-msgs11 REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -41,12 +41,9 @@ add_executable(gazebo_link
     src/main.cpp
     src/GazeboInterface.cpp
     src/ControllerInterface.cpp
-    ../libs/flight_controller/TruthFilter.cpp
-    ../libs/flight_controller/EKF.cpp
     ../libs/flight_controller/MahonyFilter.cpp
-    ../libs/flight_controller/BodyRateController.cpp
-    ../libs/flight_controller/PID.cpp
     ../libs/flight_controller/coord_trans.cpp
+    ../libs/flight_controller/MCE.cpp
 )
 
 target_include_directories(gazebo_link
@@ -63,20 +60,3 @@ target_link_libraries(gazebo_link
         gz-msgs11::gz-msgs11
         SDL2::SDL2
 )
-
-add_executable(mavlink_bridge
-    src/mavlink_bridge.cpp)
-target_include_directories(mavlink_bridge
-    PRIVATE
-    ${MAVLINK_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-)
-target_link_libraries(mavlink_bridge
-    PRIVATE
-    gz-transport14::gz-transport14
-    gz-msgs11::gz-msgs11
-    serial_lib # Link against the serial library we just built
-)
-
-# The mavlink_bridge also needs the include path for the serial library.
-target_include_directories(mavlink_bridge PRIVATE ${serial_SOURCE_DIR}/include)

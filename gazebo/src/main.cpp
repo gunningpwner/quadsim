@@ -1,8 +1,6 @@
-#include "DataManager.h"
 #include "GazeboInterface.h"
 #include "ControllerInterface.h"
-#include "BodyRateController.h"
-#include "EKF.h"
+#include "MCE.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -24,38 +22,32 @@ int main(int argc, char** argv) {
 
     std::cout << "Starting flight software..." << std::endl;
 
-    // 1. Initialize components, resolving the time source dependency.
-    // a. Create DataManager with a placeholder time source.
-    DataManager dataManager([](){ return 0; });
+    // 1. Initialize the Monolithic Control Entity (MCE), which manages the DataManager.
+    MonolithicControlEntity mce;
+    DataManager& dataManager = mce.getDataManager();
 
-    // b. Create GazeboInterface, which needs the DataManager.
+    // 2. Create Gazebo and Controller interfaces, passing them the DataManager.
     GazeboInterface gazeboInterface(dataManager);
     ControllerInterface controllerInterface(dataManager);
 
-    // c. Now, create the real time source from Gazebo and update the DataManager.
+    // 3. Create the time source from Gazebo and initialize the MCE with it.
     TimeSource simTimeSource = [&gazeboInterface]() { return gazeboInterface.getSimTimeUs(); };
-    dataManager.setTimeSource(simTimeSource);
+    mce.initialize(simTimeSource);
 
-    EKF filter(dataManager);
-    BodyRateController bodyRateController(dataManager);
-
-    // 2. Start all threaded interface components
+    // 4. Start all threaded interface components.
     if (controllerInterface.initialize()) {
         controllerInterface.startPolling();
     } else {
         std::cerr << "Could not initialize controller. Running without joystick input." << std::endl;
     }
     gazeboInterface.startSubscribers();
-    gazeboInterface.startPublisherLoop();
 
     std::cout << "Main loop running. Press Ctrl+C to exit." << std::endl;
 
     
     while (g_run_application.load()) {
-        // Run one iteration of the flight controller logic
-        filter.run();
-        bodyRateController.run();
-
+        // Run one iteration of the Monolithic Control Entity's logic.
+        mce.run();
         // Control the loop rate (e.g., 200 Hz)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }

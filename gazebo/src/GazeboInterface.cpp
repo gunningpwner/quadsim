@@ -3,25 +3,22 @@
 #include <chrono>
 
 
-GazeboInterface::GazeboInterface(DataManager& dataManager)
-    : m_dataManager(dataManager), m_run_publisher(false) {
+GazeboInterface::GazeboInterface(DataManager& dataManager) : 
+    m_dataManager(dataManager),
+    m_motor_commands_consumer(dataManager.getMotorCommandsChannel())
+{
     // Advertise the motor command topic
     const std::string motorTopic = "/quadcopter/cmd_vel";
     m_motor_pub = m_node.Advertise<gz::msgs::Actuators>(motorTopic);
     if (!m_motor_pub) {
         std::cerr << "Error advertising topic [" << motorTopic << "]" << std::endl;
     }
+
+    // Register our callback function to be called whenever new motor commands are posted.
+    m_dataManager.registerMotorCommandPostCallback([this](){ this->onMotorCommandPosted(); });
 }
 
-GazeboInterface::~GazeboInterface() {
-    // Safely stop the publisher thread
-    if (m_run_publisher.load()) {
-        m_run_publisher.store(false);
-        if (m_publisherThread.joinable()) {
-            m_publisherThread.join();
-        }
-    }
-}
+GazeboInterface::~GazeboInterface() {}
 
 void GazeboInterface::startSubscribers() {
     // Note: You may need to change these topic names depending on your Gazebo world.
@@ -46,36 +43,28 @@ void GazeboInterface::startSubscribers() {
     
 }
 
-void GazeboInterface::startPublisherLoop() {
-    m_run_publisher.store(true);
-    m_publisherThread = std::thread(&GazeboInterface::runPublisherLoop, this);
-}
+void GazeboInterface::onMotorCommandPosted() {
+    // This function is now called directly by the DataManager when a new command is available.
 
-void GazeboInterface::runPublisherLoop() {
-    std::vector<MotorCommands> commands;
+    // Consume the latest command. If there's nothing new, do nothing.
+    if (!m_motor_commands_consumer.consumeLatest()) {
+        return;
+    }
 
-    while (m_run_publisher.load()) {
-        // Check for new motor commands from the DataManager
-        if (m_dataManager.consume(commands, m_last_seen_motor_command_count)) {
-            if (!commands.empty()) {
-                // Use the most recent command
-                const auto& latest_command = commands.back();
+    const MotorCommands& latest_command = m_motor_commands_consumer.get_span().first[0];
 
-                // Create the Gazebo message
-                gz::msgs::Actuators motor_msg;
-                // Iterate through the C-style array
-                for (int i = 0; i < 4; ++i) {
-                    motor_msg.add_velocity(latest_command.motor_speed[i]*1000);
-                }
-
-                // Publish the message
-                m_motor_pub.Publish(motor_msg);
-            }
+    if (latest_command.is_throttle_command){
+        // Create the Gazebo message
+        gz::msgs::Actuators motor_msg;
+        // Iterate through the C-style array
+        for (int i = 0; i < 4; ++i) {
+            motor_msg.add_velocity(latest_command.throttle[i] * 1000);
         }
 
-        // Run the loop at a reasonable rate (e.g., 100 Hz)
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Publish the message
+        m_motor_pub.Publish(motor_msg);
     }
+    
 }
 
 void GazeboInterface::imuCallback(const gz::msgs::IMU& msg) {

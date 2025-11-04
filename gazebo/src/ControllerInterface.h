@@ -52,6 +52,14 @@ private:
      * @return The normalized floating-point value.
      */
     float normalizeAxis(Sint16 value);
+
+    /**
+     * @brief Maps a normalized float value [-1.0, 1.0] or [0.0, 1.0] to the CRSF channel range [172, 1811].
+     * @param value The normalized input value.
+     * @param is_throttle True if the input is for the throttle axis.
+     * @return The corresponding value in the CRSF range.
+     */
+    uint16_t mapToCrsf(float value, bool is_throttle = false);
     float normalizeTrigger(Sint16 value);
     DataManager& m_dataManager;
     SDL_Joystick* m_joystick = nullptr;

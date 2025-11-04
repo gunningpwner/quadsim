@@ -4,6 +4,7 @@
 #include <gz/transport/Node.hh>
 #include <gz/msgs.hh>
 #include "DataManager.h"
+#include "Consumer.h"
 #include <thread>
 #include <atomic>
 
@@ -34,11 +35,6 @@ public:
     void startSubscribers();
 
     /**
-     * @brief Starts the motor command publisher loop in a separate thread.
-     */
-    void startPublisherLoop();
-
-    /**
      * @brief Gets the latest simulation time received from Gazebo.
      * @return The simulation time in microseconds.
      */
@@ -46,13 +42,10 @@ public:
 
 private:
     /**
-     * @brief The main loop for publishing motor commands.
-     *
-     * This function runs in a separate thread, periodically checking the
-     * DataManager for new motor commands and sending them to Gazebo.
+     * @brief Callback function triggered when a new motor command is posted.
+     * This function consumes the latest command and publishes it to Gazebo.
      */
-    void runPublisherLoop();
-
+    void onMotorCommandPosted();
     // --- Subscriber Callbacks ---
     void imuCallback(const gz::msgs::IMU& msg);
     void gpsCallback(const gz::msgs::NavSat& msg);
@@ -63,10 +56,7 @@ private:
     gz::transport::Node m_node;
     gz::transport::Node::Publisher m_motor_pub;
 
-    // --- Threading for Publisher ---
-    std::thread m_publisherThread;
-    std::atomic<bool> m_run_publisher;
-    unsigned int m_last_seen_motor_command_count = 0;
+    Consumer<MotorCommands, 1> m_motor_commands_consumer;
     std::atomic<uint64_t> m_sim_time_us{0};
 };
 

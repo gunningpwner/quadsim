@@ -64,15 +64,23 @@ void ControllerInterface::runPollingLoop() {
         // Axis 3: Right Stick X (-1.0 to 1.0) -> Yaw
         // Axis 5: Right Trigger ( 0.0 to 1.0) -> Throttle
 
-        InputData input;
-        input.roll = normalizeAxis(SDL_JoystickGetAxis(m_joystick, 0));
-        input.pitch = -normalizeAxis(SDL_JoystickGetAxis(m_joystick, 1)); // Invert for standard flight controls
-        input.yaw = normalizeAxis(SDL_JoystickGetAxis(m_joystick, 3));
-        input.throttle = normalizeTrigger(SDL_JoystickGetAxis(m_joystick, 5)); // Use right trigger
+        RCChannelsData rc_data;
+        rc_data.Timestamp = m_dataManager.getCurrentTimeUs();
 
+        // Map joystick axes to CRSF channels.
+        // CRSF Channel Order: 0:Roll, 1:Pitch, 2:Throttle, 3:Yaw
+        rc_data.channels.chan0 = mapToCrsf(normalizeAxis(SDL_JoystickGetAxis(m_joystick, 0))); // Roll
+        rc_data.channels.chan1 = mapToCrsf(-normalizeAxis(SDL_JoystickGetAxis(m_joystick, 1))); // Pitch (inverted)
+        rc_data.channels.chan2 = mapToCrsf(normalizeTrigger(SDL_JoystickGetAxis(m_joystick, 5)), true); // Throttle
+        rc_data.channels.chan3 = mapToCrsf(normalizeAxis(SDL_JoystickGetAxis(m_joystick, 3))); // Yaw
 
-        m_dataManager.post(input);
+        // For now, we'll set the arm switch (AUX1/ch4) to a fixed "armed" value for testing.
+        // A real implementation would map this to a joystick button.
+        const uint16_t CRSF_CHANNEL_MAX = 1811;
+        rc_data.channels.chan4 = CRSF_CHANNEL_MAX; // AUX1 (Arm Switch)
 
+        m_dataManager.post(rc_data);
+        
         // Poll at a reasonable rate (e.g., 50 Hz)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
@@ -93,4 +101,21 @@ float ControllerInterface::normalizeAxis(Sint16 value) {
  */
 float ControllerInterface::normalizeTrigger(Sint16 value) {
     return static_cast<float>(value) / 32767.0f;
+}
+
+uint16_t ControllerInterface::mapToCrsf(float value, bool is_throttle) {
+    // CRSF channel values range from 172 to 1811.
+    const float CRSF_MIN = 172.0f;
+    const float CRSF_MAX = 1811.0f;
+    const float CRSF_RANGE = CRSF_MAX - CRSF_MIN;
+
+    if (is_throttle) {
+        // Map [0.0, 1.0] to [172, 1811]
+        return static_cast<uint16_t>(CRSF_MIN + value * CRSF_RANGE);
+    } else {
+        // Map [-1.0, 1.0] to [172, 1811]
+        // First, shift the value from [-1, 1] to [0, 1]
+        float scaled_value = (value + 1.0f) / 2.0f;
+        return static_cast<uint16_t>(CRSF_MIN + scaled_value * CRSF_RANGE);
+    }
 }
