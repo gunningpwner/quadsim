@@ -1,5 +1,4 @@
 #include "stm32f4xx_hal.h"
-#include "common/mavlink.h"
 #include "usbd_cdc_if.h"
 #include "bmi270.h"
 #include "timing.h"
@@ -138,6 +137,31 @@ extern "C" int _write(int file, char *ptr, int len)
 }
 
 /**
+ * @brief Reads a value from a specific ADC channel.
+ * @param channel The ADC channel to read (e.g., ADC_CHANNEL_10).
+ * @return The 12-bit ADC value, or 0 on failure.
+ */
+uint16_t read_adc_channel(uint32_t channel) {
+    ADC_ChannelConfTypeDef sConfig = {0};
+
+    // Configure channel
+    sConfig.Channel = channel;
+    sConfig.Rank = 1;
+    sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+        return 0;
+    }
+
+    // Start, wait for, and stop conversion
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 10);
+    uint16_t value = HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+
+    return value;
+}
+
+/**
  * @brief Handles sending various CRSF telemetry packets.
  *
  * This function is designed to be called periodically. It alternates between sending
@@ -157,15 +181,30 @@ void handle_telemetry(Crsf& crsf_receiver) {
             // uint24_t capacity (mAh)
             // uint8_t  remaining (%)
             uint8_t battery_payload[8];
-            uint16_t voltage = 168; // Placeholder for 16.8V
-            uint16_t current = 15;  // Placeholder for 1.5A
+
+            // --- Read and calculate real voltage ---
+            // Voltage divider: R1=10k, R2=1k. Scale factor = (10+1)/1 = 11.
+            // ADC_REF = 3.3V, ADC_MAX = 4095.
+            // Voltage = (ADC_Value / 4095) * 3.3 * 11
+            const float VOLTAGE_DIVIDER_SCALE = 11.0f;
+            uint16_t adc_vbat = read_adc_channel(ADC_CHANNEL_10);
+            float voltage_f = ((float)adc_vbat / 4095.0f) * 3.3f * VOLTAGE_DIVIDER_SCALE;
+            uint16_t voltage_crsf = (uint16_t)(voltage_f * 10); // CRSF units are 0.1V
+
+            // --- Read and calculate real current ---
+            // Current sensor scale: 118mV/A (from config.h). Offset is VCC/2 for no current.
+            // Current = ( (ADC_Value / 4095) * 3.3 - 1.65) / 0.118
+            uint16_t adc_curr = read_adc_channel(ADC_CHANNEL_11);
+            float current_f = (((float)adc_curr / 4095.0f) * 3.3f - 1.65f) / 0.118f;
+            uint16_t current_crsf = (uint16_t)(fmax(0.0f, current_f) * 10); // CRSF units are 0.1A
+
             uint32_t capacity_drawn = 500; // Placeholder for 500mAh drawn
             uint8_t remaining_percentage = 75; // Placeholder for 75%
 
-            battery_payload[0] = (voltage >> 8) & 0xFF;
-            battery_payload[1] = voltage & 0xFF;
-            battery_payload[2] = (current >> 8) & 0xFF;
-            battery_payload[3] = current & 0xFF;
+            battery_payload[0] = (voltage_crsf >> 8) & 0xFF;
+            battery_payload[1] = voltage_crsf & 0xFF;
+            battery_payload[2] = (current_crsf >> 8) & 0xFF;
+            battery_payload[3] = current_crsf & 0xFF;
             battery_payload[4] = (capacity_drawn >> 16) & 0xFF;
             battery_payload[5] = (capacity_drawn >> 8) & 0xFF;
             battery_payload[6] = capacity_drawn & 0xFF;
@@ -219,6 +258,7 @@ int main(void) {
   MX_TIM1_Init();
   MX_TIM2_Init(); 
   MX_USART3_UART_Init(); 
+  MX_ADC1_Init();
   MX_USB_DEVICE_Init();
 
   

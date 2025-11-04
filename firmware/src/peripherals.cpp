@@ -8,6 +8,7 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+ADC_HandleTypeDef hadc1;
 TIM_HandleTypeDef htim5;
 USBD_HandleTypeDef hUsbDeviceFS;
 PCD_HandleTypeDef hpcd_USB_OTG_FS; // This is used by the USB library
@@ -303,6 +304,42 @@ void MX_USART3_UART_Init(void) {
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
   HAL_UART_Init(&huart3);
+}
+
+void MX_ADC1_Init(void)
+{
+    hadc1.Instance = ADC1;
+    hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+    hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+    hadc1.Init.ScanConvMode = DISABLE; // We'll read one channel at a time
+    hadc1.Init.ContinuousConvMode = DISABLE; // Single conversion mode
+    hadc1.Init.DiscontinuousConvMode = DISABLE;
+    hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+    hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+    hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+    hadc1.Init.NbrOfConversion = 1;
+    hadc1.Init.DMAContinuousRequests = DISABLE;
+    hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+    HAL_ADC_Init(&hadc1);
+}
+
+void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    if(hadc->Instance==ADC1)
+    {
+        // 1. Enable peripheral clocks
+        __HAL_RCC_ADC1_CLK_ENABLE();
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+
+        // 2. Configure ADC GPIO pins in analog mode
+        // PC0 -> ADC1_IN10 (VBAT)
+        // PC1 -> ADC1_IN11 (Current)
+        GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+        GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+    }
 }
 
 
