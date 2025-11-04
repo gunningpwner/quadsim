@@ -31,6 +31,15 @@ int DShot::init() {
     // Set the DMA burst transfer properties for the timer.
     _htim->Instance->DCR = (TIM_DMABASE_CCR1 << 8) | (4 - 1); // Start at CCR1, burst length of 4
 
+    // The ESC apparently needs several repeated messages in order to arm
+    MotorCommands armCmd = {.command=DShot_Command::MOTOR_STOP,
+                            .is_throttle_command=false};
+
+    for (int i = 0; i < 100; ++i) {
+        sendMotorCommand(armCmd);
+        // Also apparently need at least 2us between frames
+        HAL_Delay(1);
+    }
     return 0;
 }
 
@@ -71,7 +80,34 @@ void DShot::prepare_dma_buffer(const std::array<uint16_t, 4>& motor_frames) {
         _dma_buffer[i] = 0;
     }
 }
+void DShot::sendMotorCommand(MotorCommands& cmd){
+    std::array<uint16_t, 4> frames;
 
+    if (cmd.is_throttle_command) {
+        // This is a throttle command.
+        // We map the input range [0, 1999] to the DShot throttle range [48, 2047].
+        // A value of 0 from the controller means motor stop (DShot value 0).
+        for (int i = 0; i < 4; ++i) {
+            uint16_t dshot_val = (cmd.throttle[i] == 0) ? 0 : cmd.throttle[i] + 48;
+            dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
+            frames[i] = prepare_frame(dshot_val);
+        }
+    } else {
+        // This is a special command (e.g., MOTOR_STOP, BEEP).
+        // The same command is sent to all 4 motors.
+        uint16_t command_val = static_cast<uint16_t>(cmd.command);
+        for (int i = 0; i < 4; ++i) {
+            frames[i] = prepare_frame(command_val, false); // Telemetry is false for commands for now
+        }
+    }
+
+    prepare_dma_buffer(frames);
+
+    HAL_TIM_Base_Stop_DMA(_htim);
+    __HAL_DMA_DISABLE(_htim->hdma[TIM_DMA_ID_UPDATE]);
+
+    HAL_TIM_Base_Start_DMA(_htim, (uint32_t*)_dma_buffer.data(), _dma_buffer.size());
+}
 void DShot::onMotorCommandPosted() {
     if (!g_data_manager_ptr) {
         return; // DataManager not available
@@ -82,56 +118,6 @@ void DShot::onMotorCommandPosted() {
     }
     const MotorCommands& latest_commands = m_motor_commands_consumer.get_span().first[0];
 
-    std::array<uint16_t, 4> frames;
+    sendMotorCommand(latest_commands);
 
-    if (latest_commands.is_throttle_command) {
-        // This is a throttle command.
-        // We map the input range [0, 1999] to the DShot throttle range [48, 2047].
-        // A value of 0 from the controller means motor stop (DShot value 0).
-        for (int i = 0; i < 4; ++i) {
-            uint16_t dshot_val = (latest_commands.throttle[i] == 0) ? 0 : latest_commands.throttle[i] + 48;
-            dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
-            frames[i] = prepare_frame(dshot_val);
-        }
-    } else {
-        // This is a special command (e.g., MOTOR_STOP, BEEP).
-        // The same command is sent to all 4 motors.
-        uint16_t command_val = static_cast<uint16_t>(latest_commands.command);
-        for (int i = 0; i < 4; ++i) {
-            frames[i] = prepare_frame(command_val, false); // Telemetry is false for commands for now
-        }
-    }
-
-    prepare_dma_buffer(frames);
-
-    // --- Manually trigger a DMA transfer ---
-    // Ensure DMA is disabled before reconfiguring
-    __HAL_DMA_DISABLE(_htim->hdma[TIM_DMA_ID_UPDATE]);
-
-    // Disable the timer
-    __HAL_TIM_DISABLE(_htim);
-
-    // Clear any pending DMA transfer flags
-    DMA_HandleTypeDef* hdma = _htim->hdma[TIM_DMA_ID_UPDATE];
-    __HAL_DMA_CLEAR_FLAG(hdma, __HAL_DMA_GET_TC_FLAG_INDEX(hdma));
-    __HAL_DMA_CLEAR_FLAG(hdma, __HAL_DMA_GET_HT_FLAG_INDEX(hdma));
-    __HAL_DMA_CLEAR_FLAG(hdma, __HAL_DMA_GET_TE_FLAG_INDEX(hdma));
-    __HAL_DMA_CLEAR_FLAG(hdma, __HAL_DMA_GET_FE_FLAG_INDEX(hdma));
-    __HAL_DMA_CLEAR_FLAG(hdma, __HAL_DMA_GET_DME_FLAG_INDEX(hdma));
-
-    // Set the number of data units to transfer
-    _htim->hdma[TIM_DMA_ID_UPDATE]->Instance->NDTR = _dma_buffer.size();
-    // Set the DMA source and destination addresses
-    _htim->hdma[TIM_DMA_ID_UPDATE]->Instance->M0AR = (uint32_t)_dma_buffer.data();
-    _htim->hdma[TIM_DMA_ID_UPDATE]->Instance->PAR = (uint32_t)&_htim->Instance->DMAR;
-
-    // Set the timer counter to 0
-    __HAL_TIM_SET_COUNTER(_htim, 0);
-
-    // Enable the DMA stream and the timer's DMA request
-    __HAL_DMA_ENABLE(_htim->hdma[TIM_DMA_ID_UPDATE]);
-    __HAL_TIM_ENABLE_DMA(_htim, TIM_DMA_UPDATE);
-
-    // Enable the timer to start the process
-    __HAL_TIM_ENABLE(_htim);
 }

@@ -24,6 +24,7 @@ public:
     int init();
     
     void onMotorCommandPosted();
+    void sendMotorCommand(MotorCommands& cmd);
 
 private:
     /**
@@ -46,8 +47,8 @@ private:
     // DShot timing constants for DShot600 at 168MHz timer clock
     // For DShot600 and 168MHz clock, Period=280, T0H=93, T1H=186
     // These are from peripherals.cpp, but defined here for clarity in the driver.
-    static constexpr uint32_t DSHOT_BIT_0 = 93;
-    static constexpr uint32_t DSHOT_BIT_1 = 186;
+    static constexpr uint32_t DSHOT_BIT_0 = 105;
+    static constexpr uint32_t DSHOT_BIT_1 = 210;
 
     // DMA buffer for 4 motors, 16 bits per motor + 2 idle bits
     // The buffer size needs to be 18 words for each of the 4 motors for burst mode.

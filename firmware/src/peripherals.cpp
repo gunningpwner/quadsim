@@ -204,18 +204,11 @@ void MX_TIM1_Init(void) {
     TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
     htim1.Instance = TIM1;
-    // DShot600 requires a 1.67us period.
-    // APB2 Timer clock is 168MHz. 168MHz / 1 = 168MHz.
-    // Period = 105 -> 168MHz / 105 = 1.6MHz bit clock. Bit period = 0.625us.
-    // DShot frame is 16 bits, so 16 * 0.625us = 10us per frame.
-    // This is much faster than DShot600, let's re-calculate.
-    // DShot600 bit period = 1.67us.
-    // Timer clock = 168MHz. Prescaler = 0.
-    // Period = 168 * 1.67 = 280.56. Let's use 280.
-    // Bit 0 (1/3 high) = 280 / 3 = 93
-    // Bit 1 (2/3 high) = 2 * 280 / 3 = 186
-    // Let's use the values from Betaflight which are well-tested.
-    // For DShot600 and 168MHz clock, Period=280, T0H=93, T1H=186
+    // DShot 600 has a bit length of 1.67us
+    // Current clock freq is 168MHz
+    // Gives a period of ~280
+    // T1H is 75% so 210
+    // T0H is 37.5% so 105
     htim1.Init.Prescaler = 0;
     htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
     htim1.Init.Period = 280 - 1;
