@@ -1,4 +1,5 @@
 #include "ControllerInterface.h"
+#include "SensorData.h"
 #include <iostream>
 
 ControllerInterface::ControllerInterface(DataManager& dataManager) 
@@ -99,7 +100,6 @@ void ControllerInterface::runPollingLoop() {
 
             // For now, we'll set the arm switch (AUX1/ch4) to a fixed "armed" value for testing.
             // A real implementation would map this to a joystick button.
-            const uint16_t CRSF_CHANNEL_MAX = 1811;
             rc_data.channels.chan4 = CRSF_CHANNEL_MAX; // AUX1 (Arm Switch)
 
             m_dataManager.post(rc_data);
@@ -147,8 +147,7 @@ void ControllerInterface::buildAndPostKeyboardData() {
     rc_data.channels.chan2 = mapToCrsf(m_kb_throttle, true);
     rc_data.channels.chan3 = mapToCrsf(m_kb_yaw);
 
-    const uint16_t CRSF_CHANNEL_MIN = 172;
-    const uint16_t CRSF_CHANNEL_MAX = 1811;
+
     rc_data.channels.chan4 = m_kb_armed_toggle ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN;
 
     // Zero out other channels for safety

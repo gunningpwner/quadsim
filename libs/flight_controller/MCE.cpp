@@ -1,5 +1,6 @@
 #include "MCE.h"
 #include "MahonyFilter.h"
+#include "AutoLevelController.h"
 #include "SensorData.h" // For RCChannelsData
 #include <stdio.h>
 
@@ -7,6 +8,7 @@ void MonolithicControlEntity::initialize(TimeSource time_source_func){
     m_data_manager.setTimeSource(time_source_func);
     // In a real scenario, you might choose the filter type based on configuration
     m_filter = new MahonyFilter(m_data_manager);
+    m_auto_level_controller = new AutoLevelController(m_data_manager);
     transition_to(UnitializedState::instance());
 }
 
@@ -21,7 +23,8 @@ void MonolithicControlEntity::run() {
     uint64_t now_time= m_data_manager.getCurrentTimeUs();
     // 2. Check for new RC frames using the consumer and update the last seen time.
     if (m_rc_consumer.consumeLatest()) {
-        last_rc_frame_time = m_rc_consumer.get_span().first[0].Timestamp;
+        last_rc_data = m_rc_consumer.get_span().first[0];
+        last_rc_frame_time = last_rc_data.Timestamp;
     }
     const uint64_t current_time = m_data_manager.getCurrentTimeUs();
 
@@ -83,6 +86,11 @@ void DisarmedState::on_enter(MonolithicControlEntity* mce){
 
 State* DisarmedState::on_run(MonolithicControlEntity* mce) {
     // TODO: Transition to ARMED_RATE state based on RC channels
+    RCChannelsData& rc_data = mce->last_rc_data;
+
+    if (rc_data.channels.chan4==CRSF_CHANNEL_MAX & rc_data.channels.chan2==CRSF_CHANNEL_MIN){
+        return ArmedLevelState::instance();
+    }
     return this;
 }
 
@@ -107,5 +115,15 @@ State* FailsafeState::on_run(MonolithicControlEntity* mce) {
         printf("RC link restored. Returning to DISARMED state.\n");
         return DisarmedState::instance(); // Go to a safe state
     }
+    return this;
+}
+
+State* ArmedLevelState::instance() {
+    static ArmedLevelState instance;
+    return &instance;
+}
+
+State* ArmedLevelState::on_run(MonolithicControlEntity* mce) {
+    mce->m_auto_level_controller->run();
     return this;
 }

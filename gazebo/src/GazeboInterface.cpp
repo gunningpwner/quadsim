@@ -58,7 +58,7 @@ void GazeboInterface::onMotorCommandPosted() {
         gz::msgs::Actuators motor_msg;
         // Iterate through the C-style array
         for (int i = 0; i < 4; ++i) {
-            motor_msg.add_velocity(latest_command.throttle[i] * 1000);
+            motor_msg.add_velocity(latest_command.throttle[i]);
         }
 
         // Publish the message

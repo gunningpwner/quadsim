@@ -42,6 +42,8 @@ add_executable(gazebo_link
     src/GazeboInterface.cpp
     src/ControllerInterface.cpp
     ../libs/flight_controller/MahonyFilter.cpp
+    ../libs/flight_controller/AutoLevelController.cpp
+    ../libs/flight_controller/PID.cpp
     ../libs/flight_controller/coord_trans.cpp
     ../libs/flight_controller/MCE.cpp
 )

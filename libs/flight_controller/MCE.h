@@ -1,4 +1,5 @@
 #include "DataManager.h"
+#include "Controller.h"
 #include "FilterBase.h"
 #include "Consumer.h"
 #include "SensorData.h"
@@ -57,6 +58,14 @@ public:
     virtual const char* getName() const override { return "FAILSAFE"; }
 };
 
+class ArmedLevelState : public State {
+    // Runs the auto level controller
+public:
+    static State* instance();
+    virtual State* on_run(MonolithicControlEntity* mce) override;
+    virtual const char* getName() const override { return "ARMED_LEVEL"; }
+};
+
 class MonolithicControlEntity{
     // Responsible for managing hardware independent processing.
     // Will setup and expose DataManager for hardware to communicate through. 
@@ -74,9 +83,10 @@ public:
         void run();
         DataManager& getDataManager() { return m_data_manager; }
         const State* getCurrentState() const { return m_current_state; }
-
+        Controller* m_auto_level_controller;
         // Public members for states to access
         uint64_t last_rc_frame_time;
+        RCChannelsData last_rc_data;
         const uint64_t rc_timeout_us = 500000; // 500ms
 
     private:    
@@ -84,4 +94,5 @@ public:
         FilterBase* m_filter;
         State* m_current_state;
         Consumer<RCChannelsData, 1> m_rc_consumer;
+        
 };

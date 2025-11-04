@@ -86,6 +86,8 @@ struct MotorRPMs:TimestampedData
     std::array<float, 4> rpms;
 };
 
+#define CRSF_CHANNEL_MIN 172
+#define CRSF_CHANNEL_MAX 1811
 
 // This struct directly maps to the 22-byte payload of a CRSF "Packed RC Channels" frame.
 // It should not be modified without understanding the CRSF protocol.
