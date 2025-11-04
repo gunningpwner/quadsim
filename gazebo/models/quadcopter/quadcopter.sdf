@@ -251,7 +251,8 @@
     <plugin filename="gz-sim-navsat-system"
       name="gz::sim::systems::NavSat">
     </plugin>
-
+    
+    
     <plugin
       filename="gz-sim-multicopter-motor-model-system"
       name="gz::sim::systems::MulticopterMotorModel">
@@ -265,10 +266,10 @@
       <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
-      <actuator_number>0</actuator_number>
+      <actuator_number>1</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
       <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
-      <motorSpeedPubTopic>motor_speed/0</motorSpeedPubTopic>
+      <motorSpeedPubTopic>motor_speed/1</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
     </plugin>
@@ -285,10 +286,10 @@
       <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
-      <actuator_number>1</actuator_number>
+      <actuator_number>3</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
       <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
-      <motorSpeedPubTopic>motor_speed/1</motorSpeedPubTopic>
+      <motorSpeedPubTopic>motor_speed/3</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
     </plugin>
@@ -325,10 +326,10 @@
       <motorConstant>1.0258e-05</motorConstant>
       <momentConstant>0.016</momentConstant>
       <commandSubTopic>cmd_vel</commandSubTopic>
-      <actuator_number>3</actuator_number>
+      <actuator_number>0</actuator_number>
       <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
       <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
-      <motorSpeedPubTopic>motor_speed/3</motorSpeedPubTopic>
+      <motorSpeedPubTopic>motor_speed/0</motorSpeedPubTopic>
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
     </plugin>
