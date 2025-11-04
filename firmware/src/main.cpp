@@ -14,7 +14,6 @@
 // MAVLink system and component IDs for our vehicle
 #define MAVLINK_SYSTEM_ID 1
 #define MAVLINK_COMPONENT_ID 1
-
 // --- CRSF Integration ---
 Crsf* g_crsf_ptr = nullptr;
 uint8_t g_crsf_rx_byte; // Single byte buffer for the HAL_UART_Receive_IT function
@@ -67,12 +66,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     }
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     if (huart->Instance == USART3) {
-        if (g_crsf_ptr) {
-            g_crsf_ptr->handleRxByte(g_crsf_rx_byte);
+        if (g_crsf_ptr != nullptr) {
+            // Process the received chunk of data
+            g_crsf_ptr->handleRxChunk(g_crsf_ptr->getRxBuffer(), Size);
         }
-        HAL_UART_Receive_IT(&huart3, &g_crsf_rx_byte, 1); // Re-arm interrupt
+        // Re-arm the DMA reception to catch the next frame
+        if (g_crsf_ptr != nullptr) {
+            HAL_UARTEx_ReceiveToIdle_DMA(&huart3, g_crsf_ptr->getRxBuffer(), 64);
+            __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
+        }
     }
 }
 
@@ -180,8 +184,11 @@ int main(void) {
   }
 
 
-  // Start CRSF receiver (kicks off the first interrupt-driven receive)
-  HAL_UART_Receive_IT(&huart3, &g_crsf_rx_byte, 1);
+  // Start CRSF receiver using DMA and IDLE line detection
+  // This is more efficient than a per-byte interrupt.
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart3, crsf_receiver.getRxBuffer(), 64);
+  __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // We don't need the half-transfer interrupt
+
   printf("CRSF Receiver Started.\n");
 
   // Start the timer. It will now trigger DMA reads automatically in the background.
@@ -192,9 +199,6 @@ int main(void) {
   const uint64_t mavlink_send_interval_us = 1000000; // 50 Hz
 
   while (1) {
-    // Process any new CRSF frames that have been received.
-    crsf_receiver.processFrame();
-    
     // Run the main flight software logic.
     mce.run();
     
@@ -239,6 +243,11 @@ extern "C" void DMA2_Stream0_IRQHandler(void) {
 extern "C" void DMA2_Stream3_IRQHandler(void) {
     // This is the interrupt handler for SPI1_TX
     HAL_DMA_IRQHandler(hspi1.hdmatx);
+}
+
+extern "C" void DMA1_Stream1_IRQHandler(void) {
+    // This is the interrupt handler for USART3_RX
+    HAL_DMA_IRQHandler(huart3.hdmarx);
 }
 
 extern "C" void DMA2_Stream5_IRQHandler(void) {

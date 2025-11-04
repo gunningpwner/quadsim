@@ -18,23 +18,25 @@ class Crsf {
 public:
     Crsf(UART_HandleTypeDef* huart);
     void init();
-    bool processFrame();
+    bool processFrame(const uint8_t* frame_buffer, uint8_t frame_len);
     const CRSFPackedChannels& getChannels() const;
 
-    // Public method to be called from the UART ISR
-    void handleRxByte(uint8_t byte);
+    // Public method to be called from the UART RxEvent ISR
+    void handleRxChunk(uint8_t* buf, uint16_t len);
+
+    // Public getter for the DMA buffer
+    uint8_t* getRxBuffer() { return m_dma_rx_buffer; }
 
 private:
     UART_HandleTypeDef* m_huart;
-
-    volatile bool m_new_frame_ready;
     uint8_t m_rx_buffer[64];
     uint8_t m_frame_position;
     uint64_t m_frame_start_time;
-
-    uint8_t m_latest_frame[64];
-    uint8_t m_latest_frame_len;
+    
     RCChannelsData m_rc_channels_data;
+
+    // DMA buffer for HAL_UARTEx_ReceiveToIdle_DMA
+    uint8_t m_dma_rx_buffer[64];
 };
 
 #endif // CRSF_H

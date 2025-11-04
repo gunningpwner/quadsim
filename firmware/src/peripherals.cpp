@@ -64,6 +64,7 @@ void MX_GPIO_Init(void) {
 void MX_DMA_Init(void)
 {
   /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
@@ -77,6 +78,10 @@ void MX_DMA_Init(void)
   /* DMA2_Stream5_IRQn interrupt configuration (for TIM1_UP) */
   HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
+
+  /* DMA1_Stream1_IRQn interrupt configuration (for USART3_RX) */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 1, 0); // Lower priority than IMU
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 }
 
 void MX_TIM2_Init(void) {
@@ -253,6 +258,8 @@ void MX_TIM1_Init(void) {
 void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
+  static DMA_HandleTypeDef hdma_usart3_rx;
+
   if(huart->Instance==USART3)
   {
     __HAL_RCC_USART3_CLK_ENABLE();
@@ -266,6 +273,21 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
     
+    // Configure DMA for USART3 RX
+    hdma_usart3_rx.Instance = DMA1_Stream1;
+    hdma_usart3_rx.Init.Channel = DMA_CHANNEL_4;
+    hdma_usart3_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_usart3_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_usart3_rx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_usart3_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_usart3_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_usart3_rx.Init.Mode = DMA_NORMAL;
+    hdma_usart3_rx.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_usart3_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    HAL_DMA_Init(&hdma_usart3_rx);
+
+    __HAL_LINKDMA(huart, hdmarx, hdma_usart3_rx);
+
     HAL_NVIC_SetPriority(USART3_IRQn, 1, 0); // Lower priority than IMU
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   }

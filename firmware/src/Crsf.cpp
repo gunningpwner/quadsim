@@ -22,74 +22,67 @@ static uint8_t crc8_dvb_s2(uint8_t crc, unsigned char a) {
 
 Crsf::Crsf(UART_HandleTypeDef* huart)
     : m_huart(huart),
-      m_new_frame_ready(false),
       m_frame_position(0),
-      m_frame_start_time(0),
-      m_latest_frame_len(0) {
+      m_frame_start_time(0) {
     memset(&m_rc_channels_data, 0, sizeof(m_rc_channels_data));
+    memset(m_dma_rx_buffer, 0, sizeof(m_dma_rx_buffer));
 }
 
 void Crsf::init() {
     // The caller is responsible for starting the timer and the initial UART receive interrupt.
 }
 
-void Crsf::handleRxByte(uint8_t byte) {
-    uint64_t current_time = getCurrentTimeUs();
+void Crsf::handleRxChunk(uint8_t* buf, uint16_t len) {
+    for (uint16_t i = 0; i < len; i++) {
+        uint8_t byte = buf[i];
+        uint64_t current_time = getCurrentTimeUs();
 
-    // Check for a timeout between bytes. If it's too long, reset.
-    if (m_frame_position > 0 && (current_time - m_frame_start_time) > CRSF_TIME_NEEDED_PER_FRAME_US) {
-        m_frame_position = 0;
-    }
-
-    if (m_frame_position == 0) {
-        // This must be the first byte of a new frame.
-        m_frame_start_time = current_time;
-    }
-
-    // The full frame length is the value of the 'length' byte plus the address and length bytes themselves.
-    const int full_frame_length = m_frame_position < 2 ? 5 : m_rx_buffer[1] + CRSF_FRAME_LENGTH_ADDRESS + CRSF_FRAME_LENGTH_FRAMELENGTH;
-
-    if (m_frame_position < sizeof(m_rx_buffer)) {
-        m_rx_buffer[m_frame_position++] = byte;
-
-        if (m_frame_position >= full_frame_length) {
-            // We have a complete frame, now validate CRC
-            uint8_t calculated_crc = 0;
-            // CRC includes Type and Payload
-            for (int i = 2; i < full_frame_length - 1; i++) {
-                 calculated_crc = crc8_dvb_s2(calculated_crc, m_rx_buffer[i]);
-            }
-            uint8_t received_crc = m_rx_buffer[full_frame_length - 1];
-
-            if (calculated_crc == received_crc) {
-                // CRC is valid! Copy to the main buffer and set the flag.
-                memcpy(m_latest_frame, m_rx_buffer, full_frame_length);
-                m_latest_frame_len = full_frame_length;
-                m_new_frame_ready = true;
-            }
-            // Reset for the next frame regardless of CRC outcome
+        // The idle line interrupt should handle frame timeouts, but as a fallback,
+        // we can still check for inter-byte timeouts if needed, though it's less critical now.
+        if (m_frame_position > 0 && (current_time - m_frame_start_time) > CRSF_TIME_NEEDED_PER_FRAME_US) {
             m_frame_position = 0;
         }
-    } else {
-         // Buffer overflow, reset
-        m_frame_position = 0;
+
+        if (m_frame_position == 0) {
+            m_frame_start_time = current_time;
+        }
+
+        if (m_frame_position < sizeof(m_rx_buffer)) {
+            m_rx_buffer[m_frame_position++] = byte;
+
+            // The full frame length is the value of the 'length' byte plus address, length, type, and CRC bytes.
+            const int full_frame_length = m_frame_position < 2 ? 5 : m_rx_buffer[1] + CRSF_FRAME_LENGTH_TYPE_CRC;
+
+            if (m_frame_position >= 2 && m_frame_position >= full_frame_length) {
+                // We have a complete frame, now validate CRC
+                uint8_t calculated_crc = 0;
+                // CRC includes Type and Payload (from index 2 up to but not including the CRC byte)
+                for (int j = 2; j < full_frame_length - 1; j++) {
+                    calculated_crc = crc8_dvb_s2(calculated_crc, m_rx_buffer[j]);
+                }
+                uint8_t received_crc = m_rx_buffer[full_frame_length - 1];
+
+                if (calculated_crc == received_crc) {
+                    // CRC is valid! Process the frame.
+                    processFrame(m_rx_buffer, full_frame_length);
+                }
+                // Reset for the next frame regardless of CRC outcome
+                m_frame_position = 0;
+            }
+        } else {
+            // Buffer overflow, reset
+            m_frame_position = 0;
+        }
     }
 }
 
-bool Crsf::processFrame() {
-    if (!m_new_frame_ready) {
-        return false;
-    }
-
-    // Reset the flag so we only process this frame once
-    m_new_frame_ready = false;
-
-    uint8_t frame_type = m_latest_frame[2];
+bool Crsf::processFrame(const uint8_t* frame_buffer, uint8_t frame_len) {
+    uint8_t frame_type = frame_buffer[2];
 
     if (frame_type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
         // The frame payload starts after address, length, and type bytes.
         // We copy directly into the 'channels' member of our timestamped struct.
-        memcpy(&m_rc_channels_data.channels, &m_latest_frame[3], sizeof(CRSFPackedChannels));
+        memcpy(&m_rc_channels_data.channels, &frame_buffer[3], sizeof(CRSFPackedChannels));
 
         // Set the timestamp for this new data.
         m_rc_channels_data.Timestamp = getCurrentTimeUs();
