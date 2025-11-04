@@ -62,11 +62,23 @@ private:
     uint16_t mapToCrsf(float value, bool is_throttle = false);
     float normalizeTrigger(Sint16 value);
     DataManager& m_dataManager;
+    SDL_Window* m_window = nullptr;
     SDL_Joystick* m_joystick = nullptr;
 
     // --- Threading for Polling ---
     std::thread m_pollingThread;
     std::atomic<bool> m_run_polling;
+
+    // --- Keyboard Fallback ---
+    bool m_use_keyboard = false;
+    float m_kb_roll = 0.0f;
+    float m_kb_pitch = 0.0f;
+    float m_kb_yaw = 0.0f;
+    float m_kb_throttle = 0.0f;
+    bool m_kb_armed_toggle = false;
+
+    void handleKeyEvent(const SDL_KeyboardEvent& key_event);
+    void buildAndPostKeyboardData();
 };
 
 #endif // CONTROLLER_INTERFACE_H
