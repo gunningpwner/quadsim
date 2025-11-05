@@ -17,13 +17,8 @@ extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 // Declare initialization functions
 void SystemClock_Config_HSE(void);
 void MX_GPIO_Init(void);
-void MX_DMA_Init(void);
-void MX_SPI1_Init(void);
-void MX_TIM1_Init(void);
-void MX_TIM2_Init(void);
-void MX_USART3_UART_Init(void);
 void MX_USB_DEVICE_Init(void);
-void MX_ADC1_Init(void);
+void MX_TIM2_Init(void);
 
 
 #endif // PERIPHERALS_H
