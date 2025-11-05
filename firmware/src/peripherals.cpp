@@ -4,11 +4,9 @@
 #include "usbd_cdc_if.h"
 
 // --- Global Hardware Handle Definitions ---
-SPI_HandleTypeDef hspi1;
-UART_HandleTypeDef huart3;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
-ADC_HandleTypeDef hadc1;
 TIM_HandleTypeDef htim5;
 USBD_HandleTypeDef hUsbDeviceFS;
 PCD_HandleTypeDef hpcd_USB_OTG_FS; // This is used by the USB library
@@ -59,31 +57,6 @@ void MX_GPIO_Init(void) {
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 }
 
-/**
-  * @brief Enable DMA controller clock
-  */
-void MX_DMA_Init(void)
-{
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
-  __HAL_RCC_DMA2_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA2_Stream0_IRQn interrupt configuration (for SPI1_RX) */
-  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-  /* DMA2_Stream3_IRQn interrupt configuration (for SPI1_TX) */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
-
-  /* DMA2_Stream5_IRQn interrupt configuration (for TIM1_UP) */
-  HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
-
-  /* DMA1_Stream1_IRQn interrupt configuration (for USART3_RX) */
-  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 1, 0); // Lower priority than IMU
-  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
-}
 
 void MX_TIM2_Init(void) {
     // TIM2 is on APB1, which has a timer clock of 84 MHz.
@@ -107,74 +80,6 @@ void MX_TIM2_Init(void) {
     sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
     sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
     HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig);
-}
-
-void MX_SPI1_Init(void) {
-  // Used by the IMU
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-
-  GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
-
-  // DMA handles must be static or global
-  static DMA_HandleTypeDef hdma_spi1_rx;
-  static DMA_HandleTypeDef hdma_spi1_tx;
-  __HAL_RCC_SPI1_CLK_ENABLE();
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 10;
-
-  // Configure DMA for SPI1 RX
-  hdma_spi1_rx.Instance = DMA2_Stream0;
-  hdma_spi1_rx.Init.Channel = DMA_CHANNEL_3;
-  hdma_spi1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
-  hdma_spi1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
-  hdma_spi1_rx.Init.MemInc = DMA_MINC_ENABLE;
-  hdma_spi1_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-  hdma_spi1_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-  hdma_spi1_rx.Init.Mode = DMA_NORMAL;
-  hdma_spi1_rx.Init.Priority = DMA_PRIORITY_HIGH;
-  hdma_spi1_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-  HAL_DMA_Init(&hdma_spi1_rx);
-  __HAL_LINKDMA(&hspi1, hdmarx, hdma_spi1_rx);
-
-  // Configure DMA for SPI1 TX
-  hdma_spi1_tx.Instance = DMA2_Stream3;
-  hdma_spi1_tx.Init.Channel = DMA_CHANNEL_3;
-  hdma_spi1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
-  hdma_spi1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
-  hdma_spi1_tx.Init.MemInc = DMA_MINC_ENABLE;
-  hdma_spi1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-  hdma_spi1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-  hdma_spi1_tx.Init.Mode = DMA_NORMAL;
-  hdma_spi1_tx.Init.Priority = DMA_PRIORITY_LOW;
-  hdma_spi1_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-  HAL_DMA_Init(&hdma_spi1_tx);
-  __HAL_LINKDMA(&hspi1, hdmatx, hdma_spi1_tx);
-
-  HAL_SPI_Init(&hspi1);
 }
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
@@ -287,34 +192,6 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
   }
 }
 
-void MX_USART3_UART_Init(void) {
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 420000;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  HAL_UART_Init(&huart3);
-}
-
-void MX_ADC1_Init(void)
-{
-    hadc1.Instance = ADC1;
-    hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-    hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-    hadc1.Init.ScanConvMode = DISABLE; // We'll read one channel at a time
-    hadc1.Init.ContinuousConvMode = DISABLE; // Single conversion mode
-    hadc1.Init.DiscontinuousConvMode = DISABLE;
-    hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-    hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-    hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-    hadc1.Init.NbrOfConversion = 1;
-    hadc1.Init.DMAContinuousRequests = DISABLE;
-    hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-    HAL_ADC_Init(&hadc1);
-}
 
 void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
 {

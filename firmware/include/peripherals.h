@@ -5,11 +5,10 @@
 #include "stm32f4xx_hal.h"
 
 // Declare global handles for all used peripherals
-extern SPI_HandleTypeDef hspi1;
-extern UART_HandleTypeDef huart3;
+
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
-extern ADC_HandleTypeDef hadc1;
+
 
 // These are defined in peripherals.cpp
 extern USBD_HandleTypeDef hUsbDeviceFS;
