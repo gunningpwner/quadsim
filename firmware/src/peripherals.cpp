@@ -72,9 +72,7 @@ void MX_DMA_Init(void)
 }
 
 void MX_TIM2_Init(void) {
-    // TIM2 is on APB1, which has a timer clock of 84 MHz.
-    // We want to trigger at 100 Hz (every 10ms).
-    // For 100Hz (10ms): (839 + 1) * (999 + 1) / 84MHz = 840 * 1000 / 84M = 0.01s = 10ms.
+
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -103,6 +101,23 @@ void MX_TIM2_Init(void) {
   sConfigIC.ICFilter = 0;
   HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1);
 
+}
+
+void HAL_MspInit(void)
+{
+
+  /* USER CODE BEGIN MspInit 0 */
+
+  /* USER CODE END MspInit 0 */
+
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  __HAL_RCC_PWR_CLK_ENABLE();
+
+  /* System interrupt init*/
+
+  /* USER CODE BEGIN MspInit 1 */
+
+  /* USER CODE END MspInit 1 */
 }
 
 void MX_TIM5_Init(void)
@@ -219,8 +234,8 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_pwm)
     hdma_tim5_ch2.Init.Direction = DMA_MEMORY_TO_PERIPH;
     hdma_tim5_ch2.Init.PeriphInc = DMA_PINC_DISABLE;
     hdma_tim5_ch2.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_tim5_ch2.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
-    hdma_tim5_ch2.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma_tim5_ch2.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
+    hdma_tim5_ch2.Init.MemDataAlignment = DMA_PDATAALIGN_WORD;
     hdma_tim5_ch2.Init.Mode = DMA_CIRCULAR;
     hdma_tim5_ch2.Init.Priority = DMA_PRIORITY_LOW;
     hdma_tim5_ch2.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
