@@ -43,64 +43,66 @@ int main(void) {
 
   HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 
-  pwmData[0]=9;
-  pwmData[1]=9;
-  pwmData[2]=9;
-  pwmData[3]=9;
-  pwmData[4]=9;
-  pwmData[5]=9;
-  pwmData[6]=9;
-  pwmData[7]=9;
-  pwmData[8]=9;
+  pwmData[0]=0;
+  pwmData[1]=1;
+  pwmData[2]=2;
+  pwmData[3]=3;
+  pwmData[4]=4;
+  pwmData[5]=5;
+  pwmData[6]=6;
+  pwmData[7]=7;
+  pwmData[8]=8;
   pwmData[9]=9;
-  pwmData[10]=9;
-  pwmData[11]=9;
-  pwmData[12]=9;
+  pwmData[10]=10;
+  pwmData[11]=11;
+  pwmData[12]=12;
 
   // The DMA is configured for Half-Word (16-bit) transfers in peripherals.cpp.
   // Therefore, we must pass a uint16_t pointer. The cast to (uint32_t*) was
   // causing a data type mismatch and a hard fault.
-  // HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, (uint32_t *)pwmData, 13);
-  __HAL_TIM_ENABLE_DMA(&htim5, TIM_DMA_CC2);
-  HAL_DMA_Start(&hdma_tim5_ch2, (uint32_t)pwmData, (uint32_t)&(htim5.Instance->CCR2), 13);
-  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, (uint32_t *)pwmData, 13);
+
   while(1){
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
     HAL_Delay(100);
     // printf("Difference: \n");
+    if (Difference != 0){
+      printf("pog\n");
+    }
   }
   
 }
 
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+extern "C" void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
-	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
-	{
-		if (Is_First_Captured==0) // if the first rising edge is not captured
-		{
-			IC_Val1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1); // read the first value
-			Is_First_Captured = 1;  // set the first captured as true
-		}
+    if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
+    {
+        // Check if the pin is currently high. If so, it was a rising edge.
+        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET)
+        {
+            if (Is_First_Captured == 0) // This is the first rising edge
+            {
+                IC_Val1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+                Is_First_Captured = 1;
+            }
+            else // This is the second rising edge, completing the period measurement
+            {
+                IC_Val2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
 
-		else   // If the first rising edge is captured, now we will capture the second edge
-		{
-			IC_Val2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);  // read second value
+                if (IC_Val2 > IC_Val1) {
+                    Difference = IC_Val2 - IC_Val1;
+                } else { // Handle timer counter overflow
+                    Difference = (0xFFFFFFFF - IC_Val1) + IC_Val2;
+                }
 
-			if (IC_Val2 > IC_Val1)
-			{
-				Difference = IC_Val2-IC_Val1;
-			}
+                // Now you can calculate the frequency
+                // float ref_clock = HAL_RCC_GetPCLK1Freq() * 2 / (htim->Init.Prescaler + 1);
+                // frequency = ref_clock / Difference;
 
-			else if (IC_Val1 > IC_Val2)
-			{
-				Difference = (0xffffffff - IC_Val1) + IC_Val2;
-			}
-
-
-			__HAL_TIM_SET_COUNTER(htim, 0);  // reset the counter
-			Is_First_Captured = 0; // set it back to false
-		}
-	}
+                Is_First_Captured = 0; // Reset for the next measurement
+            }
+        }
+    }
 }
 extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
@@ -113,7 +115,7 @@ extern "C" void SysTick_Handler(void) {
 
 
 
-void DMA1_Stream4_IRQHandler(void)
+extern "C" void DMA1_Stream4_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Stream4_IRQn 0 */
 
@@ -127,7 +129,7 @@ void DMA1_Stream4_IRQHandler(void)
 /**
   * @brief This function handles TIM2 global interrupt.
   */
-void TIM2_IRQHandler(void)
+extern "C" void TIM2_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM2_IRQn 0 */
 
