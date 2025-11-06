@@ -25,7 +25,9 @@ int main(void) {
 
 
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM2_Init(); 
+  MX_TIM5_Init();
   MX_USB_DEVICE_Init();
 
   while(1){
@@ -52,8 +54,3 @@ extern "C" void TIM2_IRQHandler(void) {
     HAL_TIM_IRQHandler(&htim2);
 }
 
-
-extern "C" void DMA2_Stream5_IRQHandler(void) {
-    // This is the interrupt handler for TIM1_UP
-    HAL_DMA_IRQHandler(htim1.hdma[TIM_DMA_ID_UPDATE]);
-}
