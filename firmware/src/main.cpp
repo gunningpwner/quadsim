@@ -27,7 +27,7 @@ float frequency = 0;
 //     return len;
 // }
 
-volatile uint16_t pwmData[13]; // This is correct, DMA is configured for 16-bit (half-word)
+ uint32_t pwmData[13]; // This is correct, DMA is configured for 16-bit (half-word)
 
 int main(void) {
   SystemClock_Config_HSE(); 
@@ -47,34 +47,25 @@ int main(void) {
 
   HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 
-  pwmData[0]=0;
-  pwmData[1]=1;
-  pwmData[2]=2;
-  pwmData[3]=3;
-  pwmData[4]=4;
-  pwmData[5]=5;
-  pwmData[6]=6;
-  pwmData[7]=7;
-  pwmData[8]=8;
-  pwmData[9]=9;
-  pwmData[10]=10;
-  pwmData[11]=11;
-  pwmData[12]=12;
+  pwmData[0]=50;
+  pwmData[1]=10;
+
 
   // The DMA is configured for Half-Word (16-bit) transfers in peripherals.cpp.
   // Therefore, we must pass a uint16_t pointer. The cast to (uint32_t*) was
   // causing a data type mismatch and a hard fault.
-  // HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, (uint32_t *)pwmData, 13);
-  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, pwmData, 2);
+  // HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
 
-
+  int32_t CH1_DC = 0;
   while(1){
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
-    HAL_Delay(100);
-    // printf("Difference: \n");
-    if (Difference != 0){
-      printf("pog\n");
+    // HAL_Delay(1);
+    while(CH1_DC<100){
+      CH1_DC+=10;
+      TIM5->CCR2=CH1_DC;
+      HAL_Delay(1);
     }
+    CH1_DC=0;
   }
   
 }

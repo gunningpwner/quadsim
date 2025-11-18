@@ -145,7 +145,7 @@ void MX_TIM5_Init(void)
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig);
 
-  sConfigOC.OCMode = TIM_OCMODE_PWM2;
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 25;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -234,8 +234,8 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_pwm)
     hdma_tim5_ch2.Init.Direction = DMA_MEMORY_TO_PERIPH;
     hdma_tim5_ch2.Init.PeriphInc = DMA_PINC_DISABLE;
     hdma_tim5_ch2.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_tim5_ch2.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
-    hdma_tim5_ch2.Init.MemDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma_tim5_ch2.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
+    hdma_tim5_ch2.Init.MemDataAlignment = DMA_PDATAALIGN_WORD;
     hdma_tim5_ch2.Init.Mode = DMA_CIRCULAR;
     hdma_tim5_ch2.Init.Priority = DMA_PRIORITY_LOW;
     hdma_tim5_ch2.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
