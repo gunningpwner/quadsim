@@ -5,31 +5,12 @@
 // #include <string.h>
 // #include <stdio.h>
 
+uint16_t prepare_frame(uint16_t value, bool telemetry);
+void prepare_buffer(uint32_t* _dma_buffer, uint16_t frame);
 
+ uint32_t pwmData[18]; 
 
-uint32_t IC_Val1 = 0;
-uint32_t IC_Val2 = 0;
-uint32_t Difference = 0;
-int Is_First_Captured = 0;
-
-/* Measure Frequency */
-float frequency = 0;
-
-// extern "C" int _write(int file, char *ptr, int len)
-// {
-//     if (file != 1) { // stdout
-//         return -1;
-//     }
-
-//     // Original behavior: send raw data over USB
-//     CDC_Transmit_FS((uint8_t *)ptr, len);
-
-//     return len;
-// }
-
- uint32_t pwmData[13]; // This is correct, DMA is configured for 16-bit (half-word)
-
-int main(void) {
+ int main(void) {
   SystemClock_Config_HSE(); 
   HAL_Init(); 
 
@@ -41,65 +22,61 @@ int main(void) {
   MX_TIM5_Init();
   // MX_USB_DEVICE_Init();
 
-  // Freeze TIM2's counter when the core is halted for debugging.
+
   __HAL_DBGMCU_FREEZE_TIM2();
   __HAL_DBGMCU_FREEZE_TIM5();
 
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
+  // HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 
-  pwmData[0]=50;
-  pwmData[1]=10;
-
-
-  // The DMA is configured for Half-Word (16-bit) transfers in peripherals.cpp.
-  // Therefore, we must pass a uint16_t pointer. The cast to (uint32_t*) was
-  // causing a data type mismatch and a hard fault.
-  HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, pwmData, 2);
+  uint16_t frame = prepare_frame(200,false);
+  prepare_buffer(pwmData,frame);
+  HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, pwmData, 18);
   // HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
-
-  int32_t CH1_DC = 0;
-  while(1){
-    // HAL_Delay(1);
-    while(CH1_DC<100){
-      CH1_DC+=10;
-      TIM5->CCR2=CH1_DC;
-      HAL_Delay(1);
-    }
-    CH1_DC=0;
-  }
-  
 }
+
+
+#define DSHOT_BIT_1 104
+#define DSHOT_BIT_0 52
+
+uint16_t prepare_frame(uint16_t value, bool telemetry) {
+    uint16_t dshot_val = value; // The value is now expected to be in the final 0-2047 range.
+
+    uint16_t frame = (dshot_val << 1) | (telemetry ? 1 : 0);
+
+    // Compute checksum
+    uint16_t csum = 0;
+    uint16_t csum_data = frame;
+    for (int i = 0; i < 3; ++i) {
+        csum ^= csum_data;
+        csum_data >>= 4;
+    }
+    csum &= 0x0F;
+
+    frame = (frame << 4) | csum;
+
+    return frame;
+}
+
+void prepare_buffer(uint32_t* _dma_buffer, uint16_t frame) {
+  //convert frame to buffer
+  for (int bit = 0; bit < 16; ++bit) {
+    if (frame & (1 << (15 - bit))) {
+      _dma_buffer[bit] = DSHOT_BIT_1;
+    } else {
+      _dma_buffer[bit] = DSHOT_BIT_0;
+    }
+  }
+  // Add two "zero" bits at the end for spacing between DShot frames.
+  // This writes 0 to the CCRs, ensuring the line is low.
+  for (int i = 16; i < 18; ++i) {
+    _dma_buffer[i] = 0;
+  }
+}
+
 
 extern "C" void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
-    if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
-    {
-        // Check if the pin is currently high. If so, it was a rising edge.
-        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET)
-        {
-            if (Is_First_Captured == 0) // This is the first rising edge
-            {
-                IC_Val1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
-                Is_First_Captured = 1;
-            }
-            else // This is the second rising edge, completing the period measurement
-            {
-                IC_Val2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
 
-                if (IC_Val2 > IC_Val1) {
-                    Difference = IC_Val2 - IC_Val1;
-                } else { // Handle timer counter overflow
-                    Difference = (0xFFFFFFFF - IC_Val1) + IC_Val2;
-                }
-
-                // Now you can calculate the frequency
-                // float ref_clock = HAL_RCC_GetPCLK1Freq() * 2 / (htim->Init.Prescaler + 1);
-                // frequency = ref_clock / Difference;
-
-                Is_First_Captured = 0; // Reset for the next measurement
-            }
-        }
-    }
 }
 extern "C" void SysTick_Handler(void) {
   HAL_IncTick();
