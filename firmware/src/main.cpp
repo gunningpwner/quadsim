@@ -41,6 +41,10 @@ int main(void) {
   MX_TIM5_Init();
   // MX_USB_DEVICE_Init();
 
+  // Freeze TIM2's counter when the core is halted for debugging.
+  __HAL_DBGMCU_FREEZE_TIM2();
+  __HAL_DBGMCU_FREEZE_TIM5();
+
   HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 
   pwmData[0]=0;
@@ -60,7 +64,9 @@ int main(void) {
   // The DMA is configured for Half-Word (16-bit) transfers in peripherals.cpp.
   // Therefore, we must pass a uint16_t pointer. The cast to (uint32_t*) was
   // causing a data type mismatch and a hard fault.
-  HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, (uint32_t *)pwmData, 13);
+  // HAL_TIM_PWM_Start_DMA(&htim5, TIM_CHANNEL_2, (uint32_t *)pwmData, 13);
+  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
+
 
   while(1){
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
