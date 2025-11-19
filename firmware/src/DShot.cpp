@@ -1,123 +1,187 @@
 #include "DShot.h"
 #include "DataManager.h"
-#include "OtherData.h" // For MotorCommands
 
-// Make the global DataManager instance from main.cpp available here.
-extern DataManager* g_data_manager_ptr;
+#define DSHOT_RATE 150000 // in kbit/s
+extern DataManager *g_data_manager_ptr;
+extern TIM_HandleTypeDef htim4;
+extern TIM_HandleTypeDef htim8;
 
-// Note: The DMA buffer must be in a region accessible by the DMA controller (e.g., SRAM1/SRAM2).
-DShot::DShot(TIM_HandleTypeDef* htim)
-    : _htim(htim),
-      m_motor_commands_consumer(g_data_manager_ptr->getMotorCommandsChannel())
+extern DMA_HandleTypeDef hdma_tim4_ch1;
+extern DMA_HandleTypeDef hdma_tim4_ch2;
+extern DMA_HandleTypeDef hdma_tim8_ch3;
+extern DMA_HandleTypeDef hdma_tim8_ch4;
+
+DShot::DShot() : m_motor_commands_consumer(g_data_manager_ptr->getMotorCommandsChannel())
 {
-    _dma_buffer.fill(0);
 }
-int DShot::init() {
-    // Start the PWM channels for all 4 motors
-    if (HAL_TIM_PWM_Start(_htim, TIM_CHANNEL_1) != HAL_OK) return -1;
-    if (HAL_TIM_PWM_Start(_htim, TIM_CHANNEL_2) != HAL_OK) return -1;
-    if (HAL_TIM_PWM_Start(_htim, TIM_CHANNEL_3) != HAL_OK) return -1;
-    if (HAL_TIM_PWM_Start(_htim, TIM_CHANNEL_4) != HAL_OK) return -1;
 
-    // Configure the timer to trigger a DMA transfer on its update event (when the counter overflows).
-    // This DMA request will perform a "burst" transfer to update all 4 CCR registers at once.
-    // 1. Set the DMA destination to the special DMAR register.
-    // 2. Specify the burst length (4 registers: CCR1, CCR2, CCR3, CCR4).
-    // 3. The DMA source will be our prepared buffer.
-    // The HAL_TIM_Base_Start_DMA function is not suitable for this burst mode setup.
-    // We will manage the DMA transfer manually in the write() function.
-    // The key linkage is done in HAL_TIM_Base_MspInit by __HAL_LINKDMA.
+int DShot::init()
+{
+    createMotorTable(0, htim8, TIM_CHANNEL_3, hdma_tim8_ch3);
+    createMotorTable(1, htim4, TIM_CHANNEL_1, hdma_tim4_ch1);
+    createMotorTable(2, htim8, TIM_CHANNEL_4, hdma_tim8_ch4);
+    createMotorTable(3, htim4, TIM_CHANNEL_2, hdma_tim4_ch2);
 
-    // Set the DMA burst transfer properties for the timer.
-    _htim->Instance->DCR = (TIM_DMABASE_CCR1 << 8) | (4 - 1); // Start at CCR1, burst length of 4
+    MotorCommands armCmd = {};
+    armCmd.is_throttle_command = false;
+    armCmd.command = DShot_Command::MOTOR_STOP;
 
-    // The ESC apparently needs several repeated messages in order to arm
-    MotorCommands armCmd = {.command=DShot_Command::MOTOR_STOP,
-                            .is_throttle_command=false};
-
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 100; ++i)
+    {
         sendMotorCommand(armCmd);
-        // Also apparently need at least 2us between frames
         HAL_Delay(1);
     }
-    return 0;
 }
 
-uint16_t DShot::prepare_frame(uint16_t value, bool telemetry) {
-    uint16_t dshot_val = value; // The value is now expected to be in the final 0-2047 range.
+void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t channel, DMA_HandleTypeDef& hdma)
+{
 
-    uint16_t frame = (dshot_val << 1) | (telemetry ? 1 : 0);
+    MotorTable *m = &motor_tables[index];
+
+    m->htim = &htim;
+    m->channel = channel;
+    m->hdma = &hdma;
+
+    switch (channel)
+    {
+    case TIM_CHANNEL_1:
+        m->ccr_reg = &htim.Instance->CCR1;
+        m->dma_bit = TIM_DMA_CC1;
+        break;
+    case TIM_CHANNEL_2:
+        m->ccr_reg = &htim.Instance->CCR2;
+        m->dma_bit = TIM_DMA_CC2;
+        break;
+    case TIM_CHANNEL_3:
+        m->ccr_reg = &htim.Instance->CCR3;
+        m->dma_bit = TIM_DMA_CC3;
+        break;
+    case TIM_CHANNEL_4:
+        m->ccr_reg = &htim.Instance->CCR4;
+        m->dma_bit = TIM_DMA_CC4;
+        break;
+    default:
+        return;
+    }
+    uint32_t tim_clock = 0;
+    // Now we calculate the duty cycle for a 0 and 1 based off the timer and clock configuration
+    TIM_TypeDef *tim = htim.Instance;
+    if (tim == TIM1 || tim == TIM8 || tim == TIM9 || tim == TIM10 || tim == TIM11)
+    {
+        tim_clock = HAL_RCC_GetPCLK2Freq();
+        // If the APB2 Prescaler !=, Timer clock automatically gets doubled
+        if ((RCC->CFGR & RCC_CFGR_PPRE2) != 0)
+            tim_clock *= 2;
+    }
+    else
+    {
+        tim_clock = HAL_RCC_GetPCLK1Freq();
+        if ((RCC->CFGR & RCC_CFGR_PPRE1) != 0)
+            tim_clock *= 2;
+    }
+    uint32_t arr = (tim_clock + (DSHOT_RATE / 2)) / DSHOT_RATE;
+    __HAL_TIM_SET_AUTORELOAD(m->htim, arr - 1);
+    __HAL_TIM_SET_PRESCALER(m->htim, 0);
+
+    m->duty_bit_0 = (arr * 3) / 8;
+    m->duty_bit_1 = (arr * 3) / 4;
+}
+
+void DShot::onMotorCommandPosted()
+{
+    if (!g_data_manager_ptr)
+        return;
+
+    if (!m_motor_commands_consumer.consumeLatest())
+        return;
+
+    MotorCommands latest_commands = m_motor_commands_consumer.get_span().first[0];
+
+    sendMotorCommand(latest_commands);
+}
+
+void DShot::fillMotorTableBuffer(MotorTable *m, uint16_t cmd, bool telemetry)
+{
+    cmd = (cmd << 1) | (telemetry ? 1 : 0);
 
     // Compute checksum
     uint16_t csum = 0;
-    uint16_t csum_data = frame;
-    for (int i = 0; i < 3; ++i) {
+    uint16_t csum_data = cmd;
+    for (int i = 0; i < 3; ++i)
+    {
         csum ^= csum_data;
         csum_data >>= 4;
     }
     csum &= 0x0F;
 
-    frame = (frame << 4) | csum;
+    cmd = (cmd << 4) | csum;
 
-    return frame;
+    for (int bit = 0; bit < 16; ++bit)
+    {
+        if (cmd & 0x8000)
+            m->cmd_buffer[bit] = m->duty_bit_1;
+        else
+            m->cmd_buffer[bit] = m->duty_bit_0;
+
+        cmd <<= 1;
+    }
+    // 0 out the CCR to create a buffer between messages.
+    // Also stops transient pulses at the end.
+    m->cmd_buffer[16] = 0;
+    m->cmd_buffer[17] = 0;
 }
 
-void DShot::prepare_dma_buffer(const std::array<uint16_t, 4>& motor_frames) {
-    // For burst DMA, we must interleave the data: [M1_B0, M2_B0, M3_B0, M4_B0, M1_B1, M2_B1, ...]
-    for (int bit = 0; bit < 16; ++bit) {
-        for (int motor = 0; motor < 4; ++motor) {
-            // Check the current bit (from MSB to LSB) for the current motor
-            if (motor_frames[motor] & (1 << (15 - bit))) {
-                _dma_buffer[bit * 4 + motor] = DSHOT_BIT_1;
-            } else {
-                _dma_buffer[bit * 4 + motor] = DSHOT_BIT_0;
-            }
-        }
-    }
-    // Add two "zero" bits at the end for spacing between DShot frames.
-    // This writes 0 to the CCRs, ensuring the line is low.
-    for (int i = 16 * 4; i < 18 * 4; ++i) {
-        _dma_buffer[i] = 0;
-    }
-}
-void DShot::sendMotorCommand(MotorCommands& cmd){
-    std::array<uint16_t, 4> frames;
-
-    if (cmd.is_throttle_command) {
-        // This is a throttle command.
-        // We map the input range [0, 1999] to the DShot throttle range [48, 2047].
-        // A value of 0 from the controller means motor stop (DShot value 0).
-        for (int i = 0; i < 4; ++i) {
+void DShot::sendMotorCommand(MotorCommands &cmd)
+{
+    if (cmd.is_throttle_command)
+    {
+        // Throttle value will come to us in range 0-1999 so we map it to 48-2047.
+        // Except 0, that stays 0.
+        // Prolly make this better
+        for (int i = 0; i < 4; ++i)
+        {
             uint16_t dshot_val = (cmd.throttle[i] == 0) ? 0 : cmd.throttle[i] + 48;
             dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
-            frames[i] = prepare_frame(dshot_val);
+            fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
         }
-    } else {
-        // This is a special command (e.g., MOTOR_STOP, BEEP).
-        // The same command is sent to all 4 motors.
+    }
+    else
+    {
         uint16_t command_val = static_cast<uint16_t>(cmd.command);
-        for (int i = 0; i < 4; ++i) {
-            frames[i] = prepare_frame(command_val, false); // Telemetry is false for commands for now
+        for (int i = 0; i < 4; ++i)
+        {
+            fillMotorTableBuffer(&motor_tables[i], command_val, false);
         }
     }
 
-    prepare_dma_buffer(frames);
-
-    HAL_TIM_Base_Stop_DMA(_htim);
-    __HAL_DMA_DISABLE(_htim->hdma[TIM_DMA_ID_UPDATE]);
-
-    HAL_TIM_Base_Start_DMA(_htim, (uint32_t*)_dma_buffer.data(), _dma_buffer.size());
+    startCmdXmit();
 }
-void DShot::onMotorCommandPosted() {
-    if (!g_data_manager_ptr) {
-        return; // DataManager not available
+
+void DShot::startCmdXmit()
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        if (m->htim == nullptr)
+            continue;
+
+        HAL_DMA_Start_IT(m->hdma, (uint32_t)m->cmd_buffer, (uint32_t)m->ccr_reg, 18);
+        __HAL_TIM_ENABLE_DMA(m->htim, m->dma_bit);
+
+        HAL_TIM_PWM_Start(m->htim, m->channel);
     }
+    // Im just gonna hard code starting the timers for now lol
+    // One day I'll find a smarter way to do this
+    // Surely I won't forget about this and it bites me in the ass
 
-    if (!m_motor_commands_consumer.consumeLatest()) {
-        return; // No new motor commands
-    }
-    const MotorCommands& latest_commands = m_motor_commands_consumer.get_span().first[0];
+    __HAL_TIM_ENABLE_DMA(&htim4, TIM_DMA_UPDATE);
+    __HAL_TIM_ENABLE_DMA(&htim8, TIM_DMA_UPDATE);
 
-    sendMotorCommand(latest_commands);
+    __HAL_TIM_SET_COUNTER(&htim4, 0);
+    __HAL_TIM_ENABLE(&htim4);
 
+
+    __HAL_TIM_MOE_ENABLE(&htim8);
+    __HAL_TIM_SET_COUNTER(&htim8, 0);
+    __HAL_TIM_ENABLE(&htim8);
 }

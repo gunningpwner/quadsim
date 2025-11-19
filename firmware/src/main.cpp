@@ -255,8 +255,9 @@ int main(void) {
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
-  MX_TIM1_Init();
   MX_TIM2_Init(); 
+  MX_TIM4_Init(); 
+  MX_TIM8_Init(); 
   MX_USART3_UART_Init(); 
   MX_ADC1_Init();
   MX_USB_DEVICE_Init();
@@ -271,7 +272,7 @@ int main(void) {
   g_imu_ptr = &imu; 
   Crsf crsf_receiver(&huart3);
   g_crsf_ptr = &crsf_receiver;
-  DShot dshot_driver(&htim1);
+  DShot dshot_driver;
   MavlinkPublisher mavlink_publisher(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID);
 
   // Register the DShot driver's callback for motor commands
@@ -367,9 +368,4 @@ extern "C" void DMA2_Stream3_IRQHandler(void) {
 extern "C" void DMA1_Stream1_IRQHandler(void) {
     // This is the interrupt handler for USART3_RX
     HAL_DMA_IRQHandler(huart3.hdmarx);
-}
-
-extern "C" void DMA2_Stream5_IRQHandler(void) {
-    // This is the interrupt handler for TIM1_UP
-    HAL_DMA_IRQHandler(htim1.hdma[TIM_DMA_ID_UPDATE]);
 }
