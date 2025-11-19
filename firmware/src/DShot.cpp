@@ -159,29 +159,42 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
 
 void DShot::startCmdXmit()
 {
+    // Check if motor 1 transfer is finished
+    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
+    if (dmaStreamM1->CR & DMA_SxCR_EN) 
+        return;
+
+    __HAL_TIM_DISABLE(&htim4);
+    __HAL_TIM_DISABLE(&htim8);
+
+    __HAL_TIM_SET_COUNTER(&htim4, 0);
+    __HAL_TIM_SET_COUNTER(&htim8, 0);
+
     for (int i = 0; i < 4; ++i)
     {
         MotorTable *m = &motor_tables[i];
         if (m->htim == nullptr)
             continue;
 
-        HAL_DMA_Start_IT(m->hdma, (uint32_t)m->cmd_buffer, (uint32_t)m->ccr_reg, 18);
-        __HAL_TIM_ENABLE_DMA(m->htim, m->dma_bit);
-
-        HAL_TIM_PWM_Start(m->htim, m->channel);
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        // Clears flags
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TE_FLAG_INDEX(m->hdma));
+        //Manually sets transfer target and size
+        dmaStream->NDTR = 18; 
+        dmaStream->M0AR = (uint32_t)m->cmd_buffer;
+        dmaStream->PAR = (uint32_t)m->ccr_reg;
+        dmaStream->CR |= DMA_SxCR_EN;
+        
+        m->htim->Instance->DIER |= m->dma_bit;
+        m->htim->Instance->CCER |= (1 << (m->channel >> 2) * 4);
     }
     // Im just gonna hard code starting the timers for now lol
     // One day I'll find a smarter way to do this
     // Surely I won't forget about this and it bites me in the ass
-
-    __HAL_TIM_ENABLE_DMA(&htim4, TIM_DMA_UPDATE);
-    __HAL_TIM_ENABLE_DMA(&htim8, TIM_DMA_UPDATE);
-
-    __HAL_TIM_SET_COUNTER(&htim4, 0);
-    __HAL_TIM_ENABLE(&htim4);
-
-
     __HAL_TIM_MOE_ENABLE(&htim8);
-    __HAL_TIM_SET_COUNTER(&htim8, 0);
+    
+    __HAL_TIM_ENABLE(&htim4);
     __HAL_TIM_ENABLE(&htim8);
 }
