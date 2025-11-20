@@ -22,16 +22,59 @@ int DShot::init()
     createMotorTable(2, htim8, TIM_CHANNEL_4, hdma_tim8_ch4);
     createMotorTable(3, htim4, TIM_CHANNEL_2, hdma_tim4_ch2);
 
-    MotorCommands armCmd = {};
-    armCmd.is_throttle_command = false;
-    armCmd.command = DShot_Command::MOTOR_STOP;
-
-    for (int i = 0; i < 100; ++i)
-    {
-        sendMotorCommand(armCmd);
-        HAL_Delay(1);
-    }
 }
+void DShot::arm(){
+    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
+    while (dmaStreamM1->CR & DMA_SxCR_EN)
+        asm volatile ("nop");
+
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR &= ~DMA_SxCR_CIRC;
+    }
+    is_armed=true;
+}
+
+void DShot::disarm()
+{
+    is_armed=false;
+    //Wait until last command has finished sending so we don't corrupt the signal
+    //Idk how the esc would handle that so just play it safe
+    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
+    while (dmaStreamM1->CR & DMA_SxCR_EN)
+        asm volatile ("nop");
+    
+    // Fill motor tables with zero throttle command and switch DMAs to circular buffer
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        fillMotorTableBuffer(m, 0, false);
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR |= DMA_SxCR_CIRC;
+    }
+
+    startCmdXmit();
+    
+}
+
+void DShot::update()
+{
+    if (!is_armed)
+        return;
+        
+    if (!g_data_manager_ptr)
+        return;
+
+    if (!m_motor_commands_consumer.consumeLatest())
+        return;
+
+    MotorCommands latest_commands = m_motor_commands_consumer.get_span().first[0];
+
+    sendMotorCommand(latest_commands);
+}
+
 
 void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t channel, DMA_HandleTypeDef& hdma)
 {
@@ -87,18 +130,6 @@ void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t ch
     m->duty_bit_1 = (arr * 3) / 4;
 }
 
-void DShot::onMotorCommandPosted()
-{
-    if (!g_data_manager_ptr)
-        return;
-
-    if (!m_motor_commands_consumer.consumeLatest())
-        return;
-
-    MotorCommands latest_commands = m_motor_commands_consumer.get_span().first[0];
-
-    sendMotorCommand(latest_commands);
-}
 
 void DShot::fillMotorTableBuffer(MotorTable *m, uint16_t cmd, bool telemetry)
 {

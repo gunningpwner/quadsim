@@ -264,7 +264,7 @@ int main(void) {
 
   
   MonolithicControlEntity mce;
-  mce.initialize(getCurrentTimeUs);
+  
 
   g_data_manager_ptr = &mce.getDataManager();
 
@@ -276,7 +276,7 @@ int main(void) {
   MavlinkPublisher mavlink_publisher(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID);
 
   // Register the DShot driver's callback for motor commands
-  g_data_manager_ptr->registerMotorCommandPostCallback([&dshot_driver](){ dshot_driver.onMotorCommandPosted(); });
+
   HAL_Delay(2000); // Wait for USB to enumerate
   printf("\n--- BMI270 Initialization ---\n");
 
@@ -294,6 +294,7 @@ int main(void) {
       printf("DShot Initialization Failed!\n");
   }
 
+  mce.initialize(getCurrentTimeUs, &dshot_driver);
 
   // Start CRSF receiver using DMA and IDLE line detection
   // This is more efficient than a per-byte interrupt.

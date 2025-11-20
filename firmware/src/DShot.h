@@ -26,13 +26,16 @@ public:
     DShot();
 
     int init();
-    void onMotorCommandPosted();
+    void update();
+    void disarm();
+    void arm();
     void sendMotorCommand(MotorCommands& cmd);
 
 private:
     void createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t channel, DMA_HandleTypeDef& hdma);
     void fillMotorTableBuffer(MotorTable* m, uint16_t cmd, bool telemetry);
     void startCmdXmit();
+    bool is_armed = false;
 
     MotorTable motor_tables[4];
 

@@ -46,12 +46,7 @@ public:
     void post(const GPSPositionData& data){m_gps_channel.post(data);};
     void post(const InputData& data){m_input_channel.post(data);};
     void post(const StateData& data){m_state_channel.post(data);}; 
-    void post(const MotorCommands& data){
-        m_motor_commands_channel.post(data);
-        if (m_motor_command_post_callback) {
-            m_motor_command_post_callback();
-        }
-    };
+    void post(const MotorCommands& data){m_motor_commands_channel.post(data);};
     void post(const RCChannelsData& data){m_rc_channels_channel.post(data);};
 
     // --- READ Access (For Consumers to get a reference to the DataChannel) ---
@@ -85,10 +80,7 @@ public:
         m_time_source = time_source_func;
     }
 
-    // Register a callback to be invoked when new MotorCommands are posted.
-    void registerMotorCommandPostCallback(std::function<void()> callback) {
-        m_motor_command_post_callback = callback;
-    }
+
 
 
 private:
@@ -105,5 +97,5 @@ private:
     DataChannel<MotorCommands, MOTOR_COMMAND_BUFFER_SIZE>      m_motor_commands_channel;
     DataChannel<RCChannelsData, RC_CHANNELS_BUFFER_SIZE>     m_rc_channels_channel;
 
-    std::function<void()> m_motor_command_post_callback; // Callback for motor commands
+
 };
