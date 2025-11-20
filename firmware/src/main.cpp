@@ -10,21 +10,14 @@
 #include <string.h>
 #include <stdio.h>
 
-// MAVLink system and component IDs for our vehicle
 #define MAVLINK_SYSTEM_ID 1
 #define MAVLINK_COMPONENT_ID 1
-// --- CRSF Integration ---
+
 Crsf* g_crsf_ptr = nullptr;
-uint8_t g_crsf_rx_byte; // Single byte buffer for the HAL_UART_Receive_IT function
-// --- End CRSF Integration ---
-
-// Global pointer to the IMU object for the interrupt handler to use.
 BMI270* g_imu_ptr = nullptr;
-
-// Global pointer to the DataManager instance, managed by the MCE.
 DataManager* g_data_manager_ptr = nullptr;
 
-// --- Robust 64-bit Timer Implementation ---
+
 static volatile uint32_t s_overflow_count = 0;
 static volatile uint32_t s_last_dwt_cyccnt = 0;
 
@@ -36,22 +29,21 @@ void initTime() {
 }
 
 uint64_t getCurrentTimeUs() {
-    // This is the most critical section for robust timekeeping.
-    // We must read the hardware counter and check for an overflow atomically.
-    // Disabling interrupts briefly is the standard, safest way to do this.
-    __disable_irq();
+
+    // If nothing calls this for a while, we could miss an overflow
+    // There would have to be >~25.6 seconds for this to happen
+    // Seems unlikely so leaving for now
+
+    // Disables interrupts
+    __disable_irq(); 
 
     const uint32_t current_dwt_cyccnt = DWT->CYCCNT;
-
-    // Check for overflow against the last known value
     if (current_dwt_cyccnt < s_last_dwt_cyccnt) {
         s_overflow_count++;
     }
     s_last_dwt_cyccnt = current_dwt_cyccnt;
 
-    // Construct the 64-bit time value *after* the overflow check.
     const uint64_t total_cycles = ((uint64_t)s_overflow_count << 32) | current_dwt_cyccnt;
-
     __enable_irq();
 
     // Scale to microseconds
@@ -60,7 +52,6 @@ uint64_t getCurrentTimeUs() {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM2) {
-        // Timer has elapsed, kick off a DMA read.
         if (g_imu_ptr) g_imu_ptr->startReadImu_DMA();
     }
 }
@@ -68,12 +59,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     if (huart->Instance == USART3) {
         if (g_crsf_ptr != nullptr) {
-            // Process the received chunk of data
             g_crsf_ptr->handleRxChunk(g_crsf_ptr->getRxBuffer(), Size);
-        }
-        // Re-arm the DMA reception to catch the next frame
-        if (g_crsf_ptr != nullptr) {
             HAL_UARTEx_ReceiveToIdle_DMA(&huart3, g_crsf_ptr->getRxBuffer(), 64);
+
             __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
         }
     }
