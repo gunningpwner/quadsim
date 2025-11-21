@@ -29,7 +29,8 @@ private:
     static constexpr uint8_t REG_INIT_DATA       = 0x5E;
     static constexpr uint8_t REG_PWR_CONF        = 0x7C;
     static constexpr uint8_t REG_PWR_CTRL        = 0x7D;
-    
+    static constexpr uint8_t REG_AXES_MAP        = 0x34;
+
     // Constants
     static constexpr uint8_t EXPECTED_CHIP_ID = 0x24;
 

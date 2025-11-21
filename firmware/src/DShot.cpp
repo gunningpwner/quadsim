@@ -21,7 +21,7 @@ int DShot::init()
     createMotorTable(1, htim4, TIM_CHANNEL_1, hdma_tim4_ch1);
     createMotorTable(2, htim8, TIM_CHANNEL_4, hdma_tim8_ch4);
     createMotorTable(3, htim4, TIM_CHANNEL_2, hdma_tim4_ch2);
-
+    return 0;
 }
 void DShot::arm(){
     DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
