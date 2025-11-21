@@ -16,6 +16,8 @@ DMA_HandleTypeDef hdma_tim4_ch1;
 DMA_HandleTypeDef hdma_tim4_ch2;
 DMA_HandleTypeDef hdma_tim8_ch3;
 DMA_HandleTypeDef hdma_tim8_ch4;
+DMA_HandleTypeDef hdma_spi1_rx;
+DMA_HandleTypeDef hdma_spi1_tx;
 
 ADC_HandleTypeDef hadc1;
 
@@ -249,9 +251,6 @@ void MX_SPI1_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
 
-  // DMA handles must be static or global
-  static DMA_HandleTypeDef hdma_spi1_rx;
-  static DMA_HandleTypeDef hdma_spi1_tx;
   __HAL_RCC_SPI1_CLK_ENABLE();
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;

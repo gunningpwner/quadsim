@@ -52,7 +52,7 @@ uint64_t getCurrentTimeUs() {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM2) {
-        if (g_imu_ptr) g_imu_ptr->startReadImu_DMA();
+        // if (g_imu_ptr) g_imu_ptr->startReadImu_DMA();
     }
 }
 
@@ -62,7 +62,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
             g_crsf_ptr->handleRxChunk(g_crsf_ptr->getRxBuffer(), Size);
             HAL_UARTEx_ReceiveToIdle_DMA(&huart3, g_crsf_ptr->getRxBuffer(), 64);
 
-            __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
+            // __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
         }
     }
 }
