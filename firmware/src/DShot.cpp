@@ -186,11 +186,10 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
     if (cmd.is_throttle_command)
     {
         // Throttle value will come to us in range 0-1999 so we map it to 48-2047.
-        // Except 0, that stays 0.
         // Prolly make this better
         for (int i = 0; i < 4; ++i)
         {
-            uint16_t dshot_val = (cmd.throttle[i] == 0) ? 0 : cmd.throttle[i] + 48;
+            uint16_t dshot_val = cmd.throttle[i] + 48;
             dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
             fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
         }
