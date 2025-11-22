@@ -11,6 +11,8 @@ extern DMA_HandleTypeDef hdma_tim4_ch2;
 extern DMA_HandleTypeDef hdma_tim8_ch3;
 extern DMA_HandleTypeDef hdma_tim8_ch4;
 
+IRQn_Type Get_DMA_Stream_IRQn(DMA_HandleTypeDef *hdma);
+
 DShot::DShot() : m_motor_commands_consumer(g_data_manager_ptr->getMotorCommandsChannel())
 {
 }
@@ -24,10 +26,22 @@ int DShot::init()
     return 0;
 }
 void DShot::arm(){
-    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
+    MotorTable *m = &motor_tables[0];
+
+    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)m->hdma->Instance;
+
+    dmaStreamM1->CR |= DMA_SxCR_TCIE;
+    IRQn_Type irq = Get_DMA_Stream_IRQn(m->hdma);
+    HAL_NVIC_SetPriority(irq, 0, 0); 
+    HAL_NVIC_EnableIRQ(irq);         
+
+    __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
     while (dmaStreamM1->CR & DMA_SxCR_EN)
         asm volatile ("nop");
 
+    __HAL_TIM_DISABLE(&htim4);
+    __HAL_TIM_DISABLE(&htim8);
+    
     for (int i = 0; i < 4; ++i)
     {
         MotorTable *m = &motor_tables[i];
@@ -73,6 +87,7 @@ void DShot::update()
     MotorCommands latest_commands = m_motor_commands_consumer.get_span().first[0];
 
     sendMotorCommand(latest_commands);
+    
 }
 
 
@@ -184,7 +199,7 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
             fillMotorTableBuffer(&motor_tables[i], command_val, false);
         }
     }
-
+    
     startCmdXmit();
 }
 
@@ -228,4 +243,34 @@ void DShot::startCmdXmit()
     
     __HAL_TIM_ENABLE(&htim4);
     __HAL_TIM_ENABLE(&htim8);
+}
+
+extern "C" void DMA2_Stream4_IRQHandler(void){
+    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_EN;
+    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
+    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_TCIE;
+}
+
+IRQn_Type Get_DMA_Stream_IRQn(DMA_HandleTypeDef *hdma) {
+    uint32_t stream_addr = (uint32_t)hdma->Instance;
+
+    // DMA1 Streams
+    if (stream_addr == (uint32_t)DMA1_Stream0) return DMA1_Stream0_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream1) return DMA1_Stream1_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream2) return DMA1_Stream2_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream3) return DMA1_Stream3_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream4) return DMA1_Stream4_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream5) return DMA1_Stream5_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream6) return DMA1_Stream6_IRQn;
+    if (stream_addr == (uint32_t)DMA1_Stream7) return DMA1_Stream7_IRQn;
+
+    // DMA2 Streams
+    if (stream_addr == (uint32_t)DMA2_Stream0) return DMA2_Stream0_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream1) return DMA2_Stream1_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream2) return DMA2_Stream2_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream3) return DMA2_Stream3_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream4) return DMA2_Stream4_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream5) return DMA2_Stream5_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream6) return DMA2_Stream6_IRQn;
+    if (stream_addr == (uint32_t)DMA2_Stream7) return DMA2_Stream7_IRQn;
 }
