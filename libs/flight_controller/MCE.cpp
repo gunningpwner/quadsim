@@ -17,9 +17,8 @@ void MonolithicControlEntity::run()
 {
 
     if (m_filter)
-    {
         m_filter->run();
-    }
+
     uint64_t now_time = m_data_manager.getCurrentTimeUs();
 
     if (m_rc_consumer.consumeLatest())
@@ -30,18 +29,16 @@ void MonolithicControlEntity::run()
     const uint64_t current_time = m_data_manager.getCurrentTimeUs();
 
     if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && (current_time - last_rc_frame_time > rc_timeout_us))
-    {
-
-        // printf("Now time eH:%lu L:%lu\n", (unsigned long)( current_time>> 32), (unsigned long)(current_time & 0xFFFFFFFF));
-        // printf("Last RC Frame TimeH:%lu L:%lu\n", (unsigned long)(last_rc_frame_time >> 32), (unsigned long)(last_rc_frame_time & 0xFFFFFFFF));
         transition_to(FailsafeState::instance());
-    }
+
+    if (m_current_state != DisarmedState::instance() && last_rc_data.channels.chan4 < CRSF_CHANNEL_MAX)
+        transition_to(DisarmedState::instance());
 
     State *next_state = m_current_state->on_run(this);
+
     if (next_state != m_current_state)
-    {
         transition_to(next_state);
-    }
+    
 }
 
 void MonolithicControlEntity::transition_to(State *new_state)
@@ -90,8 +87,7 @@ void DisarmedState::on_enter(MonolithicControlEntity *mce)
 State *DisarmedState::on_run(MonolithicControlEntity *mce)
 {
     RCChannelsData &rc_data = mce->last_rc_data;
-
-    if (rc_data.channels.chan4 == CRSF_CHANNEL_MAX & rc_data.channels.chan2 == CRSF_CHANNEL_MIN)
+    if (rc_data.channels.chan4 >= CRSF_CHANNEL_MAX && rc_data.channels.chan2 <= CRSF_CHANNEL_MIN)
     {
         return ArmedLevelState::instance();
     }

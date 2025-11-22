@@ -19,7 +19,6 @@ struct TimestampedData {
     int64_t Timestamp = 0;
     Type type = Type::Generic;
 
-    // A virtual destructor is crucial for polymorphism
     virtual ~TimestampedData() = default;
 };
 
@@ -85,12 +84,12 @@ struct MotorRPMs:TimestampedData
     MotorRPMs() { type = Type::MotorRPMs; }
     std::array<float, 4> rpms;
 };
-
-#define CRSF_CHANNEL_MIN 172
-#define CRSF_CHANNEL_MAX 1811
-
-// This struct directly maps to the 22-byte payload of a CRSF "Packed RC Channels" frame.
-// It should not be modified without understanding the CRSF protocol.
+// Throttle, yaw, pitch and roll channels seem to have different min and max than switch channels.
+// Prolly something to do with the config message that i don't parse yet. for now, im just cheesing it.
+// #define CRSF_CHANNEL_MIN 172
+// #define CRSF_CHANNEL_MAX 1811
+#define CRSF_CHANNEL_MIN 191
+#define CRSF_CHANNEL_MAX 1792
 struct CRSFPackedChannels {
     unsigned int chan0 : 11;
     unsigned int chan1 : 11;
