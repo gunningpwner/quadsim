@@ -35,7 +35,7 @@ private:
     void createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t channel, DMA_HandleTypeDef& hdma);
     void fillMotorTableBuffer(MotorTable* m, uint16_t cmd, bool telemetry);
     void startCmdXmit();
-    bool is_armed = false;
+    int8_t is_armed = 0;
 
     MotorTable motor_tables[4];
 

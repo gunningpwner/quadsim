@@ -84,6 +84,7 @@ public:
                                 m_dshot(nullptr),
                                 m_rc_consumer(m_data_manager.getRCChannelsChannel()),
                                 last_rc_frame_time(0),
+                                last_rc_data{},
                                 m_current_state(nullptr) {}
 
     void initialize(TimeSource time_source_func, DShot *dshot_driver);

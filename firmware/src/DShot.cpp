@@ -26,6 +26,9 @@ int DShot::init()
     return 0;
 }
 void DShot::arm(){
+    if (is_armed>0)
+        return;
+
     MotorTable *m = &motor_tables[0];
 
     DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)m->hdma->Instance;
@@ -41,19 +44,20 @@ void DShot::arm(){
 
     __HAL_TIM_DISABLE(&htim4);
     __HAL_TIM_DISABLE(&htim8);
-    
+
     for (int i = 0; i < 4; ++i)
     {
         MotorTable *m = &motor_tables[i];
         DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
         dmaStream->CR &= ~DMA_SxCR_CIRC;
     }
-    is_armed=true;
+    is_armed=1;
 }
 
 void DShot::disarm()
 {
-    is_armed=false;
+    if (is_armed<0)
+        return;
     //Wait until last command has finished sending so we don't corrupt the signal
     //Idk how the esc would handle that so just play it safe
     DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
@@ -70,7 +74,7 @@ void DShot::disarm()
     }
 
     startCmdXmit();
-    
+    is_armed=-1;
 }
 
 void DShot::update()

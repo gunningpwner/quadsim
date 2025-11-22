@@ -31,7 +31,7 @@ void MonolithicControlEntity::run()
     if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && (current_time - last_rc_frame_time > rc_timeout_us))
         transition_to(FailsafeState::instance());
 
-    if (m_current_state != DisarmedState::instance() && last_rc_data.channels.chan4 < CRSF_CHANNEL_MAX)
+    if (m_current_state != DisarmedState::instance() && m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && last_rc_data.channels.chan4 < CRSF_CHANNEL_MAX)
         transition_to(DisarmedState::instance());
 
     State *next_state = m_current_state->on_run(this);
@@ -80,7 +80,6 @@ State *DisarmedState::instance()
 
 void DisarmedState::on_enter(MonolithicControlEntity *mce)
 {
-
     mce->getDShotDriver()->disarm();
 }
 
