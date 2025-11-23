@@ -2,6 +2,7 @@
 #include "DataManager.h"
 
 #define DSHOT_RATE 150000 // in kbit/s
+#define DSHOT_MIN_THROTTLE 50
 extern DataManager *g_data_manager_ptr;
 extern TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim8;
@@ -189,7 +190,7 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
         // Prolly make this better
         for (int i = 0; i < 4; ++i)
         {
-            uint16_t dshot_val = cmd.throttle[i] + 48;
+            uint16_t dshot_val = cmd.throttle[i] + 48+DSHOT_MIN_THROTTLE;
             dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
             fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
         }
