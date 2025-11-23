@@ -296,10 +296,12 @@ int main(void) {
   
 
   uint64_t last_mavlink_send_time = 0;
-  const uint64_t mavlink_send_interval_us = 1000000; // 1 Hz
+  const uint64_t mavlink_send_interval_us = 100000;
 
-  uint64_t last_crsf_telemetry_time = 0;
-  const uint64_t crsf_telemetry_interval_us = 100000; // 10 Hz
+  volatile uint64_t last_crsf_telemetry_time = 0;
+  const uint64_t crsf_telemetry_interval_us = 100000;
+
+
 
   while (1) {
     // Run the main flight software logic.
@@ -312,16 +314,17 @@ int main(void) {
     }
 
     // Periodically send MAVLink attitude message
-    if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
-        mavlink_publisher.run();
-        last_mavlink_send_time = getCurrentTimeUs();
-    }
+    // if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
+    //     mavlink_publisher.run();
+    //     last_mavlink_send_time = getCurrentTimeUs();
+    // }
+
 
     // Control the on-board LED based on the MCE state
     if (mce.getCurrentState() == DisarmedState::instance()) {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // Turn LED ON when disarmed
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET); // Turn LED ON when disarmed
     } else {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET); // Turn LED OFF otherwise
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // Turn LED OFF otherwise
     }
   }
 }
