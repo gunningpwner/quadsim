@@ -272,31 +272,26 @@
 
                 // 1. Create a quaternion from the incoming MAVLink data (NED frame)
                 const nedQuaternion = new THREE.Quaternion(message.q1, message.q2, message.q3, message.q4);
+                var roll = Math.atan2(2*(message.q1*message.q2+message.q3*message.q4), 1-2*(message.q2**2+message.q3**2)); // Roll
+                 var pitch = Math.asin(2*(message.q1*message.q3-message.q4*message.q2)); // Pitch
+                var  yaw = Math.atan2(2*(message.q1*message.q4+message.q2*message.q3), 1-2*(message.q3**2+message.q4**2)); // Yaw
 
-                // 2. Define the transformation from NED to the Three.js world frame (FLU).
-                // This is a fixed rotation: -90 degrees around X, then -90 degrees around Z.
-                const nedToFlu = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2));
-
-                // 3. Apply the transformation to get the final orientation for the model.
-                const fluQuaternion = nedQuaternion.clone().premultiply(nedToFlu);
-
-                // Create an Euler object to store the converted angles
-                const euler = new THREE.Euler().setFromQuaternion(fluQuaternion, 'XYZ'); // Use 'XYZ' for Roll, Pitch, Yaw
+                const euler = new THREE.Euler(pitch,-yaw,-roll);
 
                 // Update the 3D model
-                update3DModel(fluQuaternion);
+                update3DModel(euler);
 
                 // Update the text display (convert radians to degrees)
-                rollValue.textContent = (euler.x * 180 / Math.PI).toFixed(2); // Roll
-                pitchValue.textContent = (euler.y * 180 / Math.PI).toFixed(2); // Pitch
-                yawValue.textContent = (euler.z * 180 / Math.PI).toFixed(2); // Yaw
+                rollValue.textContent = (roll*180/Math.PI).toFixed();
+                pitchValue.textContent = (pitch*180/Math.PI).toFixed();
+                yawValue.textContent = (yaw*180/Math.PI).toFixed();
             }
         }
 
         function update3DModel(fluQuaternion) {
             if (quadModel) {
                 // Directly apply the correctly transformed quaternion to the model.
-                quadModel.setRotationFromQuaternion(fluQuaternion);
+                quadModel.setRotationFromEuler(fluQuaternion);
             }
         }
 
