@@ -139,7 +139,14 @@
             const prop4 = new THREE.Mesh(propGeo, propMat); // Back-Left
             prop4.position.set(-armLength, 0.05, armLength);
             quadModel.add(prop4);
-
+            
+            const dir = new THREE.Vector3( 0, 1, 0 );
+            const origin = new THREE.Vector3(0,0,0);
+            const length = 1;
+            const hex = 0xffff00;
+            const arrowHelper = new THREE.ArrowHelper( dir, origin, length, hex );
+            quadModel.add(arrowHelper);
+            
             scene.add(quadModel);
 
             // Handle window resizing
@@ -276,7 +283,7 @@
                  var pitch = Math.asin(2*(message.q1*message.q3-message.q4*message.q2)); // Pitch
                 var  yaw = Math.atan2(2*(message.q1*message.q4+message.q2*message.q3), 1-2*(message.q3**2+message.q4**2)); // Yaw
 
-                const euler = new THREE.Euler(pitch,-yaw,-roll);
+                const euler = new THREE.Euler(pitch,-yaw,-roll,'YXZ');
 
                 // Update the 3D model
                 update3DModel(euler);
