@@ -168,8 +168,7 @@ bool BMI270::startReadImu_DMA() {
 }
 
 void BMI270::processRawData() {
-  // This function is called from the interrupt context.
-  // De-assert the chip select pin to end the transaction.
+
   HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
 
   // --- Timestamp the data as close to its arrival as possible ---
@@ -178,28 +177,27 @@ void BMI270::processRawData() {
   // Data starts at index 2. Accel is first (6 bytes), then Gyro (6 bytes).
   const uint8_t* data_ptr = &m_spi_rx_buf[2];
 
-  // --- Process Accelerometer Data ---
+  // These are in the IMU frame. Need to convert to body frame.
+
   int16_t raw_ax = (int16_t)((data_ptr[1] << 8) | data_ptr[0]);
   int16_t raw_ay = (int16_t)((data_ptr[3] << 8) | data_ptr[2]);
   int16_t raw_az = (int16_t)((data_ptr[5] << 8) | data_ptr[4]);
-
-  AccelData accel_data;
-  accel_data.Timestamp = timestamp;
-  accel_data.Acceleration << (float)raw_ax, (float)raw_ay, (float)raw_az;
-  accel_data.Acceleration = accel_data.Acceleration / ACCEL_SENSITIVITY * G_TO_MS2;
-
-  // --- Process Gyroscope Data ---
   int16_t raw_gx = (int16_t)((data_ptr[7] << 8) | data_ptr[6]);
   int16_t raw_gy = (int16_t)((data_ptr[9] << 8) | data_ptr[8]);
   int16_t raw_gz = (int16_t)((data_ptr[11] << 8) | data_ptr[10]);
+  
+
+  AccelData accel_data;
+  accel_data.Timestamp = timestamp;
+  accel_data.Acceleration << (float)raw_ax, -(float)raw_ay, -(float)raw_az;
+  accel_data.Acceleration = accel_data.Acceleration / ACCEL_SENSITIVITY * G_TO_MS2;
 
   GyroData gyro_data;
-  gyro_data.Timestamp = timestamp; // Use the same timestamp for both
-  gyro_data.AngularVelocity << (float)raw_gx, (float)raw_gy, (float)raw_gz;
+  gyro_data.Timestamp = timestamp; 
+  gyro_data.AngularVelocity << (float)raw_gx, -(float)raw_gy, -(float)raw_gz;
   gyro_data.AngularVelocity = gyro_data.AngularVelocity / GYRO_SENSITIVITY * DEG_TO_RAD;
 
-  // Post the processed data to the central DataManager.
-  // This is safe to do from an ISR because the DataChannel uses a lock-free ring buffer.
+
   if (g_data_manager_ptr) {
     g_data_manager_ptr->post(accel_data);
     g_data_manager_ptr->post(gyro_data);
