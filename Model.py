@@ -410,44 +410,44 @@ class EstimatorFramework:
         self.quad = Quadcopter(initial_state=x0)
         
         # 2. Setup Sensors
-        # self.gps = GPS(SensorConfig(
-        #     update_rate_hz=5.0,
-        #     noise_std=np.array([0.5, 0.5, 0.5, 0.1, 0.1, 0.1]), 
-        #     bias=np.array([0.0, -0.0, 0.0, 0.0, 0.0, 0.0]),
-        #     name="GPS"
-        # ))
-        
-        # self.imu = IMU(SensorConfig(
-        #     update_rate_hz=100.0,
-        #     noise_std=np.array([0.1]*3 + [0.005]*3), 
-        #     bias=np.array([0.0]*3+[.0]*3),
-        #     name="IMU"
-        # ))
-        # self.mag = Magnetometer(SensorConfig(
-        #     update_rate_hz=20.0, # Slower than IMU
-        #     noise_std=np.array([0.05, 0.05, 0.05]), # Some noise
-        #     bias=np.array([0.0, 0.0, 0.0]),
-        #     name="MAG"
-        # ))
         self.gps = GPS(SensorConfig(
             update_rate_hz=5.0,
-            noise_std=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
+            noise_std=np.array([0.5, 0.5, 0.5, 0.1, 0.1, 0.1]), 
             bias=np.array([0.0, -0.0, 0.0, 0.0, 0.0, 0.0]),
             name="GPS"
         ))
         
         self.imu = IMU(SensorConfig(
             update_rate_hz=100.0,
-            noise_std=np.array([0.0]*3 + [0.0]*3), 
-            bias=np.array([0.0]*6),
+            noise_std=np.array([0.1]*3 + [0.01]*3), 
+            bias=np.array([0.2]*3+[.1]*3),
             name="IMU"
         ))
         self.mag = Magnetometer(SensorConfig(
             update_rate_hz=20.0, # Slower than IMU
-            noise_std=np.array([0.0, 0.0, 0.0]), # Some noise
+            noise_std=np.array([0.05, 0.05, 0.05]), # Some noise
             bias=np.array([0.0, 0.0, 0.0]),
             name="MAG"
         ))
+        # self.gps = GPS(SensorConfig(
+        #     update_rate_hz=5.0,
+        #     noise_std=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
+        #     bias=np.array([0.0, -0.0, 0.0, 0.0, 0.0, 0.0]),
+        #     name="GPS"
+        # ))
+        
+        # self.imu = IMU(SensorConfig(
+        #     update_rate_hz=100.0,
+        #     noise_std=np.array([0.0]*3 + [0.0]*3), 
+        #     bias=np.array([0.0]*6),
+        #     name="IMU"
+        # ))
+        # self.mag = Magnetometer(SensorConfig(
+        #     update_rate_hz=20.0, # Slower than IMU
+        #     noise_std=np.array([0.0, 0.0, 0.0]), # Some noise
+        #     bias=np.array([0.0, 0.0, 0.0]),
+        #     name="MAG"
+        # ))
         self.logger = DataLogger()
         self.time = 0.0
         self.dt_sim = 0.001 
@@ -459,11 +459,11 @@ class EstimatorFramework:
         for _ in range(steps):
             # Hover throttle to counter gravity (approx mass=1.0, g=9.81)
             if self.time<5:
-                u_control = np.array([0, 0, 11, 0, -0.02, 0])
+                u_control = np.array([0, 0, 10.8, .02, 0, 0])
             elif self.time<10:
-                u_control = np.array([0, 0, 9, 0, .02, 0])
+                u_control = np.array([0, 3, 8.8, -.02, 0, 0])
             else:
-                u_control = np.array([0, 0, 10.2, 0, 0, 0])
+                u_control = np.array([0, 0, 9.8, 0, 0, 0])
             # Physics Step
             true_state = self.quad.step(self.dt_sim, u_control)
             
@@ -503,15 +503,18 @@ class SimpleEstimator:
         # Error state has angular error while nominal state has quaternion
         # hence 18 vs 19
         # self._error_state_covariance=np.eye(18)*1
-        self._error_state_covariance=np.diag([10,10,10, 5,5,5, 1,1,10, .1,.1,.1, .1,.1,.1, .05,.05,.05])
+        self._error_state_covariance=np.diag([1,1,1, 5,5,5, 1,1,1, .1,.1,.1, .1,.1,.1, .05,.05,.05])
         self._nominal_state[6]=1
         self._last_time=0
         #idk man
         self._acc_variance_est=.1**2
-        self._acc_bias_est=.02**2
+        self._acc_bias_est=.01**2
         self._gyro_variance_est=.01**2
         self._gyro_bias_est=.01**2
         
+        self._gps_pos_variance = .5**2
+        self._gps_vel_variance = .1**2
+        self._mag_variance=.05**2
         self.mag_earth = np.array([1.0, 0.0, 0.0]) 
         self.mag_earth = self.mag_earth / np.linalg.norm(self.mag_earth)
         
@@ -538,9 +541,11 @@ class SimpleEstimator:
             X_deltax[10:19,9:18] = np.eye(9)
             H = H_x@X_deltax
             V=np.eye(6)
-            V[:3,:3]*=.5**2
-            V[3:6,3:6]*=.3**2
+            V[:3,:3]*=self._gps_pos_variance
+            V[3:6,3:6]*=self._gps_vel_variance
             self.correction_step(H, V, data, self._nominal_state[:6])
+            
+            logger.log(t,gps_k=self.K)
         elif sensor_type=="MAG":
             rot_mat = Rotation.from_quat(quat,scalar_first=True).as_matrix()
             pred_mag = rot_mat.T@self.mag_earth
@@ -548,10 +553,11 @@ class SimpleEstimator:
             H = np.zeros((3,18))
             H[:,6:9] = skew_symmetric(pred_mag)
             
-            V = np.eye(3)*.05**2
+            V = np.eye(3)*self._mag_variance
             self.correction_step(H, V, data, pred_mag)
             
         elif sensor_type == "IMU":
+            
             # IMU measurement: [ax, ay, az, gx, gy, gz]
             acc_meas = data[:3]
             gyr_meas = data[3:]
@@ -602,14 +608,14 @@ class SimpleEstimator:
             Q_i[6:9,6:9]=np.eye(3)*self._acc_bias_est*dt
             Q_i[9:12,9:12]=np.eye(3)*self._gyro_bias_est*dt
             self._error_state_covariance=Fx@self._error_state_covariance@Fx.T + Fi@Q_i@Fi.T
-        
+            self._last_time=t
             
             
         # Log the estimate
-        logger.log(t,filt_time=t,est_pos=self._nominal_state[:3], est_vel=self._nominal_state[3:6],
+        logger.log(t,est_pos=self._nominal_state[:3], est_vel=self._nominal_state[3:6],
                    est_acc_bias=self._nominal_state[10:13],est_gyr_bias=self._nominal_state[13:16],est_grav_vec=self._nominal_state[16:19],
                    est_quat=self._nominal_state[6:10],est_covariances=self._error_state_covariance.flatten() )
-        self._last_time=t
+        
         
     def correction_step(self,H,V,measurement,prediction):
         pos = self._nominal_state[:3]
@@ -620,6 +626,7 @@ class SimpleEstimator:
         grav_vec = self._nominal_state[16:19]
         
         K = self._error_state_covariance@H.T@np.linalg.inv(H@self._error_state_covariance@H.T+V)
+        self.K=K
         error_state_mean = K@(measurement-prediction)
 
         self._error_state_covariance = (np.eye(18)-K@H)@self._error_state_covariance
@@ -637,86 +644,143 @@ class SimpleEstimator:
         
         #reset eskf 
         G = np.eye(18)
+        G[6:9,6:9] -= skew_symmetric(1/2*error_state_mean[6:9])
+        
         self._error_state_covariance=G@self._error_state_covariance@G.T
+
+def plot_interactive_heatmap(data_tensor, time_array, labels, text_data_tensor=None, title_prefix="Data", cmap='coolwarm', vmin=-1, vmax=1):
+    """
+    Args:
+        data_tensor: Used for the heatmap COLORS (usually Correlation).
+        text_data_tensor: (Optional) Used for the TEXT values (usually Covariance).
+                          If None, defaults to using data_tensor.
+    """
+    rows, cols = data_tensor.shape[1], data_tensor.shape[2]
+    
+    # If no specific text data is provided, use the color data for text
+    if text_data_tensor is None:
+        text_data_tensor = data_tensor
+
+    # 1. Setup the Plot
+    fig, ax = plt.subplots(figsize=(14, 10)) # Made slightly wider for scientific notation
+    plt.subplots_adjust(bottom=0.25) 
+    
+    # Initial Image (Colors based on data_tensor)
+    im = ax.imshow(data_tensor[0], cmap=cmap, vmin=vmin, vmax=vmax)
+    
+    ax.set_xticks(np.arange(cols))
+    ax.set_yticks(np.arange(rows))
+    ax.set_xticklabels(labels, rotation=90)
+    ax.set_yticklabels(labels)
+    ax.set_title(f"{title_prefix} at t={time_array[0]:.2f}s")
+    fig.colorbar(im, ax=ax)
+
+    # 2. Initialize Text Annotations
+    text_annotations = []
+    
+    # Contrast threshold based on the COLOR data (heatmap intensity)
+    range_span = max(abs(vmax), abs(vmin))
+    contrast_threshold = range_span * 0.6 
+
+    for i in range(rows):
+        row_texts = []
+        for j in range(cols):
+            # Value for Color (Correlation)
+            val_color = data_tensor[0, i, j]
+            # Value for Text (Covariance)
+            val_text = text_data_tensor[0, i, j]
+            
+            # Determine text color based on the BACKGROUND intensity
+            text_color = "white" if abs(val_color) > contrast_threshold else "black"
+            
+            # Create text using scientific notation for covariance
+            text = ax.text(j, i, f"{val_text:.2e}", 
+                           ha="center", va="center", 
+                           color=text_color, 
+                           fontsize=6) 
+            row_texts.append(text)
+        text_annotations.append(row_texts)
+
+    # 3. Create the Slider
+    ax_slider = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor='lightgoldenrodyellow')
+    slider = Slider(
+        ax=ax_slider,
+        label='Time (s)',
+        valmin=time_array[0],
+        valmax=time_array[-1],
+        valinit=time_array[0],
+    )
+
+    # 4. Update Function
+    def update(val):
+        t_selected = slider.val
+        idx = (np.abs(time_array - t_selected)).argmin()
+        
+        # Get matrices for this timestep
+        matrix_color = data_tensor[idx]
+        matrix_text = text_data_tensor[idx]
+        
+        # Update heatmap colors
+        im.set_data(matrix_color)
+        
+        # Update text values and text colors
+        for i in range(rows):
+            for j in range(cols):
+                val_c = matrix_color[i, j]
+                val_t = matrix_text[i, j]
+                
+                # Update number (Un-normalized Covariance)
+                text_annotations[i][j].set_text(f"{val_t:.2e}")
+                
+                # Update visibility (based on Correlation background)
+                text_annotations[i][j].set_color("white" if abs(val_c) > contrast_threshold else "black")
+
+        ax.set_title(f"{title_prefix} at t={time_array[idx]:.2f}s")
+        fig.canvas.draw_idle()
+
+    slider.on_changed(update)
+    plt.tight_layout()
+    print(f"Plotting {title_prefix}...")
+    plt.show()
 
 def plot_covariance_heatmap(data_dict):
     # 1. Extract and reshape data
-    # Data format: [Time, P_00, P_01, ..., P_17_17]
     raw_cov = data_dict['est_covariances']
     times = raw_cov[:, 0]
     
-    # Remove time column and reshape to (N, 18, 18)
-    # N is number of timesteps
+    # Reshape to (N, 18, 18) -> This is the RAW COVARIANCE
     cov_matrices = raw_cov[:, 1:].reshape(-1, 18, 18)
     
-    # 2. Pre-compute Correlation Matrices
-    # We do this once to make the slider smooth
+    # 2. Pre-compute Correlation Matrices (for COLORS)
     corr_matrices = []
-    
-    # Avoid divide by zero if variance is 0 (mostly for the first step)
     epsilon = 1e-9 
     
     print("Pre-computing correlation matrices...")
     for P in cov_matrices:
-        # Get standard deviations (sqrt of diagonal)
         std_dev = np.sqrt(np.diag(P))
-        
-        # Outer product to get the denominator matrix (std_i * std_j)
         denominator = np.outer(std_dev, std_dev) + epsilon
-        
-        # Calculate Correlation: P_ij / (std_i * std_j)
         rho = P / denominator
-        
-        # Clip to handle numerical noise slightly outside [-1, 1]
         rho = np.clip(rho, -1, 1)
         corr_matrices.append(rho)
         
     corr_matrices = np.array(corr_matrices)
 
-    # 3. Setup the Plot
-    fig, ax = plt.subplots(figsize=(10, 8))
-    plt.subplots_adjust(bottom=0.25) # Make room for slider
-    
-    # Labels for the 18 states
     labels = ['Px', 'Py', 'Pz', 'Vx', 'Vy', 'Vz', 
               'Roll', 'Pitch', 'Yaw', 
               'Ba_x', 'Ba_y', 'Ba_z', 'Bg_x', 'Bg_y', 'Bg_z', 
               'Gx', 'Gy', 'Gz']
-    
-    # Initial Plot (Start at t=0)
-    im = ax.imshow(corr_matrices[0], cmap='coolwarm', vmin=-1, vmax=1)
-    ax.set_xticks(np.arange(18))
-    ax.set_yticks(np.arange(18))
-    ax.set_xticklabels(labels, rotation=90)
-    ax.set_yticklabels(labels)
-    ax.set_title(f"Correlation Matrix at t={times[0]:.2f}s")
-    fig.colorbar(im, ax=ax, label="Correlation Coefficient")
 
-    # 4. Create the Slider
-    ax_slider = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor='lightgoldenrodyellow')
-    slider = Slider(
-        ax=ax_slider,
-        label='Time (s)',
-        valmin=times[0],
-        valmax=times[-1],
-        valinit=times[0],
+    # 3. Call Generic Plotter
+    plot_interactive_heatmap(
+        data_tensor=corr_matrices,      # Colors = Correlation
+        text_data_tensor=cov_matrices,  # Text = Raw Covariance
+        time_array=times,
+        labels=labels,
+        title_prefix="Covariance Analysis",
+        cmap='coolwarm',
+        vmin=-1,
+        vmax=1
     )
-
-    # 5. Update Function
-    def update(val):
-        # Find the index closest to the slider time
-        t_selected = slider.val
-        idx = (np.abs(times - t_selected)).argmin()
-        
-        # Update image data
-        im.set_data(corr_matrices[idx])
-        ax.set_title(f"Correlation Matrix at t={times[idx]:.2f}s")
-        fig.canvas.draw_idle()
-
-    slider.on_changed(update)
-    
-    print("Plotting...")
-    plt.show()
 # --- Execution ---
 if __name__ == "__main__":
     # Initialize Framework
@@ -747,7 +811,7 @@ if __name__ == "__main__":
     my_filter = SimpleEstimator()
     
     # Run Simulation
-    sim.run(duration_sec=30.0, filter_callback=my_filter.update)
+    sim.run(duration_sec=60.0, filter_callback=my_filter.update)
     
     # Plotting Results
     data = sim.logger.get_arrays()
