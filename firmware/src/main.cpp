@@ -4,6 +4,7 @@
 #include "timing.h"
 #include "Crsf.h"
 #include "DShot.h"
+#include "GPS.h"
 #include "MCE.h"
 #include "MavlinkPublisher.h"
 #include "peripherals.h"
@@ -15,6 +16,7 @@
 
 Crsf* g_crsf_ptr = nullptr;
 BMI270* g_imu_ptr = nullptr;
+GPS* g_gps_ptr = nullptr;
 DataManager* g_data_manager_ptr = nullptr;
 
 
@@ -26,6 +28,7 @@ void initTime() {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     s_last_dwt_cyccnt = DWT->CYCCNT;
+    
 }
 
 uint64_t getCurrentTimeUs() {
@@ -64,6 +67,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 
             __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
         }
+    } else if (huart->Instance == UART4) {
+        g_gps_ptr->handleRxChunk(g_gps_ptr->getRxBuffer(), Size);
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart4, g_gps_ptr->getRxBuffer(), 256);
+        __HAL_DMA_DISABLE_IT(huart4.hdmarx, DMA_IT_HT);
     }
 }
 
@@ -247,6 +254,7 @@ int main(void) {
   MX_TIM4_Init(); 
   MX_TIM8_Init(); 
   MX_USART3_UART_Init(); 
+  MX_UART4_Init(); 
   MX_ADC1_Init();
   MX_USB_DEVICE_Init();
 
@@ -260,10 +268,11 @@ int main(void) {
   g_imu_ptr = &imu; 
   Crsf crsf_receiver(&huart3);
   g_crsf_ptr = &crsf_receiver;
+  GPS gps_driver;
+  g_gps_ptr = &gps_driver;
   DShot dshot_driver;
-  MavlinkPublisher mavlink_publisher(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID);
 
-  // Register the DShot driver's callback for motor commands
+  MavlinkPublisher mavlink_publisher(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID);
 
   HAL_Delay(2000); // Wait for USB to enumerate
   printf("\n--- BMI270 Initialization ---\n");
@@ -282,21 +291,25 @@ int main(void) {
       printf("DShot Initialization Failed!\n");
   }
 
+  printf("--- GPS Initialization ---\n");
+  if (gps_driver.init() == 0) {
+      printf("GPS Initialized Successfully.\n");
+  } else {
+      printf("GPS Initialization Failed!\n");
+  }
+
   mce.initialize(getCurrentTimeUs, &dshot_driver);
 
   // Start CRSF receiver using DMA and IDLE line detection
-  // This is more efficient than a per-byte interrupt.
   HAL_UARTEx_ReceiveToIdle_DMA(&huart3, crsf_receiver.getRxBuffer(), 64);
-  __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT); // We don't need the half-transfer interrupt
+  __HAL_DMA_DISABLE_IT(huart3.hdmarx, DMA_IT_HT);
+
+  HAL_TIM_Base_Start_IT(&htim2);
 
   printf("CRSF Receiver Started.\n");
 
-  // Start the timer. It will now trigger DMA reads automatically in the background.
-  HAL_TIM_Base_Start_IT(&htim2);
-  
-
   uint64_t last_mavlink_send_time = 0;
-  const uint64_t mavlink_send_interval_us = 100000;
+  const uint64_t mavlink_send_interval_us = 10000;
 
   volatile uint64_t last_crsf_telemetry_time = 0;
   const uint64_t crsf_telemetry_interval_us = 100000;
@@ -305,27 +318,29 @@ int main(void) {
 
   while (1) {
     // Run the main flight software logic.
-    mce.run();
-    
-    // Periodically send CRSF telemetry
-    if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {
-        handle_telemetry(crsf_receiver);
-        last_crsf_telemetry_time = getCurrentTimeUs();
-    }
 
-    // Periodically send MAVLink attitude message
+
+    // mce.run();
+    
+    // // Periodically send CRSF telemetry
+    // if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {
+    //     handle_telemetry(crsf_receiver);
+    //     last_crsf_telemetry_time = getCurrentTimeUs();
+    // }
+
+    // // Periodically send MAVLink attitude message
     // if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
     //     mavlink_publisher.run();
     //     last_mavlink_send_time = getCurrentTimeUs();
     // }
 
 
-    // Control the on-board LED based on the MCE state
-    if (mce.getCurrentState() == DisarmedState::instance()) {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET); // Turn LED ON when disarmed
-    } else {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // Turn LED OFF otherwise
-    }
+    // // Control the on-board LED based on the MCE state
+    // if (mce.getCurrentState() == DisarmedState::instance()) {
+    //     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET); // Turn LED ON when disarmed
+    // } else {
+    //     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // Turn LED OFF otherwise
+    // }
   }
 }
 
@@ -340,6 +355,10 @@ extern "C" void OTG_FS_IRQHandler(void) {
 
 extern "C" void USART3_IRQHandler(void) {
     HAL_UART_IRQHandler(&huart3);
+}
+
+extern "C" void UART4_IRQHandler(void) {
+    HAL_UART_IRQHandler(&huart4);
 }
 
 extern "C" void TIM2_IRQHandler(void) {
@@ -360,4 +379,9 @@ extern "C" void DMA2_Stream3_IRQHandler(void) {
 extern "C" void DMA1_Stream1_IRQHandler(void) {
     // This is the interrupt handler for USART3_RX
     HAL_DMA_IRQHandler(huart3.hdmarx);
+}
+
+extern "C" void DMA1_Stream2_IRQHandler(void) {
+    // This is the interrupt handler for UART4_RX
+    HAL_DMA_IRQHandler(huart4.hdmarx);
 }

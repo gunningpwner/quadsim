@@ -7,6 +7,8 @@
 // Declare global handles for all used peripherals
 extern SPI_HandleTypeDef hspi1;
 extern UART_HandleTypeDef huart3;
+extern UART_HandleTypeDef huart4;
+
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
 extern ADC_HandleTypeDef hadc1;
@@ -24,6 +26,7 @@ void MX_TIM2_Init(void);
 void MX_TIM4_Init(void);
 void MX_TIM8_Init(void);
 void MX_USART3_UART_Init(void);
+void MX_UART4_Init(void);
 void MX_USB_DEVICE_Init(void);
 void MX_ADC1_Init(void);
 

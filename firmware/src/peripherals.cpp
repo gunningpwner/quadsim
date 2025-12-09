@@ -6,6 +6,7 @@
 // --- Global Hardware Handle Definitions ---
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3;
+UART_HandleTypeDef huart4;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim4;
@@ -16,6 +17,9 @@ DMA_HandleTypeDef hdma_tim4_ch1;
 DMA_HandleTypeDef hdma_tim4_ch2;
 DMA_HandleTypeDef hdma_tim8_ch3;
 DMA_HandleTypeDef hdma_tim8_ch4;
+
+DMA_HandleTypeDef hdma_uart4_rx;
+DMA_HandleTypeDef hdma_usart3_rx;
 
 ADC_HandleTypeDef hadc1;
 
@@ -98,6 +102,10 @@ void MX_DMA_Init(void)
   /* DMA1_Stream1_IRQn interrupt configuration (for USART3_RX) */
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 1, 0); // Lower priority than IMU
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+
+  /* DMA1_Stream2_IRQn interrupt configuration (for UART4_RX) */
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 1, 0); // Lower priority than IMU
+  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
 }
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
@@ -299,9 +307,7 @@ void MX_SPI1_Init(void)
 
 void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  static DMA_HandleTypeDef hdma_usart3_rx;
-
+  GPIO_InitTypeDef GPIO_InitStruct = {0}; 
   if (huart->Instance == USART3)
   {
     __HAL_RCC_USART3_CLK_ENABLE();
@@ -333,6 +339,41 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     HAL_NVIC_SetPriority(USART3_IRQn, 1, 0); // Lower priority than IMU
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   }
+  else if(huart->Instance==UART4)
+  {
+    __HAL_RCC_UART4_CLK_ENABLE();
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    /**UART4 GPIO Configuration
+    PA0-WKUP     ------> UART4_TX
+    PA1     ------> UART4_RX
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF8_UART4;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    hdma_uart4_rx.Instance = DMA1_Stream2;
+    hdma_uart4_rx.Init.Channel = DMA_CHANNEL_4;
+    hdma_uart4_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_uart4_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_uart4_rx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_uart4_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_uart4_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_uart4_rx.Init.Mode = DMA_NORMAL;
+    hdma_uart4_rx.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_uart4_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    HAL_DMA_Init(&hdma_uart4_rx);
+
+    __HAL_LINKDMA(huart,hdmarx,hdma_uart4_rx);
+
+    HAL_NVIC_SetPriority(UART4_IRQn, 1, 0); // Lower priority than IMU
+    HAL_NVIC_EnableIRQ(UART4_IRQn);
+  }
+
+
 }
 
 void MX_USART3_UART_Init(void)
@@ -346,6 +387,19 @@ void MX_USART3_UART_Init(void)
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
   HAL_UART_Init(&huart3);
+}
+void MX_UART4_Init(void)
+{
+
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 115200;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  HAL_UART_Init(&huart4);
 }
 
 void MX_ADC1_Init(void)
