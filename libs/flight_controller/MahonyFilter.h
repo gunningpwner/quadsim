@@ -22,16 +22,14 @@ public:
 
 private:
     // --- Data Consumers ---
-    Consumer<GyroData, IMU_BUFFER_SIZE> m_gyro_consumer;
-    Consumer<AccelData, IMU_BUFFER_SIZE> m_accel_consumer;
+    Consumer<IMUData, IMU_BUFFER_SIZE> m_imu_consumer;
 
     // --- Filter State ---
     Eigen::Quaternionf m_q;      // Estimated orientation
     Eigen::Vector3f m_gyro_bias; // Estimated gyroscope bias
 
     // --- Last Sensor Measurements ---
-    AccelData m_last_accel;
-    GyroData m_last_gyro;
+    IMUData m_last_imu;
 
     // --- Tuning Gains ---
     float m_kp; // Proportional gain for accelerometer correction

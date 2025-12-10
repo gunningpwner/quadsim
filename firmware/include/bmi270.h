@@ -3,7 +3,7 @@
 
 #include "stm32f4xx_hal.h"
 #include <cstdint>
-#include "SensorData.h" // For AccelData struct
+#include "SensorData.h" 
 
 class BMI270 {
 public:

@@ -186,20 +186,17 @@ void BMI270::processRawData() {
   int16_t raw_gy = (int16_t)((data_ptr[9] << 8) | data_ptr[8]);
   int16_t raw_gz = (int16_t)((data_ptr[11] << 8) | data_ptr[10]);
   
+  IMUData imu_data;
+  imu_data.Timestamp = timestamp;
+  imu_data.Acceleration << (float)raw_ax, -(float)raw_ay, -(float)raw_az;
+  imu_data.Acceleration = imu_data.Acceleration / ACCEL_SENSITIVITY * G_TO_MS2;
 
-  AccelData accel_data;
-  accel_data.Timestamp = timestamp;
-  accel_data.Acceleration << (float)raw_ax, -(float)raw_ay, -(float)raw_az;
-  accel_data.Acceleration = accel_data.Acceleration / ACCEL_SENSITIVITY * G_TO_MS2;
 
-  GyroData gyro_data;
-  gyro_data.Timestamp = timestamp; 
-  gyro_data.AngularVelocity << (float)raw_gx, -(float)raw_gy, -(float)raw_gz;
-  gyro_data.AngularVelocity = gyro_data.AngularVelocity / GYRO_SENSITIVITY * DEG_TO_RAD;
+  imu_data.AngularVelocity << (float)raw_gx, -(float)raw_gy, -(float)raw_gz;
+  imu_data.AngularVelocity = imu_data.AngularVelocity / GYRO_SENSITIVITY * DEG_TO_RAD;
 
 
   if (g_data_manager_ptr) {
-    g_data_manager_ptr->post(accel_data);
-    g_data_manager_ptr->post(gyro_data);
+    g_data_manager_ptr->post(imu_data);
   }
 }

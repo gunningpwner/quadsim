@@ -3,7 +3,12 @@
 #include "FilterBase.h"
 #include "Consumer.h"
 #include "SensorData.h"
-#include "DShot.h"
+
+#ifndef GAZEBO
+    #include "DShot.h"
+#else
+    #include "MotorInterface.h"
+#endif
 
 using TimeSource = std::function<uint64_t()>;
 

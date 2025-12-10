@@ -6,8 +6,7 @@
 #include <iostream>
 
 MahonyFilter::MahonyFilter(DataManager &data_manager) : FilterBase(data_manager),
-                                                        m_gyro_consumer(data_manager.getGyroChannel()),
-                                                        m_accel_consumer(data_manager.getAccelChannel())
+                                                        m_imu_consumer(data_manager.getIMUChannel())
 {
     init_filter();
 }
@@ -29,25 +28,16 @@ void MahonyFilter::run()
 
     std::vector<std::unique_ptr<TimestampedData>> data_log;
 
-    if (m_gyro_consumer.consumeAll() > 0)
+    if (m_imu_consumer.consumeAll() > 0)
     {
-        auto span = m_gyro_consumer.get_span();
+        auto span = m_imu_consumer.get_span();
         for (size_t i = 0; i < span.second; ++i)
         {
             const auto &sample = span.first[i];
-            data_log.push_back(std::make_unique<GyroData>(sample));
+            data_log.push_back(std::make_unique<IMUData>(sample));
         }
     }
 
-    if (m_accel_consumer.consumeAll() > 0)
-    {
-        auto span = m_accel_consumer.get_span();
-        for (size_t i = 0; i < span.second; ++i)
-        {
-            const auto &sample = span.first[i];
-            data_log.push_back(std::make_unique<AccelData>(sample));
-        }
-    }
 
     std::sort(data_log.begin(), data_log.end(), [](const auto &a, const auto &b)
               { return a->Timestamp < b->Timestamp; });
@@ -58,11 +48,8 @@ void MahonyFilter::run()
 
         switch (data_point_ptr->type)
         {
-        case TimestampedData::Type::Gyro:
-            m_last_gyro = *static_cast<GyroData *>(data_point_ptr.get());
-            break;
-        case TimestampedData::Type::Accel:
-            m_last_accel = *static_cast<AccelData *>(data_point_ptr.get());
+        case TimestampedData::Type::IMU:
+            m_last_imu = *static_cast<IMUData *>(data_point_ptr.get());
             break;
         default:
             break;
@@ -84,7 +71,7 @@ void MahonyFilter::run()
     estimated_state.Timestamp = m_last_update_time_us;
     estimated_state.orientation = {m_q.w(), m_q.x(), m_q.y(), m_q.z()};
 
-    Eigen::Vector3f corrected_gyro = m_last_gyro.AngularVelocity - m_gyro_bias;
+    Eigen::Vector3f corrected_gyro = m_last_imu.AngularVelocity - m_gyro_bias;
     estimated_state.angular_velocity_body = {corrected_gyro.x(), corrected_gyro.y(), corrected_gyro.z()};
 
     if (m_last_update_time_us > 0)
@@ -99,10 +86,10 @@ void MahonyFilter::update(float dt)
         return;
 
     Eigen::Vector3f error(0, 0, 0);
-    if (m_last_accel.Acceleration.norm() > 0.1f)
+    if (m_last_imu.Acceleration.norm() > 0.1f)
     {
 
-        Eigen::Vector3f accel_unit = m_last_accel.Acceleration.normalized();
+        Eigen::Vector3f accel_unit = m_last_imu.Acceleration.normalized();
         // I think normally that should be -1, but +1 makes everything work
         // Make it work, make it right, make it fast
         // (I am here)
@@ -112,7 +99,7 @@ void MahonyFilter::update(float dt)
     }
     m_gyro_bias += -m_ki * error * dt;
 
-    Eigen::Vector3f gyro_corrected = m_last_gyro.AngularVelocity - m_gyro_bias + m_kp * error;
+    Eigen::Vector3f gyro_corrected = m_last_imu.AngularVelocity - m_gyro_bias + m_kp * error;
 
     Eigen::Quaternionf dq;
     dq.w() = 1.0;

@@ -7,10 +7,8 @@
 struct TimestampedData {
     enum class Type {
         Generic,
-        GPSPosition,
-        GPSVelocity,
-        Accel,
-        Gyro,
+        GPS,
+        IMU,
         Mag,
         MotorRPMs,
         RCChannels
@@ -25,34 +23,20 @@ struct TimestampedData {
 
 struct GPSData:TimestampedData
 {   
-    GPSData() { type = Type::GPSPosition; }
+    GPSData() { type = Type::GPS; }
     Eigen::Vector3f lla;
     Eigen::Vector3f vel;
     uint8_t Satellites;
 };
 
-
-
-struct AccelData:TimestampedData
+struct IMUData:TimestampedData
 {
-    AccelData() { type = Type::Accel; }
-    /// <summary>
-    /// Linear acceleration in the body frame (m/s^2).
-    /// </summary>
+    IMUData() { type = Type::IMU; }
     Eigen::Vector3f Acceleration;
-};
-
-/// <summary>
-/// Holds a single, timestamped reading from a gyroscope.
-/// </summary>
-struct GyroData:TimestampedData
-{
-    GyroData() { type = Type::Gyro; }
-    /// <summary>
-    /// Angular velocity in the body frame (radians/s).
-    /// </summary>
     Eigen::Vector3f AngularVelocity;
 };
+
+
 
 /// <summary>
 /// Holds a single, timestamped reading from a magnetometer.
