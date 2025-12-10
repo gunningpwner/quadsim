@@ -1,5 +1,6 @@
 #include "GazeboInterface.h"
 #include "ControllerInterface.h"
+#include "MotorInterface.h"
 #include "MCE.h"
 #include <iostream>
 #include <chrono>
@@ -32,7 +33,11 @@ int main(int argc, char** argv) {
 
     // 3. Create the time source from Gazebo and initialize the MCE with it.
     TimeSource simTimeSource = [&gazeboInterface]() { return gazeboInterface.getSimTimeUs(); };
-    mce.initialize(simTimeSource);
+
+    DShot motor_interface = DShot(dataManager);
+    motor_interface.init();
+
+    mce.initialize(simTimeSource, &motor_interface);
 
     // 4. Start all threaded interface components.
     if (controllerInterface.initialize()) {

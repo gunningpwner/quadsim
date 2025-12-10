@@ -41,12 +41,14 @@ add_executable(gazebo_link
     src/main.cpp
     src/GazeboInterface.cpp
     src/ControllerInterface.cpp
+    src/MotorInterface.cpp
     ../libs/flight_controller/MahonyFilter.cpp
     ../libs/flight_controller/AutoLevelController.cpp
     ../libs/flight_controller/PID.cpp
     ../libs/flight_controller/coord_trans.cpp
     ../libs/flight_controller/MCE.cpp
 )
+target_compile_definitions(gazebo_link PRIVATE GAZEBO) 
 
 target_include_directories(gazebo_link
     PRIVATE

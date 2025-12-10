@@ -13,9 +13,6 @@ GazeboInterface::GazeboInterface(DataManager& dataManager) :
     if (!m_motor_pub) {
         std::cerr << "Error advertising topic [" << motorTopic << "]" << std::endl;
     }
-
-    // Register our callback function to be called whenever new motor commands are posted.
-    m_dataManager.registerMotorCommandPostCallback([this](){ this->onMotorCommandPosted(); });
 }
 
 GazeboInterface::~GazeboInterface() {}
@@ -70,33 +67,24 @@ void GazeboInterface::onMotorCommandPosted() {
 void GazeboInterface::imuCallback(const gz::msgs::IMU& msg) {
     int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
 
-    AccelData accelData;
-    accelData.Timestamp = timestamp_us;
-    accelData.Acceleration << msg.linear_acceleration().x(),
+    IMUData imu_data;
+    imu_data.Timestamp = timestamp_us;
+    imu_data.Acceleration << msg.linear_acceleration().x(),
                               msg.linear_acceleration().y(),
                               msg.linear_acceleration().z();
-    m_dataManager.post(accelData);
 
-    GyroData gyroData;
-    gyroData.Timestamp = timestamp_us;
-    gyroData.AngularVelocity << msg.angular_velocity().x(),
+    imu_data.AngularVelocity << msg.angular_velocity().x(),
                                 msg.angular_velocity().y(),
                                 msg.angular_velocity().z();
-    m_dataManager.post(gyroData);
+    m_dataManager.post(imu_data);
 }
 
 void GazeboInterface::gpsCallback(const gz::msgs::NavSat& msg) {
     int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
-    GPSPositionData gpsData;
+    GPSData gpsData;
     gpsData.Timestamp = timestamp_us;
     gpsData.lla={msg.latitude_deg(),msg.longitude_deg(),msg.altitude()};
-    // Set a realistic horizontal covariance. A standard deviation of 2.5 meters
-    // is a reasonable assumption for a standard GPS. Variance = stdev^2.
-    const float horizontal_stdev = 2.5f; // meters
-    const float horizontal_variance = horizontal_stdev * horizontal_stdev;
-    gpsData.position_covariances={horizontal_variance, horizontal_variance, 10};
     m_dataManager.post(gpsData);
-    
 }
 
 void GazeboInterface::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
