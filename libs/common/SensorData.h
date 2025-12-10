@@ -22,26 +22,13 @@ struct TimestampedData {
     virtual ~TimestampedData() = default;
 };
 
-// most likely from NMEA GPGGA, and GPGSA messages.
-// UBX-NAV-COV will give full 3x3 ned covariance
-struct GPSPositionData:TimestampedData
-{   
-    GPSPositionData() { type = Type::GPSPosition; }
-    Eigen::Vector3f lla;
-    // Covariance of position in the local NED frame (North, East, Down).
-    // Units are meters-squared (m^2).
-    Eigen::Vector3f position_covariances;
-    int FixStatus;
-    int Satellites;
-};
 
-// NMEA GPVTG
-// UBX-NAV-VELNED will give covariances
-struct GPSVelocityData:TimestampedData
-{
-    GPSVelocityData() { type = Type::GPSVelocity; }
-    Eigen::Vector3f velocity; //technically just en since gps only gives you groundspeed
-    Eigen::Vector3f velocity_covariances;
+struct GPSData:TimestampedData
+{   
+    GPSData() { type = Type::GPSPosition; }
+    Eigen::Vector3f lla;
+    Eigen::Vector3f vel;
+    uint8_t Satellites;
 };
 
 

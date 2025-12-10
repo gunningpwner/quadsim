@@ -69,7 +69,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
         }
     } else if (huart->Instance == UART4) {
         g_gps_ptr->handleRxChunk(g_gps_ptr->getRxBuffer(), Size);
-        HAL_UARTEx_ReceiveToIdle_DMA(&huart4, g_gps_ptr->getRxBuffer(), 256);
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart4, g_gps_ptr->getRxBuffer(), 100);
         __HAL_DMA_DISABLE_IT(huart4.hdmarx, DMA_IT_HT);
     }
 }

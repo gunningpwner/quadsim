@@ -43,7 +43,7 @@ public:
     void post(const GyroData& data){m_gyro_channel.post(data);};
     void post(const AccelData& data){m_accel_channel.post(data);};
     void post(const MagData& data){m_mag_channel.post(data);};
-    void post(const GPSPositionData& data){m_gps_channel.post(data);};
+    void post(const GPSData& data){m_gps_channel.post(data);};
     void post(const InputData& data){m_input_channel.post(data);};
     void post(const StateData& data){m_state_channel.post(data);}; 
     void post(const MotorCommands& data){m_motor_commands_channel.post(data);};
@@ -54,7 +54,7 @@ public:
     DataChannel<GyroData, IMU_BUFFER_SIZE>& getGyroChannel() { return m_gyro_channel; }
     DataChannel<AccelData, IMU_BUFFER_SIZE>& getAccelChannel() { return m_accel_channel; }
     DataChannel<MagData, IMU_BUFFER_SIZE>& getMagChannel() { return m_mag_channel; }
-    DataChannel<GPSPositionData, GPS_BUFFER_SIZE>& getGpsChannel() { return m_gps_channel; }
+    DataChannel<GPSData, GPS_BUFFER_SIZE>& getGpsChannel() { return m_gps_channel; }
     DataChannel<InputData, INPUT_BUFFER_SIZE>& getInputChannel() { return m_input_channel; }
     DataChannel<StateData, STATE_BUFFER_SIZE>& getStateChannel() { return m_state_channel; }
     DataChannel<MotorCommands, MOTOR_COMMAND_BUFFER_SIZE>& getMotorCommandsChannel() { return m_motor_commands_channel; }
@@ -91,7 +91,7 @@ private:
     DataChannel<GyroData, IMU_BUFFER_SIZE>           m_gyro_channel;
     DataChannel<AccelData, IMU_BUFFER_SIZE>          m_accel_channel;
     DataChannel<MagData, IMU_BUFFER_SIZE>            m_mag_channel;
-    DataChannel<GPSPositionData, GPS_BUFFER_SIZE>    m_gps_channel;
+    DataChannel<GPSData, GPS_BUFFER_SIZE>    m_gps_channel;
     DataChannel<InputData, INPUT_BUFFER_SIZE>          m_input_channel;
     DataChannel<StateData, STATE_BUFFER_SIZE>          m_state_channel;
     DataChannel<MotorCommands, MOTOR_COMMAND_BUFFER_SIZE>      m_motor_commands_channel;
