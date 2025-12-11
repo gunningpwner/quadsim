@@ -39,8 +39,7 @@ find_package(Eigen3 REQUIRED)
 
 add_executable(gazebo_link
     src/main.cpp
-    src/GazeboInterface.cpp
-    src/ControllerInterface.cpp
+    src/TestHarness.cpp
     src/MotorInterface.cpp
     ../libs/flight_controller/ESKF.cpp
     ../libs/flight_controller/AutoLevelController.cpp
