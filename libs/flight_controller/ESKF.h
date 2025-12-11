@@ -30,6 +30,7 @@ private:
     Vector3f nominalGyroBias;
     Vector3f nominalGrav;
 
+    Vector3f refLLA;
 
     MatrixXf errorStateCovariance;
 

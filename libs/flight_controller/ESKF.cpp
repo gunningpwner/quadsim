@@ -2,6 +2,9 @@
 #include <cmath>
 #include <Eigen/Geometry>
 
+#define R_M 6335439.0
+#define R_N 6378137.0
+
 using Eigen::seq;
 
 Quaternionf axisAngleToQuaternion(const Vector3f& angularVel, float dt) {
@@ -35,6 +38,7 @@ ESKF::ESKF(DataManager& data_manager):
     nominalAccBias(0,0,0),
     nominalGyroBias(0,0,0),
     nominalGrav(0,0,-9.81),
+    refLLA(0,0,0),
     last_timestamp(0),
     errorStateCovariance(18,18)
 {
@@ -122,6 +126,9 @@ void ESKF::run(){
         }
     }
 
+    printf("LLA %f %f %f\n", refLLA.x(), refLLA.y(), refLLA.z());
+    printf("Pos %f %f %f\n", nominalPos.x(), nominalPos.y(), nominalPos.z());
+    printf("Vel %f %f %f\n", nominalVel.x(), nominalVel.y(), nominalVel.z());
 
     
 }
@@ -201,7 +208,6 @@ void ESKF::updateMag(const MagData& mag_data){
     V(1,1)=magVar;
     V(2,2)=magVar;
     correctionStep(H,V,mag_data.MagneticField,pred_mag);
-
 }
 
 void ESKF::updateGPS(const GPSData& gps_data){
@@ -223,8 +229,30 @@ void ESKF::updateGPS(const GPSData& gps_data){
     MatrixXf V=MatrixXf::Identity(6,6);
     V(seq(0,2),seq(0,2)) *= gpsPosVar;
     V(seq(3,5),seq(3,5)) *= gpsVelVar;
+    printf("GPS %f %f %f\n", gps_data.lla.x(), gps_data.lla.y(), gps_data.lla.z());
+    if (refLLA.isZero())
+        refLLA = gps_data.lla;
+    else{
+        Vector3f diff = gps_data.lla-refLLA;
+        float e_coef = (R_N+refLLA.z()*cos(refLLA.y()));
+        float n_coef = (R_M+refLLA.z());
+        // Should be NED
+        Vector3f ned = Vector3f(n_coef*diff.x(),
+                                e_coef*diff.y(),
+                                -diff.z());
 
-    // correctionStep(H,V,);
+        VectorXf meas(6);
+        meas << ned,gps_data.vel;
+        VectorXf pred(6);
+        pred << nominalPos,nominalVel;
+        correctionStep(H,V,meas,pred);
+        refLLA.x()+=nominalPos.y()/e_coef;
+        refLLA.y()+=nominalPos.x()/n_coef;
+        refLLA.z()+=-nominalPos.z();
+        nominalPos.setZero();
+
+    }
+
 
 
 }
