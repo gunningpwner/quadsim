@@ -42,7 +42,7 @@ add_executable(gazebo_link
     src/GazeboInterface.cpp
     src/ControllerInterface.cpp
     src/MotorInterface.cpp
-    ../libs/flight_controller/MahonyFilter.cpp
+    ../libs/flight_controller/ESKF.cpp
     ../libs/flight_controller/AutoLevelController.cpp
     ../libs/flight_controller/PID.cpp
     ../libs/flight_controller/coord_trans.cpp

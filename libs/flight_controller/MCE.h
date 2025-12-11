@@ -3,6 +3,7 @@
 #include "FilterBase.h"
 #include "Consumer.h"
 #include "SensorData.h"
+#include "ESKF.h"
 
 #ifndef GAZEBO
     #include "DShot.h"
@@ -106,7 +107,7 @@ public:
 
 private:
     DataManager m_data_manager;
-    FilterBase *m_filter;
+    ESKF *m_filter;
     DShot *m_dshot;
     State *m_current_state;
     Consumer<RCChannelsData, 1> m_rc_consumer;

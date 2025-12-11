@@ -8,7 +8,7 @@ void MonolithicControlEntity::initialize(TimeSource time_source_func, DShot *dsh
 {
     m_data_manager.setTimeSource(time_source_func);
     m_dshot = dshot_driver;
-    m_filter = new MahonyFilter(m_data_manager);
+    m_filter = new ESKF(m_data_manager);
     m_auto_level_controller = new AutoLevelController(m_data_manager);
     transition_to(UnitializedState::instance());
 }
