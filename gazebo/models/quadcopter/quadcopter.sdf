@@ -166,15 +166,12 @@
           <position_sensing>
             <horizontal>
               <noise type='gaussian'>
-                <!-- A realistic standard deviation for a non-RTK GPS is ~2.5 meters.
-                     The navsat plugin expects this value in degrees.
-                     2.5m / 111132 m/deg = ~0.0000225 degrees -->
-                <stddev>0.0000225</stddev>
+                <stddev>0</stddev>
               </noise>
             </horizontal>
             <vertical>
               <noise type='gaussian'>
-                <stddev>10</stddev>
+                <stddev>0</stddev>
               </noise>
             </vertical>
           </position_sensing>
@@ -333,6 +330,44 @@
       <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
       <motorType>velocity</motorType>
     </plugin>
+    <plugin
+        filename="gz-sim-multicopter-control-system"
+        name="gz::sim::systems::MulticopterVelocityControl">
+        <robotNamespace>quadcopter</robotNamespace>
+        <commandSubTopic>vel_cmd</commandSubTopic>
+        <enableSubTopic>enable</enableSubTopic>
+        <comLinkName>base_link</comLinkName>
+        <velocityGain>2.7 2.7 2.7</velocityGain>
+        <attitudeGain>2 3 0.15</attitudeGain>
+        <angularRateGain>0.4 0.52 0.18</angularRateGain>
+        <maximumLinearAcceleration>2 2 2</maximumLinearAcceleration>
 
+        <rotorConfiguration>
+          <rotor>
+            <jointName>prop_rr_joint</jointName>
+            <forceConstant>1.0258e-05</forceConstant>
+            <momentConstant>0.016</momentConstant>
+            <direction>-1</direction>
+          </rotor>
+          <rotor>
+            <jointName>prop_fr_joint</jointName>
+            <forceConstant>1.0258e-05</forceConstant>
+            <momentConstant>0.016</momentConstant>
+            <direction>1</direction>
+          </rotor>
+          <rotor>
+            <jointName>prop_rl_joint</jointName>
+            <forceConstant>1.0258e-05</forceConstant>
+            <momentConstant>0.016</momentConstant>
+            <direction>1</direction>
+          </rotor>
+          <rotor>
+            <jointName>prop_fl_joint</jointName>
+            <forceConstant>1.0258e-05</forceConstant>
+            <momentConstant>0.016</momentConstant>
+            <direction>-1</direction>
+          </rotor>
+        </rotorConfiguration>
+      </plugin>
   </model>
 </sdf>

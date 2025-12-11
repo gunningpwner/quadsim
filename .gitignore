@@ -1,6 +1,7 @@
 .vscode
 */CMakeFiles/**
 */build/**
+build/*
 .pio
 ./lib/*
 */__pycache__/**

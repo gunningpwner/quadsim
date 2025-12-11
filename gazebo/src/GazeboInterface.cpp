@@ -69,13 +69,15 @@ void GazeboInterface::imuCallback(const gz::msgs::IMU& msg) {
 
     IMUData imu_data;
     imu_data.Timestamp = timestamp_us;
+    // Gazebo's body reference frame defines +x forward, +y out the left and +z upwards
+    // We need to convert this to internal frame
     imu_data.Acceleration << msg.linear_acceleration().x(),
-                              msg.linear_acceleration().y(),
-                              msg.linear_acceleration().z();
+                              -msg.linear_acceleration().y(),
+                              -msg.linear_acceleration().z();
 
     imu_data.AngularVelocity << msg.angular_velocity().x(),
-                                msg.angular_velocity().y(),
-                                msg.angular_velocity().z();
+                                -msg.angular_velocity().y(),
+                                -msg.angular_velocity().z();
     m_dataManager.post(imu_data);
 }
 
@@ -84,6 +86,7 @@ void GazeboInterface::gpsCallback(const gz::msgs::NavSat& msg) {
     GPSData gpsData;
     gpsData.Timestamp = timestamp_us;
     gpsData.lla={msg.latitude_deg(),msg.longitude_deg(),msg.altitude()};
+    gpsData.vel = {msg.velocity_north(), msg.velocity_east(),-msg.velocity_up()};
     m_dataManager.post(gpsData);
 }
 
