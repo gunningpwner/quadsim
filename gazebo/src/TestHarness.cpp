@@ -1,8 +1,20 @@
 #include "TestHarness.h"
+#include "Logger.h"
+#include "timing.h"
 
 extern std::atomic<bool> g_run_application;
 
+static TestHarness* g_test_harness = nullptr;
+
+uint64_t getCurrentTimeUs() {
+    if (g_test_harness)
+        return g_test_harness->getSimTimeUs();
+    return 0;
+}
+
 TestHarness::TestHarness(){
+    g_test_harness = this;
+
     m_mce = new MonolithicControlEntity();
     m_data_manager = &m_mce->getDataManager();
     TimeSource simTimeSource = [this](){ return getSimTimeUs(); };
@@ -10,12 +22,15 @@ TestHarness::TestHarness(){
     motor_interface.init();
     m_mce->initialize(simTimeSource, &motor_interface);
     
-    m_mce->transition_to(DisarmedState::instance());
+    // m_mce->transition_to(DisarmedState::instance());
     startSubscribers();
 
+    
 }
 
 TestHarness::~TestHarness(){
+    if (g_test_harness == this)
+        g_test_harness = nullptr;
     delete m_mce;
     m_data_manager=nullptr;
 }
@@ -33,11 +48,13 @@ void TestHarness::run(){
     }
 }
 void TestHarness::update(){
-
+    m_mce->run();
 }
 void TestHarness::restart(){
     delete m_mce;
     m_data_manager = nullptr;
+
+    Logger::getInstance().startNewSession();
 
     m_mce = new MonolithicControlEntity();
     m_data_manager = &m_mce->getDataManager();
@@ -45,7 +62,9 @@ void TestHarness::restart(){
     DShot motor_interface = DShot(*m_data_manager);
     motor_interface.init();
     m_mce->initialize(simTimeSource, &motor_interface);
-    m_mce->transition_to(DisarmedState::instance());
+    // m_mce->transition_to(DisarmedState::instance());
+
+    
 }
 
 void TestHarness::startSubscribers() {

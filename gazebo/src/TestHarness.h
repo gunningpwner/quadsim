@@ -20,6 +20,7 @@ private:
     DataManager* m_data_manager;
     std::atomic<uint64_t> m_sim_time_us{0};
     std::atomic<bool> m_should_restart = false;
+    
     gz::transport::Node m_node;
     
     void restart();

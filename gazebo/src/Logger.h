@@ -42,10 +42,10 @@ public:
         std::lock_guard<std::mutex> lock(mtx);
         ensureFileOpen(name);
         files[name] << timestamp;
-        for (int i = 0; i < data.rows(); i) {
-            for (int j = 0; j < data.cols(); j) {
-                files[name] << "," << data(i, j);
-            }
+        
+        if (data.size() > 0) {
+            static const Eigen::IOFormat CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ",", ",");
+            files[name] << "," << data.format(CSVFormat);
         }
         files[name] << "\n";
     }
@@ -63,7 +63,7 @@ private:
 
     void ensureFileOpen(const std::string& name) {
         if (files.find(name) == files.end()) {
-            std::string path = session_dir  "/"  name  ".csv";
+            std::string path = session_dir  +"/"+  name  +".csv";
             files[name].open(path);
             if (!files[name].is_open()) {
                 std::cerr << "[Logger] Failed to open file: " << path << std::endl;
