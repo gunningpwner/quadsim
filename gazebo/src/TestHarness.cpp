@@ -10,13 +10,14 @@ TestHarness::TestHarness(){
     motor_interface.init();
     m_mce->initialize(simTimeSource, &motor_interface);
     
+    m_mce->transition_to(DisarmedState::instance());
     startSubscribers();
 
 }
 
 TestHarness::~TestHarness(){
     delete m_mce;
-    delete m_data_manager;
+    m_data_manager=nullptr;
 }
 void TestHarness::run(){
     while (g_run_application.load()) {
@@ -36,7 +37,7 @@ void TestHarness::update(){
 }
 void TestHarness::restart(){
     delete m_mce;
-    delete m_data_manager;
+    m_data_manager = nullptr;
 
     m_mce = new MonolithicControlEntity();
     m_data_manager = &m_mce->getDataManager();
@@ -44,6 +45,7 @@ void TestHarness::restart(){
     DShot motor_interface = DShot(*m_data_manager);
     motor_interface.init();
     m_mce->initialize(simTimeSource, &motor_interface);
+    m_mce->transition_to(DisarmedState::instance());
 }
 
 void TestHarness::startSubscribers() {
@@ -70,6 +72,8 @@ void TestHarness::startSubscribers() {
 }
 
 void TestHarness::imuCallback(const gz::msgs::IMU& msg) {
+    if (m_data_manager == nullptr)
+        return;
     int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
 
     IMUData imu_data;
@@ -87,6 +91,8 @@ void TestHarness::imuCallback(const gz::msgs::IMU& msg) {
 }
 
 void TestHarness::gpsCallback(const gz::msgs::NavSat& msg) {
+    if (m_data_manager == nullptr)
+        return;
     int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
     GPSData gpsData;
     gpsData.Timestamp = timestamp_us;
@@ -96,6 +102,8 @@ void TestHarness::gpsCallback(const gz::msgs::NavSat& msg) {
 }
 
 void TestHarness::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
+    if (m_data_manager == nullptr)
+        return;
     int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
     MagData magData;
     magData.Timestamp = timestamp_us;
