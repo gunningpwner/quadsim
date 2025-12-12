@@ -41,7 +41,7 @@ public:
     void log(const std::string& name, const Eigen::MatrixBase<Derived>& data, uint64_t timestamp) {
         std::lock_guard<std::mutex> lock(mtx);
         ensureFileOpen(name);
-        files[name] << timestamp;
+        files[name] << timestamp << "," << data.rows() << "," << data.cols();
         
         if (data.size() > 0) {
             static const Eigen::IOFormat CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ",", ",");

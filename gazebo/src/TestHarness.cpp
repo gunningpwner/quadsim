@@ -41,10 +41,10 @@ void TestHarness::run(){
             restart();
             m_should_restart.store(false);
         }
-        // Run one iteration of the Monolithic Control Entity's logic.
-        update();
-        // Control the loop rate (e.g., 200 Hz)
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (!m_is_paused.load()){
+            update();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
     }
 }
 void TestHarness::update(){
@@ -73,7 +73,8 @@ void TestHarness::startSubscribers() {
     const std::string gpsTopic = "/gps"; // You may need to add a GPS sensor to your SDF
     const std::string magTopic = "/magnetometer"; // You may need to add a magnetometer to your SDF
     const std::string clockTopic = "/world/default/clock";
-
+    const std::string statsTopic = "/stats";
+    
     // Subscribe to topics
     if (!m_node.Subscribe(imuTopic, &TestHarness::imuCallback, this)) {
         std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
@@ -87,6 +88,10 @@ void TestHarness::startSubscribers() {
     if (!m_node.Subscribe(clockTopic, &TestHarness::clockCallback, this)) {
         std::cerr << "Error subscribing to topic [" << clockTopic << "]" << std::endl;
     }
+    if (!m_node.Subscribe(statsTopic, &TestHarness::statsCallback, this)) {
+        std::cerr << "Error subscribing to topic [" << statsTopic << "]" << std::endl;
+    }
+
     
 }
 
@@ -138,6 +143,10 @@ void TestHarness::clockCallback(const gz::msgs::Clock& msg) {
         m_should_restart.store(true);
     }
     m_sim_time_us.store(time_us);
+}
+
+void TestHarness::statsCallback(const gz::msgs::WorldStatistics& msg) {
+    m_is_paused.store(msg.paused());
 }
 
 uint64_t TestHarness::getSimTimeUs() const {
