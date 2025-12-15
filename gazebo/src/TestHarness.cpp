@@ -132,8 +132,8 @@ void TestHarness::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
     MagData magData;
     magData.Timestamp = timestamp_us;
     magData.MagneticField << msg.field_tesla().x(),
-                             msg.field_tesla().y(),
-                             msg.field_tesla().z();
+                             -msg.field_tesla().y(),
+                             -msg.field_tesla().z();
     m_data_manager->post(magData);
 }
 

@@ -135,6 +135,14 @@ void ESKF::run(){
     // printf("Vel %f %f %f\n", nominalVel.x(), nominalVel.y(), nominalVel.z());
     #ifdef GAZEBO
         Logger::getInstance().log("LLA",refLLA,getCurrentTimeUs());
+        Logger::getInstance().log("Pos",nominalPos,getCurrentTimeUs());
+        Logger::getInstance().log("Vel",nominalVel,getCurrentTimeUs());
+        VectorXf meas(4);
+        meas << nominalQuat.x(),nominalQuat.y(),nominalQuat.z(),nominalQuat.w();
+        Logger::getInstance().log("Quat",meas,getCurrentTimeUs()); 
+        Logger::getInstance().log("AccBias",nominalAccBias,getCurrentTimeUs());
+        Logger::getInstance().log("GyroBias",nominalGyroBias,getCurrentTimeUs());
+        Logger::getInstance().log("Grav",nominalGrav,getCurrentTimeUs());
     #endif
     
 }
@@ -199,6 +207,11 @@ void ESKF::updateIMU(const IMUData& imu_data){
     Q(11,11)=gyroBiasVar*dt*dt;
 
     errorStateCovariance=Fx*errorStateCovariance*Fx.transpose()+Fi*Q*Fi.transpose();
+    #ifdef GAZEBO
+        VectorXf meas(6);
+        meas << imu_data.Acceleration,imu_data.AngularVelocity;
+        Logger::getInstance().log("IMU",meas,imu_data.Timestamp); 
+    #endif
 }
 
 
@@ -213,7 +226,13 @@ void ESKF::updateMag(const MagData& mag_data){
     V(0,0)=magVar;
     V(1,1)=magVar;
     V(2,2)=magVar;
-    correctionStep(H,V,mag_data.MagneticField,pred_mag);
+    Vector3f meas = mag_data.MagneticField;
+    meas.normalize();
+    correctionStep(H,V,meas,pred_mag);
+    #ifdef GAZEBO
+        Logger::getInstance().log("MAG",mag_data.MagneticField,mag_data.Timestamp); 
+        Logger::getInstance().log("MAG_Pred",pred_mag,getCurrentTimeUs()); 
+    #endif
 }
 
 void ESKF::updateGPS(const GPSData& gps_data){
@@ -257,7 +276,11 @@ void ESKF::updateGPS(const GPSData& gps_data){
         nominalPos.setZero();
 
     }
-
+    #ifdef GAZEBO
+        VectorXf meas(6);
+        meas << gps_data.lla,gps_data.vel;
+        Logger::getInstance().log("GPS",meas,gps_data.Timestamp); 
+    #endif
 
 
 }
@@ -270,6 +293,7 @@ void ESKF::correctionStep(MatrixXf H, MatrixXf V, VectorXf measurement, VectorXf
     nominalVel+=errorStateMean.segment(3,3);
     Quaternionf deltaQuat = axisAngleToQuaternion(errorStateMean.segment(6,3),1);
     nominalQuat*=deltaQuat;
+    nominalQuat.normalize();
     nominalAccBias+=errorStateMean.segment(9,3);
     nominalGyroBias+=errorStateMean.segment(12,3);
     nominalGrav+=errorStateMean.segment(15,3);
