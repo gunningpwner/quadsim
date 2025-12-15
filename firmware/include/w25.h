@@ -1,2 +1,0 @@
-
-#define READ_JEDEC_ID 0x9F
