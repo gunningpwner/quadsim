@@ -41,11 +41,10 @@ add_executable(gazebo_link
     src/main.cpp
     src/TestHarness.cpp
     src/MotorInterface.cpp
-    ../libs/flight_controller/ESKF.cpp
-    ../libs/flight_controller/AutoLevelController.cpp
-    ../libs/flight_controller/PID.cpp
-    ../libs/flight_controller/coord_trans.cpp
-    ../libs/flight_controller/MCE.cpp
+    ../lib/flight_core/src/ESKF.cpp
+    ../lib/flight_core/src/AutoLevelController.cpp
+    ../lib/flight_core/src/PID.cpp
+    ../lib/flight_core/src/MCE.cpp
 )
 target_compile_definitions(gazebo_link PRIVATE GAZEBO) 
 
@@ -53,8 +52,7 @@ target_include_directories(gazebo_link
     PRIVATE
         ${EIGEN3_INCLUDE_DIR}
         src
-        ../libs/common
-        ../libs/flight_controller
+        ../lib/flight_core/include
 )
 # Link the necessary libraries
 target_link_libraries(gazebo_link

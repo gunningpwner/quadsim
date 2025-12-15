@@ -1,5 +1,5 @@
-#include "bmi270.h"
-#include "bmi270_config.h"
+#include "drivers/bmi270.h"
+#include "drivers/bmi270_config.h"
 #include "stm32f4xx_hal.h"
 #include "timing.h"
 #include <cstdio> // For printf

@@ -1,6 +1,6 @@
 
 #include "usbd_core.h"
-#include "usbd_desc.h"
+#include "drivers/usbd_desc.h"
 #include "usbd_conf.h"
 
 #define USBD_VID     1155

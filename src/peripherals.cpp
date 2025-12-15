@@ -1,7 +1,7 @@
 #include "peripherals.h"
 #include "usbd_cdc.h"
-#include "usbd_desc.h"
-#include "usbd_cdc_if.h"
+#include "drivers/usbd_desc.h"
+#include "drivers/usbd_cdc_if.h"
 
 // --- Global Hardware Handle Definitions ---
 SPI_HandleTypeDef hspi1;

@@ -1,4 +1,4 @@
-#include "DShot.h"
+#include "drivers/DShot.h"
 #include "DataManager.h"
 
 #define DSHOT_RATE 150000 // in kbit/s

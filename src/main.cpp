@@ -1,12 +1,12 @@
 #include "stm32f4xx_hal.h"
-#include "usbd_cdc_if.h"
-#include "bmi270.h"
+#include "drivers/usbd_cdc_if.h"
+#include "drivers/bmi270.h"
 #include "timing.h"
-#include "Crsf.h"
-#include "DShot.h"
-#include "GPS.h"
+#include "drivers/Crsf.h"
+#include "drivers/DShot.h"
+#include "drivers/GPS.h"
 #include "MCE.h"
-#include "MavlinkPublisher.h"
+
 #include "peripherals.h"
 #include <string.h>
 #include <stdio.h>
@@ -91,42 +91,8 @@ extern "C" int _write(int file, char *ptr, int len)
         return -1;
     }
 
-#ifdef SEND_MAVLINK_STATUSTEXT
-    static char printf_buffer[MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + 1];
-    static uint16_t buffer_index = 0;
-
-    for (int i = 0; i < len; i++) {
-        bool is_newline = (ptr[i] == '\n');
-        bool is_buffer_full = (buffer_index == MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN);
-
-        // Send the buffer if it's full OR if we encounter a newline and it's not empty.
-        if (is_buffer_full || (is_newline && buffer_index > 0)) {
-            printf_buffer[buffer_index] = '\0'; // Null-terminate the string
-
-            mavlink_message_t msg;
-            uint8_t mav_buf[MAVLINK_MAX_PACKET_LEN];
-            // The pack function populates the msg structure.
-            mavlink_msg_statustext_pack(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID, &msg, 
-                                        MAV_SEVERITY_INFO, printf_buffer);
-
-            // mavlink_msg_to_send_buffer serializes the message and returns the correct final length.
-            const uint16_t mav_len = mavlink_msg_to_send_buffer(mav_buf, &msg);
-            CDC_Transmit_FS(mav_buf, mav_len);
-
-            buffer_index = 0; // Reset buffer for the next message
-        }
-
-        // Add the character to the buffer if it's not a newline.
-        if (!is_newline) {
-            if (buffer_index < MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN) {
-                printf_buffer[buffer_index++] = ptr[i];
-            }
-        }
-    }
-#else
     // Original behavior: send raw data over USB
     CDC_Transmit_FS((uint8_t *)ptr, len);
-#endif
 
     return len;
 }
@@ -272,7 +238,6 @@ int main(void) {
   g_gps_ptr = &gps_driver;
   DShot dshot_driver;
 
-  MavlinkPublisher mavlink_publisher(MAVLINK_SYSTEM_ID, MAVLINK_COMPONENT_ID);
 
   HAL_Delay(2000); // Wait for USB to enumerate
   printf("\n--- BMI270 Initialization ---\n");

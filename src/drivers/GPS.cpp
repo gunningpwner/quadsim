@@ -1,5 +1,5 @@
-#include "GPS.h"
-#include "GPS_config.h"
+#include "drivers/GPS.h"
+#include "drivers/GPS_config.h"
 #include "DataManager.h"
 #include "timing.h"
 #include "SensorData.h"

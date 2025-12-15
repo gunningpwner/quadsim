@@ -6,7 +6,7 @@
 #include "ESKF.h"
 
 #ifndef GAZEBO
-    #include "DShot.h"
+    #include "drivers/DShot.h"
 #else
     #include "MotorInterface.h"
 #endif
