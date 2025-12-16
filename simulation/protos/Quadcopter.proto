@@ -1,0 +1,62 @@
+#VRML_SIM R2025a utf8
+# it fly
+
+
+PROTO Quadcopter [
+  field SFVec3f translation 0 0 0
+  field SFRotation rotation 0 0 1 0
+  field SFFloat bodyMass 1
+  field SFString name "robot"
+  field SFString controller "<generic>"
+]
+{
+  Robot {
+    translation IS translation
+    rotation IS rotation
+    name IS name
+    controller IS controller
+    window "generic"
+    physics Physics {
+        mass IS bodyMass
+        density -1
+        centerOfMass [0 0 0]
+        inertiaMatrix [0.01 0.01 0.02 0 0 0]
+    }
+    children [
+      DEF Body Shape {
+        appearance PBRAppearance {
+      }
+      geometry Box {
+        size 0.1 0.1 0.1
+      }
+      }
+      GPS {
+        name "gps"
+      }
+      Gyro {
+        name "gyro"
+      }
+      Compass {
+        name "compass"
+      }
+      Accelerometer {
+        name "accelerometer"
+      }
+      InertialUnit {
+        name "inertial_unit"
+      }
+      DEF M1 Propeller {
+        shaftAxis 0 0 1
+        centerOfThrust 0.031 -0.031 0.008
+        thrustConstants -4e-01 0
+        torqueConstants 2.4e-06 0
+        device RotationalMotor {
+          name "m1_motor"
+          maxVelocity 600
+          maxTorque 30
+        }
+      }
+    ]
+    boundingObject USE Body
+  }
+}

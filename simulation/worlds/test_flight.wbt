@@ -1,0 +1,33 @@
+#VRML_SIM R2025a utf8
+
+IMPORTABLE EXTERNPROTO "../protos/Quadcopter.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+
+WorldInfo {
+  info [
+    "FCS Test World - WGS84 Enabled"
+  ]
+  basicTimeStep 8
+  gpsCoordinateSystem "WGS84"
+  gpsReference 34.7304 -86.5861 180
+  contactProperties [
+    ContactProperties {
+      material1 "body"
+      material2 "floor"
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.4487858709560137 0.4054911704145907 0.7963467540877264 1.0541792573353959
+  position -0.8027162664461904 -1.3687452113864584 1.0517834600672213
+}
+DEF Ball TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 20 20
+  floorTileSize 1 1
+}
