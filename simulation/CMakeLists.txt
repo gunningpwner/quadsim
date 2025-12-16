@@ -31,13 +31,28 @@ add_library(serial_lib STATIC ${SERIAL_SRC})
 target_include_directories(serial_lib PUBLIC ${serial_SOURCE_DIR}/include)
 
 
-find_package(gz-transport14 REQUIRED)
-find_package(gz-msgs11 REQUIRED)
+find_package(gz-transport15 REQUIRED)
+find_package(gz-msgs15 REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(Python3 REQUIRED)
 
+# Generate Inclination and Declination data
+set(SCRIPTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tools/generation")
+set(GEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../lib/world_model/include")
+set(WMM_HEADER "${GEN_DIR}/WMMData.h")
+add_custom_command(
+    OUTPUT ${WMM_HEADER}
+    COMMAND Python3::Interpreter "${SCRIPTS_DIR}/WMM.py" 
+            "${SCRIPTS_DIR}/WMM2025.COF" 
+            "${WMM_HEADER}"
+    DEPENDS "${SCRIPTS_DIR}/WMM.py" "${SCRIPTS_DIR}/WMM2025.COF"
+    COMMENT "Generating WMM2025 Magnetic Lookup Table..."
+)
 
-add_executable(gazebo_link
+add_custom_target(generate_wmm DEPENDS ${WMM_HEADER})
+
+add_executable(gazebo_harness
     src/main.cpp
     src/TestHarness.cpp
     src/MotorInterface.cpp
@@ -46,16 +61,19 @@ add_executable(gazebo_link
     ../lib/flight_core/src/PID.cpp
     ../lib/flight_core/src/MCE.cpp
 )
-target_compile_definitions(gazebo_link PRIVATE GAZEBO) 
+add_dependencies(gazebo_harness generate_wmm)
 
-target_include_directories(gazebo_link
+target_compile_definitions(gazebo_harness PRIVATE GAZEBO) 
+
+target_include_directories(gazebo_harness
     PRIVATE
         ${EIGEN3_INCLUDE_DIR}
         src
         ../lib/flight_core/include
+        ../lib/world_model/include
 )
 # Link the necessary libraries
-target_link_libraries(gazebo_link
+target_link_libraries(gazebo_harness
     PRIVATE
         gz-transport14::gz-transport14
         gz-msgs11::gz-msgs11

@@ -1,10 +1,12 @@
 #include "ESKF.h"
+#include "WMM.h"
 #include <cmath>
 #include <Eigen/Geometry>
 #ifdef GAZEBO
     #include "Logger.h"
 #endif
 #include "timing.h"
+
 
 #define R_M 6335439.0
 #define R_N 6378137.0
@@ -217,7 +219,10 @@ void ESKF::updateIMU(const IMUData& imu_data){
 
 void ESKF::updateMag(const MagData& mag_data){
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
-    Vector3f pred_mag = rot_mat.transpose()*Vector3f(1,0,0);
+    float inc,dec;
+    calcIncAndDec(refLLA.x(),refLLA.y(),inc,dec);
+    Vector3f ref_mag = {cos(inc)*cos(dec),cos(inc)*sin(dec),sin(inc)};
+    Vector3f pred_mag = rot_mat.transpose()*ref_mag;
     MatrixXf H(3,18);
     H.setZero();
     H(seq(0,2),seq(6,8))=skew(pred_mag);
@@ -231,7 +236,8 @@ void ESKF::updateMag(const MagData& mag_data){
     correctionStep(H,V,meas,pred_mag);
     #ifdef GAZEBO
         Logger::getInstance().log("MAG",mag_data.MagneticField,mag_data.Timestamp); 
-        Logger::getInstance().log("MAG_Pred",pred_mag,getCurrentTimeUs()); 
+        Logger::getInstance().log("MAG_Pred",pred_mag,getCurrentTimeUs());
+        Logger::getInstance().log("MAG_Ref",ref_mag,getCurrentTimeUs());
     #endif
 }
 

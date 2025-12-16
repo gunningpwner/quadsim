@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+%matplotlib inline
 # data_cols = {"AccBias":["x","y","z"],
 #              "GPS":["lat","lon",'alt','vel_n','vel_e','vel_d'],
 #              "Grav":["x","y","z"],
@@ -115,19 +116,32 @@ def quaternion_to_euler(quaternions):
         return eulers
     
 if __name__ == "__main__":
-    folder=r'C:\Users\RodriguesAT\OneDrive - US Army\Desktop\quadsim\gazebo\build\logs\2025-12-15_14-23-43'
+    folder=r'C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2025-12-15_19-14-32'
     data = load_data(folder)
     imu_acc = data['IMU']['data'][:,:3]
     
     plt.figure(figsize=(10, 6))
-    plt.title("IMU")
+    plt.title("Acc")
     plot_three(data['IMU']['data'][:,:3],times=data['IMU']['time'],label='meas')
     plt.legend()
     plt.grid()
     
     plt.figure(figsize=(10, 6))
+    plt.title("Gyro")
+    plot_three(data['IMU']['data'][:,3:],times=data['IMU']['time'],label='meas')
+    plt.legend()
+    plt.grid()
+    
+    plt.figure(figsize=(10, 6))
+    plt.title("Bias")
+    plot_three(data['GyroBias']['data'],times=data['GyroBias']['time'],label='gyro',ls='--')
+    plot_three(data['AccBias']['data'],times=data['AccBias']['time'],label='acc')
+    plt.legend()
+    plt.grid()
+    
+    plt.figure(figsize=(10, 6))
     plt.title("Velocity")
-    # plot_three(data['Vel']['data'],times=data['Vel']['time'],label='Est',ls='--')
+    plot_three(data['Vel']['data'],times=data['Vel']['time'],label='Est',ls='--')
     plot_three(data['GPS']['data'][:,3:],times=data['GPS']['time'],label='Meas')
     plt.legend()
     plt.grid()
@@ -136,6 +150,7 @@ if __name__ == "__main__":
     plt.title("Magnetometer")
     norm = data['MAG']['data']/np.linalg.norm(data['MAG']['data'],axis=1)[:,np.newaxis]
     plot_three(norm,times=data['MAG']['time'],label='Meas')
+    plot_three(data['MAG_Ref']['data'],times=data['MAG_Ref']['time'],label='Ref',ls='-.')
     plot_three(data['MAG_Pred']['data'],times=data['MAG_Pred']['time'],label='Pred',ls='--')
     plt.legend()
     plt.grid()
