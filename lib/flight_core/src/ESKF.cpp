@@ -2,7 +2,7 @@
 #include "WMM.h"
 #include <cmath>
 #include <Eigen/Geometry>
-#ifdef GAZEBO
+#ifdef SIM
     #include "Logger.h"
 #endif
 #include "timing.h"
@@ -135,7 +135,7 @@ void ESKF::run(){
     // printf("LLA %f %f %f\n", refLLA.x(), refLLA.y(), refLLA.z());
     // printf("Pos %f %f %f\n", nominalPos.x(), nominalPos.y(), nominalPos.z());
     // printf("Vel %f %f %f\n", nominalVel.x(), nominalVel.y(), nominalVel.z());
-    #ifdef GAZEBO
+    #ifdef SIM
         Logger::getInstance().log("LLA",refLLA,getCurrentTimeUs());
         Logger::getInstance().log("Pos",nominalPos,getCurrentTimeUs());
         Logger::getInstance().log("Vel",nominalVel,getCurrentTimeUs());
@@ -209,7 +209,7 @@ void ESKF::updateIMU(const IMUData& imu_data){
     Q(11,11)=gyroBiasVar*dt*dt;
 
     errorStateCovariance=Fx*errorStateCovariance*Fx.transpose()+Fi*Q*Fi.transpose();
-    #ifdef GAZEBO
+    #ifdef SIM
         VectorXf meas(6);
         meas << imu_data.Acceleration,imu_data.AngularVelocity;
         Logger::getInstance().log("IMU",meas,imu_data.Timestamp); 
@@ -234,7 +234,7 @@ void ESKF::updateMag(const MagData& mag_data){
     Vector3f meas = mag_data.MagneticField;
     meas.normalize();
     correctionStep(H,V,meas,pred_mag);
-    #ifdef GAZEBO
+    #ifdef SIM
         Logger::getInstance().log("MAG",mag_data.MagneticField,mag_data.Timestamp); 
         Logger::getInstance().log("MAG_Pred",pred_mag,getCurrentTimeUs());
         Logger::getInstance().log("MAG_Ref",ref_mag,getCurrentTimeUs());
@@ -282,7 +282,7 @@ void ESKF::updateGPS(const GPSData& gps_data){
         nominalPos.setZero();
 
     }
-    #ifdef GAZEBO
+    #ifdef SIM
         VectorXf meas(6);
         meas << gps_data.lla,gps_data.vel;
         Logger::getInstance().log("GPS",meas,gps_data.Timestamp); 

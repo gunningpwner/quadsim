@@ -5,7 +5,7 @@
 #include "SensorData.h"
 #include "ESKF.h"
 
-#ifndef GAZEBO
+#ifndef SIM
     #include "drivers/DShot.h"
 #else
     #include "MotorInterface.h"

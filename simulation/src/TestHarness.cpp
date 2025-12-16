@@ -1,9 +1,7 @@
 #include "TestHarness.h"
 #include "Logger.h"
 #include "timing.h"
-
-extern std::atomic<bool> g_run_application;
-
+#include <iostream>
 static TestHarness* g_test_harness = nullptr;
 
 uint64_t getCurrentTimeUs() {
@@ -11,144 +9,108 @@ uint64_t getCurrentTimeUs() {
         return g_test_harness->getSimTimeUs();
     return 0;
 }
+// Use the passed robot instance
+TestHarness::TestHarness(webots::Robot* robot) : m_robot(robot) {
 
-TestHarness::TestHarness(){
-    g_test_harness = this;
+    // 1. Initialize Webots Sensors (Must match names in your PROTO)
+    m_acc = m_robot->getAccelerometer("accelerometer"); // Accelerometer usually
+    m_gyro = m_robot->getGyro("gyro");       // Webots separates Accel/Gyro
+    m_gps = m_robot->getGPS("gps");
+    m_mag = m_robot->getCompass("compass");
 
+    int timeStep = (int)m_robot->getBasicTimeStep();
+
+    // 2. Enable Sensors (Crucial step!)
+    m_acc->enable(timeStep);
+    m_gyro->enable(timeStep);
+    m_gps->enable(timeStep);
+    m_mag->enable(timeStep);
+
+    // 3. Initialize Motors
+    std::string motorNames[4] = {"m1", "m2", "m3", "m4"};
+    for(int i=0; i<4; i++){
+        m_motors[i] = m_robot->getMotor(motorNames[i]);
+        m_motors[i]->setPosition(INFINITY); // Velocity mode
+        m_motors[i]->setVelocity(0.0);
+    }
+
+    // 4. Initialize Core Logic
     m_mce = new MonolithicControlEntity();
     m_data_manager = &m_mce->getDataManager();
+    
+    // Lambda to fetch time from Webots
     TimeSource simTimeSource = [this](){ return getSimTimeUs(); };
+    
+    // NOTE: You need to ensure 'DShot' or your MotorInterface 
+    // is compatible with writing to these webots motors, or 
+    // you handle the writing in writeMotors() below.
     DShot motor_interface = DShot(*m_data_manager);
     motor_interface.init();
+    
     m_mce->initialize(simTimeSource, &motor_interface);
-    
-    // m_mce->transition_to(DisarmedState::instance());
-    startSubscribers();
-
-    
 }
 
-TestHarness::~TestHarness(){
-    if (g_test_harness == this)
-        g_test_harness = nullptr;
+TestHarness::~TestHarness() {
     delete m_mce;
-    m_data_manager=nullptr;
-}
-void TestHarness::run(){
-    while (g_run_application.load()) {
-        if (m_should_restart.load()) {
-            std::cout << "Gazebo Reset Detected... Restarting..." << std::endl;
-            restart();
-            m_should_restart.store(false);
-        }
-        if (!m_is_paused.load()){
-            update();
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-    }
-}
-void TestHarness::update(){
-    m_mce->run();
-}
-void TestHarness::restart(){
-    delete m_mce;
-    m_data_manager = nullptr;
-
-    Logger::getInstance().startNewSession();
-
-    m_mce = new MonolithicControlEntity();
-    m_data_manager = &m_mce->getDataManager();
-    TimeSource simTimeSource = [this](){ return getSimTimeUs(); };
-    DShot motor_interface = DShot(*m_data_manager);
-    motor_interface.init();
-    m_mce->initialize(simTimeSource, &motor_interface);
-    // m_mce->transition_to(DisarmedState::instance());
-
-    
-}
-
-void TestHarness::startSubscribers() {
-    // Note: You may need to change these topic names depending on your Gazebo world.
-    const std::string imuTopic = "/imu";
-    const std::string gpsTopic = "/gps"; // You may need to add a GPS sensor to your SDF
-    const std::string magTopic = "/magnetometer"; // You may need to add a magnetometer to your SDF
-    const std::string clockTopic = "/world/default/clock";
-    const std::string statsTopic = "/stats";
-    
-    // Subscribe to topics
-    if (!m_node.Subscribe(imuTopic, &TestHarness::imuCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << imuTopic << "]" << std::endl;
-    }
-    if (!m_node.Subscribe(magTopic, &TestHarness::magnetometerCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << magTopic << "]" << std::endl;
-    }
-    if (!m_node.Subscribe(gpsTopic, &TestHarness::gpsCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << gpsTopic << "]" << std::endl;
-    }
-    if (!m_node.Subscribe(clockTopic, &TestHarness::clockCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << clockTopic << "]" << std::endl;
-    }
-    if (!m_node.Subscribe(statsTopic, &TestHarness::statsCallback, this)) {
-        std::cerr << "Error subscribing to topic [" << statsTopic << "]" << std::endl;
-    }
-
-    
-}
-
-void TestHarness::imuCallback(const gz::msgs::IMU& msg) {
-    if (m_data_manager == nullptr)
-        return;
-    int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
-
-    IMUData imu_data;
-    imu_data.Timestamp = timestamp_us;
-    // Gazebo's body reference frame defines +x forward, +y out the left and +z upwards
-    // We need to convert this to internal frame
-    imu_data.Acceleration << msg.linear_acceleration().x(),
-                              -msg.linear_acceleration().y(),
-                              -msg.linear_acceleration().z();
-
-    imu_data.AngularVelocity << msg.angular_velocity().x(),
-                                -msg.angular_velocity().y(),
-                                -msg.angular_velocity().z();
-    m_data_manager->post(imu_data);
-}
-
-void TestHarness::gpsCallback(const gz::msgs::NavSat& msg) {
-    if (m_data_manager == nullptr)
-        return;
-    int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
-    GPSData gpsData;
-    gpsData.Timestamp = timestamp_us;
-    gpsData.lla={msg.latitude_deg(),msg.longitude_deg(),msg.altitude()};
-    gpsData.vel = {msg.velocity_north(), msg.velocity_east(),-msg.velocity_up()};
-    m_data_manager->post(gpsData);
-}
-
-void TestHarness::magnetometerCallback(const gz::msgs::Magnetometer& msg) {
-    if (m_data_manager == nullptr)
-        return;
-    int64_t timestamp_us = msg.header().stamp().sec() * 1000000LL + msg.header().stamp().nsec() / 1000LL;
-    MagData magData;
-    magData.Timestamp = timestamp_us;
-    magData.MagneticField << msg.field_tesla().x(),
-                             msg.field_tesla().y(),
-                             msg.field_tesla().z();
-    m_data_manager->post(magData);
-}
-
-void TestHarness::clockCallback(const gz::msgs::Clock& msg) {
-    uint64_t time_us = msg.sim().sec() * 1000000LL + msg.sim().nsec() / 1000LL;
-    if (time_us < m_sim_time_us.load()) {
-        m_should_restart.store(true);
-    }
-    m_sim_time_us.store(time_us);
-}
-
-void TestHarness::statsCallback(const gz::msgs::WorldStatistics& msg) {
-    m_is_paused.store(msg.paused());
 }
 
 uint64_t TestHarness::getSimTimeUs() const {
-    return m_sim_time_us.load();
+    // Webots getTime() returns seconds as double
+    return (uint64_t)(m_robot->getTime() * 1000000.0);
+}
+
+void TestHarness::update(int dt_ms) {
+    // 1. Read all Webots sensors and push to DataManager
+    readSensors();
+
+    // 2. Run Flight Core
+    m_mce->run();
+
+    // 3. Write outputs back to Webots
+    writeMotors();
+}
+
+void TestHarness::readSensors() {
+    int64_t timestamp_us = getSimTimeUs();
+
+    // --- IMU (Accel + Gyro) ---
+    // Note: Verify frame! Webots defaults often differ from Gazebo.
+    const double* acc = m_acc->getValues();  // [X, Y, Z]
+    const double* gyr = m_gyro->getValues(); // [X, Y, Z]
+
+    IMUData imu_data;
+    imu_data.Timestamp = timestamp_us;
+    
+    // Direct mapping (Adjust signs if your drone flips!)
+    imu_data.Acceleration << acc[0], acc[1], acc[2]; 
+    imu_data.AngularVelocity << gyr[0], gyr[1], gyr[2];
+    m_data_manager->post(imu_data);
+
+    // --- GPS ---
+    const double* gps_vals = m_gps->getValues(); // [Lat, Lon, Alt] if WGS84
+    const double speed = m_gps->getSpeed();      // scalar speed m/s
+    // Note: Webots GPS doesn't give NED velocity vector easily without math.
+    // You might need to estimate velocity or use 'gps->getSpeedVector()' if available in newer API.
+    
+    GPSData gpsData;
+    gpsData.Timestamp = timestamp_us;
+    gpsData.lla = {gps_vals[0], gps_vals[1], gps_vals[2]};
+    // Placeholder for velocity if your core needs it:
+    gpsData.vel = {0, 0, 0}; 
+    m_data_manager->post(gpsData);
+
+    // --- MAG ---
+    const double* mag = m_mag->getValues();
+    MagData magData;
+    magData.Timestamp = timestamp_us;
+    magData.MagneticField << mag[0], mag[1], mag[2];
+    m_data_manager->post(magData);
+}
+
+void TestHarness::writeMotors() {
+    // Retrieve motor commands from your DataManager or MCE
+    // This part depends on how MCE exposes outputs. 
+    // Example:
+    // double m1_cmd = m_data_manager->getMotorCommand(0); 
+    // m_motors[0]->setVelocity(m1_cmd);
 }

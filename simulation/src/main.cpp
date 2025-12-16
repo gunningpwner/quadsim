@@ -1,33 +1,30 @@
 #include "TestHarness.h"
+#include <webots/Robot.hpp>
 #include <iostream>
-#include <chrono>
-#include <thread>
-#include <atomic>
-#include <csignal> // For signal handling
-
-// Global flag to signal exit
-std::atomic<bool> g_run_application(true);
-
-// Signal handler for Ctrl+C
-void signalHandler(int signum) {
-    std::cout << "\nInterrupt signal (" << signum << ") received. Shutting down." << std::endl;
-    g_run_application = false;
-}
 
 int main(int argc, char** argv) {
-    // Register signal handler for clean shutdown on Ctrl+C
-    signal(SIGINT, signalHandler);
+    std::cout << "--- WEBOTS FCS CONTROLLER STARTING ---" << std::endl;
 
-    std::cout << "Starting flight software..." << std::endl;
+    // 1. Create the Robot (This connects to the simulator)
+    webots::Robot* robot = new webots::Robot();
+    int timeStep = (int)robot->getBasicTimeStep();
 
-    TestHarness harness;
+    // 2. Init Harness
+    TestHarness harness(robot);
 
-    std::cout << "Main loop running. Press Ctrl+C to exit." << std::endl;
+    std::cout << "Connected. Starting control loop..." << std::endl;
 
-    
-    harness.run();
+    // 3. The Webots Loop
+    // robot->step() advances physics by 'timeStep' ms.
+    // It returns -1 if Webots is closed or the run is stopped.
+    while (robot->step(timeStep) != -1) {
+        
+        // This runs EXACTLY once per physics tick.
+        // No threading or sleep needed.
+        harness.update(timeStep);
+    }
 
-    std::cout << "Exiting main loop. Application will now close." << std::endl;
-
+    std::cout << "Webots simulation ended." << std::endl;
+    delete robot;
     return 0;
 }
