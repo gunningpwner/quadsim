@@ -7,7 +7,8 @@ PROTO Quadcopter [
   field SFRotation rotation 0 0 1 0
   field SFFloat bodyMass 1
   field SFString name "robot"
-  field SFString controller "<generic>"
+  field SFString controller "<extern>"
+  field SFVec2f thrustConstant 4e-05 0
 ]
 {
   Robot {
@@ -48,10 +49,43 @@ PROTO Quadcopter [
       DEF M1 Propeller {
         shaftAxis 0 0 1
         centerOfThrust 0.031 -0.031 0.008
-        thrustConstants -4e-01 0
+        thrustConstants IS thrustConstant
         torqueConstants 2.4e-06 0
         device RotationalMotor {
-          name "m1_motor"
+          name "m1"
+          maxVelocity 600
+          maxTorque 30
+        }
+      }
+      DEF M2 Propeller {
+        shaftAxis 0 0 1
+        centerOfThrust -0.031 -0.031 0.008
+        thrustConstants IS thrustConstant
+        torqueConstants 2.4e-06 0
+        device RotationalMotor {
+          name "m2"
+          maxVelocity 600
+          maxTorque 30
+        }
+      }
+      DEF M3 Propeller {
+        shaftAxis 0 0 1
+        centerOfThrust -0.031 0.031 0.008
+        thrustConstants IS thrustConstant
+        torqueConstants 2.4e-06 0
+        device RotationalMotor {
+          name "m3"
+          maxVelocity 600
+          maxTorque 30
+        }
+      }
+      DEF M4 Propeller {
+        shaftAxis 0 0 1
+        centerOfThrust 0.031 0.031 0.008
+        thrustConstants IS thrustConstant
+        torqueConstants 2.4e-06 0
+        device RotationalMotor {
+          name "m4"
           maxVelocity 600
           maxTorque 30
         }
