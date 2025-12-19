@@ -1,6 +1,5 @@
 #pragma once
 
-#include "FilterBase.h"
 #include "DataManager.h" // For IMU_BUFFER_SIZE
 #include "Consumer.h"
 #include "SensorData.h"
@@ -14,11 +13,11 @@
  * efficient and robust estimate of the vehicle's orientation (as a quaternion)
  * and the gyroscope's bias.
  */
-class MahonyFilter : public FilterBase {
+class MahonyFilter  {
 public:
-    explicit MahonyFilter(DataManager& data_manager);
+    MahonyFilter(DataManager& data_manager);
 
-    void run() override;
+    void run();
 
 private:
     // --- Data Consumers ---

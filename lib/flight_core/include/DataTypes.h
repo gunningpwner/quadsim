@@ -29,3 +29,12 @@ struct SensorData
         } mag;
     } data;
 };
+
+struct StateEstimate{
+    uint64_t timestamp;
+    float position_ecef[3];
+    float velocity_ecef[3];
+    float orientation[4];
+    float angular_velocity_body[3];
+
+};

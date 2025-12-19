@@ -5,8 +5,7 @@
 #include <algorithm>
 #include <iostream>
 
-MahonyFilter::MahonyFilter(DataManager &data_manager) : FilterBase(data_manager),
-                                                        m_imu_consumer(data_manager.getIMUChannel())
+MahonyFilter::MahonyFilter(DataManager &data_manager) :m_imu_consumer(data_manager.getIMUChannel())
 {
     init_filter();
 }

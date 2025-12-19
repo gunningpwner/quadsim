@@ -1,18 +1,16 @@
 // DataManager.h
 #pragma once
 
-#include "SensorData.h"
-#include "DataChannel.h"
-#include "OtherData.h"
+#include "DataTypes.h"
+#include "buffers/include/ClaimCommitRingBuffer.h"
+
 #include <stdexcept>
 #include <functional> // Required for std::function
 
 
 
 // Configurable buffer sizes for sensor data.
-constexpr size_t IMU_BUFFER_SIZE = 50;
-constexpr size_t MAG_BUFFER_SIZE = 10;
-constexpr size_t GPS_BUFFER_SIZE = 10; // GPS updates less frequently
+constexpr size_t SENSOR_BUFFER_SIZE = 50;
 constexpr size_t INPUT_BUFFER_SIZE = 2;
 constexpr size_t STATE_BUFFER_SIZE = 2;
 constexpr size_t MOTOR_COMMAND_BUFFER_SIZE = 2;
@@ -28,8 +26,7 @@ public:
     // --- Struct for Calculated State ---
 
 
-    DataManager(TimeSource time_source_func):
-    m_time_source(time_source_func),
+    DataManager():
     m_imu_channel(), 
     m_mag_channel(),
     m_gps_channel(),
@@ -59,36 +56,13 @@ public:
     DataChannel<RCChannelsData, RC_CHANNELS_BUFFER_SIZE>& getRCChannelsChannel() { return m_rc_channels_channel; }
 
 
-    uint64_t getCurrentTimeUs() const {
-        // Check if the time source function is valid before calling it.
-        if (!m_time_source) {
-            // In a unified build, we need a consistent error handling strategy.
-            // For critical errors like this, a system halt is often appropriate for flight control.
-            // For SITL, this could be configured to throw an exception or log and exit.
-            // For now, we'll use a simple while(1) as a placeholder for a system halt.
-            // A more sophisticated system might have a global error handler.
-            while(1); 
-        }
-        
-        // Execute the stored function and return its value.
-        return m_time_source();
-    }
-    
-    void setTimeSource(TimeSource time_source_func) {
-        m_time_source = time_source_func;
-    }
-
 
 
 
 private:
-
-    TimeSource m_time_source; // Function pointer for getting current time
-
     // DataChannels for various sensor and system data types
-    DataChannel<IMUData, IMU_BUFFER_SIZE>           m_imu_channel;
-    DataChannel<MagData, MAG_BUFFER_SIZE>            m_mag_channel;
-    DataChannel<GPSData, GPS_BUFFER_SIZE>    m_gps_channel;
+    ClaimCommitRingBuffer<SensorData, SENSOR_BUFFER_SIZE> m_sensor_buffer;
+    
     DataChannel<InputData, INPUT_BUFFER_SIZE>          m_input_channel;
     DataChannel<StateData, STATE_BUFFER_SIZE>          m_state_channel;
     DataChannel<MotorCommands, MOTOR_COMMAND_BUFFER_SIZE>      m_motor_commands_channel;
