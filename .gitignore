@@ -1,6 +1,6 @@
 .vscode
 */CMakeFiles/**
-*/build/**
+**/build/**
 build/*
 .pio
 ./lib/*
