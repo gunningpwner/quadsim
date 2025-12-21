@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SensorData.h"
+#include "DataTypes.h"
 #include "DataManager.h"
 
 class Controller{

@@ -44,8 +44,7 @@ add_executable(webots_harness
     src/main.cpp
     src/TestHarness.cpp
     src/MotorInterface.cpp
-    ../lib/flight_core/src/ESKF.cpp
-    ../lib/flight_core/src/AutoLevelController.cpp
+    ../lib/filters/src/ESKF.cpp
     ../lib/flight_core/src/PID.cpp
     ../lib/flight_core/src/MCE.cpp
 )
@@ -61,6 +60,8 @@ target_include_directories(webots_harness
         src
         ../lib/flight_core/include
         ../lib/world_model/include
+        ../lib/buffers/include
+        ../lib/filters/include
 )
 
 # Link against Webots Controller (and CppController wrapper)

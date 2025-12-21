@@ -1,12 +1,8 @@
 #include "MCE.h"
-#include "MahonyFilter.h"
-#include "AutoLevelController.h"
-#include "SensorData.h"
 #include <stdio.h>
 
-void MonolithicControlEntity::initialize(TimeSource time_source_func, DShot *dshot_driver)
+void MonolithicControlEntity::initialize(DShot *dshot_driver)
 {
-    m_data_manager.setTimeSource(time_source_func);
     m_dshot = dshot_driver;
     m_filter = new ESKF(m_data_manager);
     m_auto_level_controller = new AutoLevelController(m_data_manager);

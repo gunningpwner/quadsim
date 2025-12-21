@@ -1,28 +1,23 @@
 #include "MotorInterface.h"
 
-DShot::DShot(DataManager& data_manager): m_motor_commands_consumer(data_manager.getMotorCommandsChannel()){
-    
-}
+DShot::DShot(DataManager::MotorCommandsConsumer m_motor_commands_consumer) : m_motor_commands_consumer(m_motor_commands_consumer) {};
 
-int DShot::init(){
+int DShot::init()
+{
     return 0;
 }
-void DShot::arm(){
-    
+void DShot::arm()
+{
 }
 
 void DShot::disarm()
 {
-    
 }
 
 void DShot::update()
 {
-    
 }
 
+void DShot::sendMotorCommand(MotorCommands &cmd) {
 
-void DShot::sendMotorCommand(MotorCommands& cmd){
-    
 };
-

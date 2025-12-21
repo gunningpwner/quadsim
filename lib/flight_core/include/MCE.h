@@ -1,8 +1,6 @@
 #include "DataManager.h"
 #include "Controller.h"
-#include "FilterBase.h"
-#include "Consumer.h"
-#include "SensorData.h"
+#include "DataTypes.h"
 #include "ESKF.h"
 
 #ifndef SIM
@@ -84,11 +82,10 @@ class MonolithicControlEntity
     // Will setup and expose DataManager for hardware to communicate through.
     // Essentially just a main for the software but containerized
 public:
-    MonolithicControlEntity() : m_data_manager([]()
-                                               { return 0; }),
+    MonolithicControlEntity() : m_data_manager(),
                                 m_filter(nullptr),
                                 m_dshot(nullptr),
-                                m_rc_consumer(m_data_manager.getRCChannelsChannel()),
+                                m_rc_consumer(m_data_manager.makeRCChannelsConsumer()),
                                 last_rc_frame_time(0),
                                 last_rc_data{},
                                 m_current_state(nullptr) {}
@@ -110,5 +107,5 @@ private:
     ESKF *m_filter;
     DShot *m_dshot;
     State *m_current_state;
-    Consumer<RCChannelsData, 1> m_rc_consumer;
+    DataManager::RCChannelsConsumer m_rc_consumer;
 };

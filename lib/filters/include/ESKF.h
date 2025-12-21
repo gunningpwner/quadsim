@@ -1,26 +1,25 @@
 #include "DataManager.h"
-#include "SensorData.h"
-#include "Consumer.h"
+#include "DataTypes.h"
 #include <Eigen/Dense>
 
 using Eigen::MatrixXf;
-using Eigen::VectorXf;
-using Eigen::Vector3f;
 using Eigen::Quaternionf;
+using Eigen::Vector3f;
+using Eigen::VectorXf;
 
-class ESKF{
+class ESKF
+{
 public:
-    ESKF(DataManager& data_manager);
+    ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuffer &state_buffer);
     void run();
+
 private:
+    DataManager::SensorConsumer m_sensor_consumer;
+    DataManager::StateBuffer m_state_buffer;
 
-    Consumer<IMUData, IMU_BUFFER_SIZE> m_imu_consumer;
-    Consumer<MagData, MAG_BUFFER_SIZE> m_mag_consumer;
-    Consumer<GPSData, GPS_BUFFER_SIZE> m_gps_consumer;
-
-    void updateIMU(const IMUData& imu_data);
-    void updateMag(const MagData& mag_data);
-    void updateGPS(const GPSData& gps_data);
+    void updateIMU(const SensorData &imu_data);
+    void updateMag(const SensorData &mag_data);
+    void updateGPS(const SensorData &gps_data);
     void correctionStep(MatrixXf H, MatrixXf V, VectorXf measurement, VectorXf prediction);
 
     Vector3f nominalPos;
@@ -35,12 +34,12 @@ private:
     MatrixXf errorStateCovariance;
 
     uint64_t last_timestamp;
-    
+
     float accVar = .01;
     float accBiasVar = .0001;
     float gyroVar = .01;
-    float gyroBiasVar=.0001;
-    float gpsPosVar=.25;
-    float gpsVelVar=.01;
-    float magVar=.0025;
+    float gyroBiasVar = .0001;
+    float gpsPosVar = .25;
+    float gpsVelVar = .01;
+    float magVar = .0025;
 };
