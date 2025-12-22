@@ -9,7 +9,7 @@ WorldInfo {
   info [
     "FCS Test World - WGS84 Enabled"
   ]
-  basicTimeStep 8
+  basicTimeStep 10
   gpsCoordinateSystem "WGS84"
   gpsReference 34.7304 -86.5861 180
   contactProperties [

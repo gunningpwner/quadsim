@@ -43,7 +43,7 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
                                                                                                     nominalQuat(1, 0, 0, 0),
                                                                                                     nominalAccBias(0, 0, 0),
                                                                                                     nominalGyroBias(0, 0, 0),
-                                                                                                    nominalGrav(0, 0, -9.81),
+                                                                                                    nominalGrav(0, 0, 9.81),
                                                                                                     refLLA(0, 0, 0),
                                                                                                     last_timestamp(0),
                                                                                                     errorStateCovariance(18, 18)
@@ -195,10 +195,16 @@ void ESKF::updateIMU(const SensorData &imu_data)
 void ESKF::updateMag(const SensorData &mag_data)
 {
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
+    #ifndef SIM
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
     Vector3f ref_mag = {cos(inc) * cos(dec), cos(inc) * sin(dec), sin(inc)};
+    #else
+    Vector3f ref_mag = {1, 0, 0};
+    #endif
     Vector3f pred_mag = rot_mat.transpose() * ref_mag;
+    
+
     MatrixXf H(3, 18);
     H.setZero();
     H(seq(0, 2), seq(6, 8)) = skew(pred_mag);

@@ -47,7 +47,7 @@ public:
             static const Eigen::IOFormat CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ",", ",");
             files[name] << "," << data.format(CSVFormat);
         }
-        files[name] << "\n";
+        files[name] << std::endl;
     }
 
 private:

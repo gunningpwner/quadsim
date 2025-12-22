@@ -25,8 +25,8 @@ TestHarness::TestHarness(webots::Robot *robot) : m_robot(robot)
     // 2. Enable Sensors (Crucial step!)
     m_acc->enable(timeStep);
     m_gyro->enable(timeStep);
-    m_gps->enable(timeStep);
-    m_mag->enable(timeStep);
+    m_gps->enable(timeStep*10);
+    m_mag->enable(timeStep*5);
 
     // 3. Initialize Motors
     std::string motorNames[4] = {"m1", "m2", "m3", "m4"};
@@ -80,44 +80,51 @@ void TestHarness::readSensors()
 {
     if (m_sensor_buffer==nullptr)
         return;
+
+    int sim_time_ms = (int)(m_robot->getTime() * 1000.0 + 0.5);
+
     uint64_t timestamp_us = getSimTimeUs();
 
-    // --- IMU (Accel + Gyro) ---
-    // Note: Verify frame! Webots defaults often differ from Gazebo.
-    const double *acc = m_acc->getValues();  // [X, Y, Z]
-    const double *gyr = m_gyro->getValues(); // [X, Y, Z]
+    int acc_period = m_acc->getSamplingPeriod();
+    if (sim_time_ms % acc_period == 0) {
+        const double *acc = m_acc->getValues();  // [X, Y, Z]
+        const double *gyr = m_gyro->getValues(); // [X, Y, Z]
 
-    SensorData *imu_data = m_sensor_buffer->claim();
-    imu_data->sensor = SensorData::Type::IMU;
-    imu_data->timestamp = timestamp_us;
+        SensorData *imu_data = m_sensor_buffer->claim();
+        imu_data->sensor = SensorData::Type::IMU;
+        imu_data->timestamp = timestamp_us;
 
-    // Direct mapping (Adjust signs if your drone flips!)
-    imu_data->data.imu.accel = {acc[0], acc[1], acc[2]};
-    imu_data->data.imu.gyro = {gyr[0], gyr[1], gyr[2]};
-    m_sensor_buffer->commit(imu_data);
+        imu_data->data.imu.accel = {acc[0], -acc[1], -acc[2]};
+        imu_data->data.imu.gyro = {gyr[0], -gyr[1], -gyr[2]};
+        m_sensor_buffer->commit(imu_data);
+    }
 
     // --- GPS ---
-    const double *gps_vals = m_gps->getValues(); // [Lat, Lon, Alt] if WGS84
-    const double speed = m_gps->getSpeed();      // scalar speed m/s
-    // Note: Webots GPS doesn't give NED velocity vector easily without math.
-    // You might need to estimate velocity or use 'gps->getSpeedVector()' if available in newer API.
+    int gps_period = m_gps->getSamplingPeriod();
+    if (sim_time_ms % gps_period == 0) {
+        const double *gps_vals = m_gps->getValues(); 
+        const double *speed = m_gps->getSpeedVector();      
 
-    SensorData *gpsData = m_sensor_buffer->claim();
-    gpsData->sensor = SensorData::Type::GPS;
-    
-    gpsData->timestamp = timestamp_us;
-    gpsData->data.gps.lla = {gps_vals[0], gps_vals[1], gps_vals[2]};
-    // Placeholder for velocity if your core needs it:
-    gpsData->data.gps.vel = {0, 0, 0};
-    m_sensor_buffer->commit(gpsData);
 
+        SensorData *gpsData = m_sensor_buffer->claim();
+        gpsData->sensor = SensorData::Type::GPS;
+        
+        gpsData->timestamp = timestamp_us;
+        gpsData->data.gps.lla = {gps_vals[0], gps_vals[1], gps_vals[2]};
+        // Placeholder for velocity if your core needs it:
+        gpsData->data.gps.vel = {speed[1], speed[0], -speed[2]};
+        m_sensor_buffer->commit(gpsData);
+    }
     // --- MAG ---
-    const double *mag = m_mag->getValues();
-    SensorData *magData= m_sensor_buffer->claim();
-    magData->sensor = SensorData::Type::MAG;
-    magData->timestamp = timestamp_us;
-    magData->data.mag.mag = {mag[0], mag[1], mag[2]};
-    m_sensor_buffer->commit(magData);
+    int mag_period = m_mag->getSamplingPeriod();
+    if (sim_time_ms % mag_period == 0) {
+        const double *mag = m_mag->getValues();
+        SensorData *magData= m_sensor_buffer->claim();
+        magData->sensor = SensorData::Type::MAG;
+        magData->timestamp = timestamp_us;
+        magData->data.mag.mag = {mag[1], mag[0], -mag[2]};
+        m_sensor_buffer->commit(magData);
+    }
 }
 
 void TestHarness::writeMotors()

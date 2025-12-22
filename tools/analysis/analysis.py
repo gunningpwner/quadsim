@@ -116,7 +116,7 @@ def quaternion_to_euler(quaternions):
         return eulers
     
 if __name__ == "__main__":
-    folder=r'C:\Users\RodriguesAT\OneDrive - US Army\Desktop\quadsim\simulation\build\logs\2025-12-22_13-16-15'
+    folder=r'C:\Users\RodriguesAT\OneDrive - US Army\Desktop\quadsim\simulation\build\logs\2025-12-22_14-32-45'
     data = load_data(folder)
     imu_acc = data['IMU']['data'][:,:3]
     
