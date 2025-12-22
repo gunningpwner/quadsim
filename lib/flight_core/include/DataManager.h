@@ -37,7 +37,6 @@ public:
     StateConsumer makeStateConsumer() { return StateConsumer(m_state_buffer); };
     MotorCommandsConsumer makeMotorCommandsConsumer() { return MotorCommandsConsumer(m_motor_commands_buffer); };
     RCChannelsConsumer makeRCChannelsConsumer() { return RCChannelsConsumer(m_rc_channels_buffer); };
-    
 
 private:
     SensorBuffer m_sensor_buffer;

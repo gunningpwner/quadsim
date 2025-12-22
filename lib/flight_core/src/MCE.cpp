@@ -1,11 +1,11 @@
 #include "MCE.h"
 #include <stdio.h>
-
+#include "timing.h"
 void MonolithicControlEntity::initialize(DShot *dshot_driver)
 {
     m_dshot = dshot_driver;
-    m_filter = new ESKF(m_data_manager);
-    m_auto_level_controller = new AutoLevelController(m_data_manager);
+    m_filter = new ESKF(m_data_manager.makeSensorConsumer(), m_data_manager.getStateBuffer());
+    // m_auto_level_controller = new AutoLevelController(m_data_manager);
     transition_to(UnitializedState::instance());
 }
 
@@ -15,14 +15,14 @@ void MonolithicControlEntity::run()
     if (m_filter)
         m_filter->run();
 
-    uint64_t now_time = m_data_manager.getCurrentTimeUs();
-
-    if (m_rc_consumer.consumeLatest())
+    RCChannelsData *rc_data = m_rc_consumer.readLatest();
+    if (rc_data != nullptr)
     {
-        last_rc_data = m_rc_consumer.get_span().first[0];
-        last_rc_frame_time = last_rc_data.Timestamp;
+        last_rc_data = *rc_data;
+        last_rc_frame_time = rc_data->timestamp;
     }
-    const uint64_t current_time = m_data_manager.getCurrentTimeUs();
+
+    const uint64_t current_time = getCurrentTimeUs();
 
     if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && (current_time - last_rc_frame_time > rc_timeout_us))
         transition_to(FailsafeState::instance());
@@ -34,7 +34,6 @@ void MonolithicControlEntity::run()
 
     if (next_state != m_current_state)
         transition_to(next_state);
-    
 }
 
 void MonolithicControlEntity::transition_to(State *new_state)
@@ -103,7 +102,7 @@ void FailsafeState::on_enter(MonolithicControlEntity *mce)
 
 State *FailsafeState::on_run(MonolithicControlEntity *mce)
 {
-    if (mce->getDataManager().getCurrentTimeUs() - mce->last_rc_frame_time < mce->rc_timeout_us)
+    if (getCurrentTimeUs() - mce->last_rc_frame_time < mce->rc_timeout_us)
     {
         return DisarmedState::instance();
     }
@@ -121,7 +120,7 @@ void ArmedLevelState::on_enter(MonolithicControlEntity *mce)
 }
 State *ArmedLevelState::on_run(MonolithicControlEntity *mce)
 {
-    mce->m_auto_level_controller->run();
-    mce->getDShotDriver()->update();
+    // mce->m_auto_level_controller->run();
+    // mce->getDShotDriver()->update();
     return this;
 }

@@ -90,7 +90,7 @@ public:
                                 last_rc_data{},
                                 m_current_state(nullptr) {}
 
-    void initialize(TimeSource time_source_func, DShot *dshot_driver);
+    void initialize(DShot *dshot_driver);
     void transition_to(State *new_state);
     void run();
     DataManager &getDataManager() { return m_data_manager; }

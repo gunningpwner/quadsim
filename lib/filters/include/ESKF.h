@@ -15,7 +15,7 @@ public:
 
 private:
     DataManager::SensorConsumer m_sensor_consumer;
-    DataManager::StateBuffer m_state_buffer;
+    DataManager::StateBuffer &m_state_buffer;
 
     void updateIMU(const SensorData &imu_data);
     void updateMag(const SensorData &mag_data);

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <array>
 
 struct SensorData
 {
@@ -13,29 +14,29 @@ struct SensorData
     union Data {
         struct 
         {
-            float accel[3];
-            float gyro[3];
+            std::array<float, 3> accel;
+            std::array<float, 3> gyro;
         } imu;
         
         struct
         {
-            float lla[3];
-            float vel[3];
+            std::array<float, 3> lla;
+            std::array<float, 3> vel;
         } gps;
 
         struct
         {
-            float mag[3];
+            std::array<float, 3> mag;
         } mag;
     } data;
 };
 
 struct StateEstimate{
     uint64_t timestamp;
-    float position_ecef[3];
-    float velocity_ecef[3];
-    float orientation[4];
-    float angular_velocity_body[3];
+    std::array<float, 3> position_ecef;
+    std::array<float, 3> velocity_ecef;
+    std::array<float, 4> orientation;
+    std::array<float, 3> angular_velocity_body;
 
 };
 
@@ -43,7 +44,7 @@ struct MotorCommands
 {
     uint64_t timestamp;
     bool is_throttle_command;
-    uint16_t throttle[4];
+    std::array<uint16_t, 4> throttle;
     uint16_t command;
 };
 
@@ -73,3 +74,6 @@ struct RCChannelsData {
     uint64_t timestamp;
     CRSFPackedChannels channels;
 };
+
+#define CRSF_CHANNEL_MIN 191
+#define CRSF_CHANNEL_MAX 1792

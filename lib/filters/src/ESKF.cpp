@@ -2,6 +2,7 @@
 #include "WMM.h"
 #include <cmath>
 #include <Eigen/Geometry>
+#include <cstdint>
 #ifdef SIM
 #include "Logger.h"
 #endif
@@ -11,7 +12,7 @@
 #define R_N 6378137.0
 
 using Eigen::seq;
-
+using Vec3Map = Eigen::Map<const Eigen::Vector3f>;
 Quaternionf axisAngleToQuaternion(const Vector3f &angularVel, float dt)
 {
     float theta = angularVel.norm() * dt;
@@ -75,7 +76,6 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
 
 void ESKF::run()
 {
-    m_sensor_consumer.reset();
     SensorData *sensor_data = m_sensor_consumer.readNext();
     while (sensor_data != nullptr)
     {
@@ -95,7 +95,6 @@ void ESKF::run()
         }
         sensor_data = m_sensor_consumer.readNext();
     }
-
 
 // printf("LLA %f %f %f\n", refLLA.x(), refLLA.y(), refLLA.z());
 // printf("Pos %f %f %f\n", nominalPos.x(), nominalPos.y(), nominalPos.z());
@@ -123,12 +122,12 @@ void ESKF::updateIMU(const SensorData &imu_data)
     if (dt > .01)
         dt = .01;
     last_timestamp = imu_data.timestamp;
-    Eigen::Map<const Eigen::Vector3f> gyro(imu_data.data.imu.gyro);
-    Eigen::Map<const Eigen::Vector3f> accel(imu_data.data.imu.accel);
+    Vec3Map gyro(imu_data.data.imu.gyro.data());
+    Vec3Map accel(imu_data.data.imu.accel.data());
 
     Quaternionf delta_quat = axisAngleToQuaternion(gyro, dt);
     nominalQuat *= delta_quat;
-    
+
     Vector3f accCorr = accel - nominalAccBias;
     Vector3f gyroCorr = gyro - nominalGyroBias;
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
@@ -188,8 +187,8 @@ void ESKF::updateIMU(const SensorData &imu_data)
     errorStateCovariance = Fx * errorStateCovariance * Fx.transpose() + Fi * Q * Fi.transpose();
 #ifdef SIM
     VectorXf meas(6);
-    meas << imu_data.Acceleration, imu_data.AngularVelocity;
-    Logger::getInstance().log("IMU", meas, imu_data.Timestamp);
+    meas << accel, gyro;
+    Logger::getInstance().log("IMU", meas, imu_data.timestamp);
 #endif
 }
 
@@ -208,13 +207,14 @@ void ESKF::updateMag(const SensorData &mag_data)
     V(0, 0) = magVar;
     V(1, 1) = magVar;
     V(2, 2) = magVar;
-    Eigen::Map<const Eigen::Vector3f> meas(mag_data.data.mag.mag);
+    Vector3f meas = Vec3Map(mag_data.data.mag.mag.data());
     meas.normalize();
     correctionStep(H, V, meas, pred_mag);
 #ifdef SIM
-    Logger::getInstance().log("MAG", mag_data.MagneticField, mag_data.Timestamp);
-    Logger::getInstance().log("MAG_Pred", pred_mag, getCurrentTimeUs());
-    Logger::getInstance().log("MAG_Ref", ref_mag, getCurrentTimeUs());
+    Logger::getInstance().log("MAG", meas, mag_data.timestamp);
+    uint64_t time=getCurrentTimeUs();
+    Logger::getInstance().log("MAG_Pred", pred_mag, time);
+    Logger::getInstance().log("MAG_Ref", ref_mag, time);
 #endif
 }
 
@@ -239,10 +239,10 @@ void ESKF::updateGPS(const SensorData &gps_data)
     V(seq(0, 2), seq(0, 2)) *= gpsPosVar;
     V(seq(3, 5), seq(3, 5)) *= gpsVelVar;
     if (refLLA.isZero())
-        refLLA=Eigen::Map<const Eigen::Vector3f>(gps_data.data.gps.lla);
+        refLLA = Vec3Map(gps_data.data.gps.lla.data());
     else
     {
-        Vector3f diff = Eigen::Map<const Eigen::Vector3f>(gps_data.data.gps.lla) - refLLA;
+        Vector3f diff = Vec3Map(gps_data.data.gps.lla.data()) - refLLA;
         float e_coef = (R_N + refLLA.z() * cos(refLLA.y()));
         float n_coef = (R_M + refLLA.z());
         // Should be NED
@@ -251,7 +251,7 @@ void ESKF::updateGPS(const SensorData &gps_data)
                                 -diff.z());
 
         VectorXf meas(6);
-        meas << ned, gps_data.data.gps.vel;
+        meas << ned, Vec3Map(gps_data.data.gps.vel.data());
         VectorXf pred(6);
         pred << nominalPos, nominalVel;
         correctionStep(H, V, meas, pred);
@@ -262,8 +262,8 @@ void ESKF::updateGPS(const SensorData &gps_data)
     }
 #ifdef SIM
     VectorXf meas(6);
-    meas << gps_data.lla, gps_data.vel;
-    Logger::getInstance().log("GPS", meas, gps_data.Timestamp);
+    meas << Vec3Map(gps_data.data.gps.lla.data()), Vec3Map(gps_data.data.gps.vel.data());
+    Logger::getInstance().log("GPS", meas, gps_data.timestamp);
 #endif
 }
 

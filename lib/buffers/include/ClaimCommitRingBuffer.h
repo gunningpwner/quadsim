@@ -13,6 +13,8 @@ public:
     friend class CCRBNonCopyingConsumer<T, BufferSize>;
 
     ClaimCommitRingBuffer() : m_read_head(BufferSize), m_read_tail(0), m_claim_head(0), m_wrap_count(0){}
+    ClaimCommitRingBuffer(const ClaimCommitRingBuffer&) = delete;
+    ClaimCommitRingBuffer& operator=(const ClaimCommitRingBuffer&) = delete;
 
     T *claim()
     {

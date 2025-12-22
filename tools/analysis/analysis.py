@@ -25,7 +25,7 @@ def load_data(folder):
     data = {}
     for f in glob(os.path.join(folder,"*.csv")):
         data_name = os.path.basename(f).replace(".csv","")
-        array = np.genfromtxt(f,delimiter=',')
+        array = np.genfromtxt(f,delimiter=',',skip_footer=1)
         shape = array[0,1:3].astype(int)
         array =np.delete(array,[1,2],axis=1)
         
@@ -116,7 +116,7 @@ def quaternion_to_euler(quaternions):
         return eulers
     
 if __name__ == "__main__":
-    folder=r'C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2025-12-15_19-14-32'
+    folder=r'C:\Users\RodriguesAT\OneDrive - US Army\Desktop\quadsim\simulation\build\logs\2025-12-22_13-16-15'
     data = load_data(folder)
     imu_acc = data['IMU']['data'][:,:3]
     
