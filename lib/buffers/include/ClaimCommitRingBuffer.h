@@ -39,10 +39,10 @@ public:
         // Then the IMU will commit its chunk before finally releasing control.
 
         size_t idx = data - m_buffer.data();
-        if (m_read_head == BufferSize) [[unlikely]]
+        if (m_read_head == BufferSize)
             m_read_head = idx;
 
-        else if (m_read_head < m_claim_head) [[likely]]
+        else if (m_read_head < m_claim_head)
         {
             // Standard case
             if (idx > m_read_head)
@@ -52,9 +52,11 @@ public:
         {
             // Claim head has looped but read has not
             if (idx > m_read_head || idx < m_claim_head)
+            {
                 if(m_read_head<idx)
                     m_wrap_count++;
                 m_read_head = idx;
+            }
 
         }
 
@@ -82,7 +84,7 @@ public:
     {
         // Meant to be used in conjunction with reset.
         size_t current_buf_head = m_buffer.m_read_head;
-        if (current_buf_head == BufferSize) [[unlikely]]
+        if (current_buf_head == BufferSize)
             return nullptr;
 
         if (m_read_idx == (current_buf_head + 1) % BufferSize && last_wrap==m_buffer.m_wrap_count)
@@ -110,7 +112,7 @@ public:
     T *readLatest()
     {   
         size_t current_buf_head = m_buffer.m_read_head;
-        if (current_buf_head == BufferSize) [[unlikely]]
+        if (current_buf_head == BufferSize)
             return nullptr;
 
         if (m_read_idx == (current_buf_head + 1) % BufferSize)

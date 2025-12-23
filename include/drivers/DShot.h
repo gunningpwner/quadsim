@@ -1,7 +1,8 @@
 #pragma once
 #include "stm32f4xx_hal.h"
-#include "Consumer.h"
-#include "OtherData.h"
+#include "ClaimCommitRingBuffer.h"
+#include "DataTypes.h"
+#include "DataManager.h"
 
 struct MotorTable{
     // Struct to store hardware related info about motor
@@ -23,7 +24,7 @@ struct MotorTable{
 
 class DShot {
 public:
-    DShot();
+    DShot(DataManager::MotorCommandsConsumer m_motor_commands_consumer);
 
     int init();
     void update();
@@ -39,5 +40,5 @@ private:
 
     MotorTable motor_tables[4];
 
-    Consumer<MotorCommands, 1> m_motor_commands_consumer;
+    DataManager::MotorCommandsConsumer m_motor_commands_consumer;
 };
