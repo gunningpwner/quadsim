@@ -2,10 +2,10 @@
 #define CRSF_H
 
 #include "stm32f4xx_hal.h"
-#include "SensorData.h"
+#include "DataTypes.h"
 #include <stdbool.h>
 #include <stdint.h>
-
+#include "DataManager.h"
 // CRSF defines from Betaflight for clarity
 #define CRSF_TIME_NEEDED_PER_FRAME_US 1750
 #define CRSF_ADDRESS_FLIGHT_CONTROLLER 0xC8
@@ -21,9 +21,8 @@ typedef CRSFPackedChannels CRSFChannelData; // Alias for backward compatibility 
 
 class Crsf {
 public:
-    Crsf(UART_HandleTypeDef* huart);
+    Crsf(UART_HandleTypeDef* huart,DataManager::RCChannelsBuffer &m_rc_channel_buffer);
     void init();
-    const CRSFPackedChannels& getChannels() const;
 
     // Public method to be called from the UART RxEvent ISR
     void handleRxChunk(uint8_t* buf, uint16_t len);
@@ -41,7 +40,7 @@ private:
     uint8_t m_frame_position;
     uint64_t m_frame_start_time;
     
-    RCChannelsData m_rc_channels_data;
+    DataManager::RCChannelsBuffer &m_rc_channel_buffer;
 
     // DMA buffer for HAL_UARTEx_ReceiveToIdle_DMA
     uint8_t m_dma_rx_buffer[64];
