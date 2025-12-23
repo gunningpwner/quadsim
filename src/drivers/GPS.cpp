@@ -1,13 +1,11 @@
 #include "drivers/GPS.h"
 #include "drivers/GPS_config.h"
-#include "DataManager.h"
 #include "timing.h"
-#include "SensorData.h"
 
 extern DataManager *g_data_manager_ptr;
 extern UART_HandleTypeDef huart4;
 
-GPS::GPS() {}
+GPS::GPS(DataManager::SensorBuffer &m_sensor_buffer): m_sensor_buffer(m_sensor_buffer){}
 
 struct __attribute__((packed)) UbxHeader
 {
@@ -91,18 +89,18 @@ void GPS::handleRxChunk(uint8_t *buf, uint16_t len)
         UBX_NAV_PVT_MSG *msg = reinterpret_cast<UBX_NAV_PVT_MSG *>(buf+sizeof(UbxHeader));
         if (msg->gnssFixOk==1 && msg->fixType==3)
         {
-            if(sizeof(GPSData)==0)
-                return;
-            GPSData gps_data;
-            gps_data.Timestamp = timestamp;
-            gps_data.lla.x() = msg->lat * 1e-7;
-            gps_data.lla.y() = msg->lon * 1e-7;
-            gps_data.lla.z() = msg->height * 1e-3;
-            gps_data.vel.x() = msg->velN * 1e-3;
-            gps_data.vel.y() = msg->velE * 1e-3;
-            gps_data.vel.z() = msg->velD * 1e-3;
-            gps_data.Satellites = msg->numSV;
-            g_data_manager_ptr->post(gps_data);
+            
+            SensorData *gps_data = m_sensor_buffer.claim();
+            gps_data->sensor = SensorData::Type::GPS;
+            gps_data->timestamp = timestamp;
+            gps_data->data.gps.lla[0] = msg->lat * 1e-7;
+            gps_data->data.gps.lla[1] = msg->lon * 1e-7;
+            gps_data->data.gps.lla[2] = msg->height * 1e-3;
+            gps_data->data.gps.vel[0] = msg->velN * 1e-3;
+            gps_data->data.gps.vel[1] = msg->velE * 1e-3;
+            gps_data->data.gps.vel[2] = msg->velD * 1e-3;
+            // gps_data.Satellites = msg->numSV;
+            m_sensor_buffer.commit(gps_data);
         }
     }
     
