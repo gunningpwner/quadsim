@@ -3,11 +3,11 @@
 
 #include "stm32f4xx_hal.h"
 #include <cstdint>
-#include "SensorData.h" 
-
+#include "DataTypes.h" 
+#include "DataManager.h"
 class BMI270 {
 public:
-    BMI270(SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin);
+    BMI270(DataManager::SensorBuffer& m_buffer,SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin);
 
     // Blocking init function
     int8_t init();
@@ -53,6 +53,7 @@ private:
     int8_t spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len);
     void delay_us(uint32_t microseconds);
 
+    DataManager::SensorBuffer& m_sensor_buffer;
     // Member variables to hold driver state
     SPI_HandleTypeDef* m_spi_handle;
     GPIO_TypeDef*      m_cs_port;
@@ -62,6 +63,7 @@ private:
     // plus 2 dummy bytes, for a total of 14 bytes.
     uint8_t m_spi_tx_buf[14];
     uint8_t m_spi_rx_buf[14];
+    
 };
 
 #endif // BMI270_H

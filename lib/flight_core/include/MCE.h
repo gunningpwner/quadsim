@@ -85,10 +85,10 @@ public:
     MonolithicControlEntity() : m_data_manager(),
                                 m_filter(nullptr),
                                 m_dshot(nullptr),
-                                m_rc_consumer(m_data_manager.makeRCChannelsConsumer()),
                                 last_rc_frame_time(0),
                                 last_rc_data{},
-                                m_current_state(nullptr) {}
+                                m_current_state(nullptr),
+                                m_rc_consumer(m_data_manager.makeRCChannelsConsumer()){}
 
     void initialize(DShot *dshot_driver);
     void transition_to(State *new_state);

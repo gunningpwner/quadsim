@@ -25,8 +25,8 @@ static uint8_t crc8_dvb_s2(uint8_t crc, unsigned char a)
 
 Crsf::Crsf(UART_HandleTypeDef *huart, DataManager::RCChannelsBuffer &m_rc_channel_buffer)
     : m_huart(huart),
-      m_rc_channel_buffer(m_rc_channel_buffer),
       m_frame_position(0),
+      m_rc_channel_buffer(m_rc_channel_buffer),
       m_frame_start_time(0)
 {
     memset(m_dma_rx_buffer, 0, sizeof(m_dma_rx_buffer));
@@ -96,7 +96,7 @@ bool Crsf::processFrame(const uint8_t *frame_buffer, uint8_t frame_len)
     uint8_t frame_type = frame_buffer[2];
 
     if (frame_type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
-    {   
+    {
         uint64_t timestamp = getCurrentTimeUs();
 
         RCChannelsData *rc_data = m_rc_channel_buffer.claim();
@@ -109,8 +109,6 @@ bool Crsf::processFrame(const uint8_t *frame_buffer, uint8_t frame_len)
 
     return false; // Not a channel data frame
 }
-
-
 
 void Crsf::sendPacket(uint8_t type, const uint8_t *payload, uint8_t len)
 {

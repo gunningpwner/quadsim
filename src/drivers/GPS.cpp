@@ -2,7 +2,7 @@
 #include "drivers/GPS_config.h"
 #include "timing.h"
 
-extern DataManager *g_data_manager_ptr;
+
 extern UART_HandleTypeDef huart4;
 
 GPS::GPS(DataManager::SensorBuffer &m_sensor_buffer): m_sensor_buffer(m_sensor_buffer){}

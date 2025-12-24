@@ -1,8 +1,7 @@
 #pragma once
 
 #include "DataManager.h" // For IMU_BUFFER_SIZE
-#include "Consumer.h"
-#include "SensorData.h"
+#include "DataTypes.h"
 #include <Eigen/Dense>
 
 /**
@@ -15,29 +14,27 @@
  */
 class MahonyFilter  {
 public:
-    MahonyFilter(DataManager& data_manager);
+    MahonyFilter(DataManager::SensorConsumer& sensor_consumer);
 
     void run();
 
 private:
     // --- Data Consumers ---
-    Consumer<IMUData, IMU_BUFFER_SIZE> m_imu_consumer;
+    DataManager::SensorConsumer& m_sensor_consumer;
 
     // --- Filter State ---
     Eigen::Quaternionf m_q;      // Estimated orientation
     Eigen::Vector3f m_gyro_bias; // Estimated gyroscope bias
 
-    // --- Last Sensor Measurements ---
-    IMUData m_last_imu;
 
     // --- Tuning Gains ---
     float m_kp; // Proportional gain for accelerometer correction
     float m_ki; // Integral gain for gyroscope bias correction
 
     // --- Timekeeping ---
-    uint64_t m_last_update_time_us;
+    uint64_t m_last_timestamp;
 
     // --- Private Methods ---
     void init_filter();
-    void update(float dt);
+    void update(const SensorData &imu_data);
 };
