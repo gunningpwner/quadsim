@@ -8,7 +8,7 @@
 extern SPI_HandleTypeDef hspi1;
 extern UART_HandleTypeDef huart3;
 extern UART_HandleTypeDef huart4;
-
+extern I2C_HandleTypeDef hi2c1;
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
 extern ADC_HandleTypeDef hadc1;
@@ -29,6 +29,7 @@ void MX_USART3_UART_Init(void);
 void MX_UART4_Init(void);
 void MX_USB_DEVICE_Init(void);
 void MX_ADC1_Init(void);
+void MX_I2C1_Init(void);
 
 
 #endif // PERIPHERALS_H

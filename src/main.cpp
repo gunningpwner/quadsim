@@ -1,7 +1,8 @@
 #include "stm32f4xx_hal.h"
+#include "timing.h"
 #include "drivers/usbd_cdc_if.h"
 #include "drivers/bmi270.h"
-#include "timing.h"
+#include "drivers/qmc5883l.h"
 #include "drivers/Crsf.h"
 #include "drivers/DShot.h"
 #include "drivers/GPS.h"
@@ -17,6 +18,9 @@
 Crsf *g_crsf_ptr = nullptr;
 BMI270 *g_imu_ptr = nullptr;
 GPS *g_gps_ptr = nullptr;
+QMC5883L *g_compass_ptr = nullptr;
+
+
 
 static volatile uint32_t s_overflow_count = 0;
 static volatile uint32_t s_last_dwt_cyccnt = 0;
@@ -57,8 +61,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
+        // Timer 2 set to run at 100Hz. Use counter to trigger other functions at lower rates
+        static size_t counter = 0;
         if (g_imu_ptr)
             g_imu_ptr->startReadImu_DMA();
+
+        if (counter%10==0){
+            if (g_compass_ptr)
+            {
+                g_compass_ptr->startReadCompass_DMA();
+            }
+        }
+        counter++;
     }
 }
 
@@ -91,6 +105,17 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         if (g_imu_ptr != nullptr)
         {
             g_imu_ptr->processRawData();
+        }
+    }
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) 
+    {
+        if (g_compass_ptr != nullptr)
+        {
+            g_compass_ptr->processRawData();
         }
     }
 }
@@ -240,7 +265,8 @@ int main(void)
     MX_USART3_UART_Init();
     MX_UART4_Init();
     MX_ADC1_Init();
-    MX_USB_DEVICE_Init();
+    // MX_USB_DEVICE_Init();
+    MX_I2C1_Init();
 
     MonolithicControlEntity mce;
     DataManager &data_manager = mce.getDataManager();
@@ -251,7 +277,10 @@ int main(void)
     g_crsf_ptr = &crsf_receiver;
     GPS gps_driver(data_manager.getSensorBuffer());
     g_gps_ptr = &gps_driver;
+    QMC5883L compass(data_manager.getSensorBuffer());
+    g_compass_ptr = &compass;
     DShot dshot_driver(data_manager.makeMotorCommandsConsumer());
+
 
     HAL_Delay(2000); // Wait for USB to enumerate
     printf("\n--- BMI270 Initialization ---\n");
@@ -287,6 +316,18 @@ int main(void)
         printf("GPS Initialization Failed!\n");
     }
 
+    printf("--- Compass Initialization ---\n");
+    
+    if (compass.init() == 0)
+    {
+        printf("Compass Initialized Successfully.\n");
+    }
+    else
+    {
+        printf("Compass Initialization Failed!\n");
+    }
+
+    //
     mce.initialize(&dshot_driver);
 
     // Start CRSF receiver using DMA and IDLE line detection
@@ -351,6 +392,11 @@ extern "C" void UART4_IRQHandler(void)
     HAL_UART_IRQHandler(&huart4);
 }
 
+void I2C1_EV_IRQHandler(void)
+{
+    HAL_I2C_EV_IRQHandler(&hi2c1);
+}
+
 extern "C" void TIM2_IRQHandler(void)
 {
     // This is the interrupt handler for TIM2
@@ -369,6 +415,11 @@ extern "C" void DMA2_Stream3_IRQHandler(void)
     HAL_DMA_IRQHandler(hspi1.hdmatx);
 }
 
+extern "C" void DMA1_Stream0_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(hi2c1.hdmarx);
+}
+
 extern "C" void DMA1_Stream1_IRQHandler(void)
 {
     // This is the interrupt handler for USART3_RX
@@ -379,4 +430,9 @@ extern "C" void DMA1_Stream2_IRQHandler(void)
 {
     // This is the interrupt handler for UART4_RX
     HAL_DMA_IRQHandler(huart4.hdmarx);
+}
+
+extern "C" void DMA1_Stream6_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(hi2c1.hdmatx);
 }

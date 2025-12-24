@@ -7,6 +7,7 @@
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3;
 UART_HandleTypeDef huart4;
+I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim4;
@@ -19,7 +20,8 @@ DMA_HandleTypeDef hdma_tim8_ch3;
 DMA_HandleTypeDef hdma_tim8_ch4;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
-
+DMA_HandleTypeDef hdma_i2c1_rx;
+DMA_HandleTypeDef hdma_i2c1_tx;
 DMA_HandleTypeDef hdma_uart4_rx;
 DMA_HandleTypeDef hdma_usart3_rx;
 
@@ -515,4 +517,81 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *tim_baseHandle)
     HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
   }
+}
+
+void MX_I2C1_Init(void)
+{
+    hi2c1.Instance = I2C1;
+    hi2c1.Init.ClockSpeed = 100000;              // 100 kHz (Standard Mode)
+    hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;      // Standard duty cycle
+    hi2c1.Init.OwnAddress1 = 0;                  // Master usually doesn't need own address
+    hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+    hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    hi2c1.Init.OwnAddress2 = 0;
+    hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+
+    if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+    {
+        // Initialization Error - Add your error handler here
+        while(1); 
+    }
+
+
+}
+
+void HAL_I2C_MspInit(I2C_HandleTypeDef* i2cHandle)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    if(i2cHandle->Instance == I2C1)
+    {
+        // 1. Enable Peripheral Clocks
+        __HAL_RCC_GPIOB_CLK_ENABLE(); // Enable Clock for Port B
+        __HAL_RCC_I2C1_CLK_ENABLE();  // Enable Clock for I2C1
+        __HAL_RCC_DMA1_CLK_ENABLE();
+        // 2. Configure GPIO Pins: PB8 (SCL) and PB9 (SDA)
+        GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;       // Open Drain is REQUIRED for I2C
+        GPIO_InitStruct.Pull = GPIO_PULLUP;           // Enable internal pull-ups
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;    // Alternate Function 4 is I2C1 for F405
+        
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+        hdma_i2c1_rx.Instance = DMA1_Stream0;             // <--- Stream 0
+        hdma_i2c1_rx.Init.Channel = DMA_CHANNEL_1;        // <--- Channel 1
+        hdma_i2c1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+        hdma_i2c1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+        hdma_i2c1_rx.Init.MemInc = DMA_MINC_ENABLE;       // Move to next byte in array
+        hdma_i2c1_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+        hdma_i2c1_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+        hdma_i2c1_rx.Init.Mode = DMA_NORMAL;              // Normal (One shot)
+        hdma_i2c1_rx.Init.Priority = DMA_PRIORITY_HIGH;
+        hdma_i2c1_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+        HAL_DMA_Init(&hdma_i2c1_rx);
+        __HAL_LINKDMA(i2cHandle, hdmarx, hdma_i2c1_rx);
+
+        hdma_i2c1_tx.Instance = DMA1_Stream6;             // <--- Stream 6
+        hdma_i2c1_tx.Init.Channel = DMA_CHANNEL_1;        // <--- Channel 1
+        hdma_i2c1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+        hdma_i2c1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+        hdma_i2c1_tx.Init.MemInc = DMA_MINC_ENABLE;
+        hdma_i2c1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+        hdma_i2c1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+        hdma_i2c1_tx.Init.Mode = DMA_NORMAL;
+        hdma_i2c1_tx.Init.Priority = DMA_PRIORITY_LOW;
+        hdma_i2c1_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+        HAL_DMA_Init(&hdma_i2c1_tx);
+        __HAL_LINKDMA(i2cHandle, hdmatx, hdma_i2c1_tx);
+
+        HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+        HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+        
+        HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
+        HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+
+        HAL_NVIC_SetPriority(I2C1_EV_IRQn, 1, 0); // Priority 1 (Lower than DMA usually)
+        HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
+    }
 }
