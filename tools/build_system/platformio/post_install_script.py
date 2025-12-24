@@ -16,7 +16,7 @@ if eigen_path_list:
     print(f"Found Eigen at: {eigen_path}")
 
     # Define the paths to the directories we want to delete
-    dirs_to_delete = ["bench", "test", "unsupported","demos","doc","failtest","lapack"]
+    dirs_to_delete = ["bench", "test", "unsupported","demos","doc","failtest","lapack","scripts"]
 
     for dirname in dirs_to_delete:
         dir_path = os.path.join(eigen_path, dirname)
