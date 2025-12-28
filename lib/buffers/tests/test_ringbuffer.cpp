@@ -170,3 +170,65 @@ TEST_F(RingBufferTest, ResetLogic) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->id, 55);
 }
+
+TEST_F(RingBufferTest, AvailableFunctionality) {
+    // 1. Initial state
+    EXPECT_EQ(consumer.available(), 0);
+
+    // 2. Add items
+    TestPacket* s1 = buffer.claim(); s1->id = 1; buffer.commit(s1);
+    EXPECT_EQ(consumer.available(), 1);
+
+    TestPacket* s2 = buffer.claim(); s2->id = 2; buffer.commit(s2);
+    EXPECT_EQ(consumer.available(), 2);
+
+    // 3. Read items
+    consumer.readNext();
+    EXPECT_EQ(consumer.available(), 1);
+
+    consumer.readNext();
+    EXPECT_EQ(consumer.available(), 0);
+}
+
+TEST_F(RingBufferTest, AvailableWithWrap) {
+    // Fill buffer (size 4)
+    for(uint32_t i=0; i<BUF_SIZE; i++) {
+        auto* s = buffer.claim(); s->id = i; buffer.commit(s);
+    }
+    EXPECT_EQ(consumer.available(), 4);
+
+    // Read 2
+    consumer.readNext();
+    consumer.readNext();
+    EXPECT_EQ(consumer.available(), 2);
+
+    // Add 1 (wrap)
+    auto* s = buffer.claim(); s->id = 100; buffer.commit(s);
+    // Now we have items at indices 2, 3, 0. (3 items)
+    EXPECT_EQ(consumer.available(), 3);
+    
+    // Read all
+    consumer.readNext(); // 2
+    consumer.readNext(); // 3
+    consumer.readNext(); // 0 (id 100)
+    EXPECT_EQ(consumer.available(), 0);
+}
+
+TEST_F(RingBufferTest, ReadLatestWithWrap) {
+    // Fill buffer
+    for(uint32_t i=0; i<BUF_SIZE; i++) {
+        auto* s = buffer.claim(); s->id = i; buffer.commit(s);
+    }
+    // Read latest (id 3)
+    auto* p = consumer.readLatest();
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->id, 3);
+
+    // Add 1 (wrap)
+    auto* s = buffer.claim(); s->id = 100; buffer.commit(s);
+    
+    // Read latest (id 100)
+    p = consumer.readLatest();
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->id, 100);
+}
