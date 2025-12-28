@@ -9,7 +9,6 @@ class BMI270 {
 public:
     BMI270(DataManager::SensorBuffer& m_buffer,SPI_HandleTypeDef* spi_handle, GPIO_TypeDef* cs_port, uint16_t cs_pin);
 
-    // Blocking init function
     int8_t init();
 
     // Non-blocking DMA read functions

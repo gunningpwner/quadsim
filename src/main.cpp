@@ -3,6 +3,7 @@
 #include "drivers/usbd_cdc_if.h"
 #include "drivers/bmi270.h"
 #include "drivers/qmc5883l.h"
+#include "drivers/W25Q128FV.h"
 #include "drivers/Crsf.h"
 #include "drivers/DShot.h"
 #include "drivers/GPS.h"
@@ -19,11 +20,15 @@ Crsf *g_crsf_ptr = nullptr;
 BMI270 *g_imu_ptr = nullptr;
 GPS *g_gps_ptr = nullptr;
 QMC5883L *g_compass_ptr = nullptr;
-
-
+W25Q128FV *g_flash_ptr = nullptr;
 
 static volatile uint32_t s_overflow_count = 0;
 static volatile uint32_t s_last_dwt_cyccnt = 0;
+
+extern uint8_t RxLastPacket[];
+extern volatile uint32_t RxPacketLen;
+extern volatile uint8_t NewDataFlag;
+
 
 void initTime()
 {
@@ -66,7 +71,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         if (g_imu_ptr)
             g_imu_ptr->startReadImu_DMA();
 
-        if (counter%10==0){
+        if (counter % 10 == 0)
+        {
             if (g_compass_ptr)
             {
                 g_compass_ptr->startReadCompass_DMA();
@@ -109,9 +115,20 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
     }
 }
 
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI2) //Flash
+    {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
+        if (g_flash_ptr) {
+            g_flash_ptr->m_dma_transfer_active = false; // Clear flag
+        }
+    }
+}
+
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c->Instance == I2C1) 
+    if (hi2c->Instance == I2C1)
     {
         if (g_compass_ptr != nullptr)
         {
@@ -131,6 +148,32 @@ extern "C" int _write(int file, char *ptr, int len)
     CDC_Transmit_FS((uint8_t *)ptr, len);
 
     return len;
+}
+
+void CheckUsb(void) {
+    if (NewDataFlag == 1) {
+        // Optional: Null-terminate the string for easier comparison
+        // (Make sure RxPacketLen < 64 before doing this to be safe)
+        RxLastPacket[RxPacketLen] = 0; 
+
+        if (strncmp((char*)RxLastPacket, "DUMP", 4) == 0) {
+            g_flash_ptr->stopWriting();
+            g_flash_ptr->dumpDataToUSB();
+
+        } else if ((strncmp((char*)RxLastPacket, "START", 5) == 0))
+        {
+            printf("Starting flash write\n");
+            g_flash_ptr->startWriting();
+        } else if ((strncmp((char*)RxLastPacket, "STOP", 4) == 0))
+        {
+            printf("Stopping flash write\n");
+            g_flash_ptr->stopWriting();
+        }
+        
+        
+        // Clear flag so we don't re-read the same command
+        NewDataFlag = 0;
+    }
 }
 
 /**
@@ -259,13 +302,14 @@ int main(void)
     MX_GPIO_Init();
     MX_DMA_Init();
     MX_SPI1_Init();
+    MX_SPI2_Init();
     MX_TIM2_Init();
     MX_TIM4_Init();
     MX_TIM8_Init();
     MX_USART3_UART_Init();
     MX_UART4_Init();
     MX_ADC1_Init();
-    // MX_USB_DEVICE_Init();
+    MX_USB_DEVICE_Init();
     MX_I2C1_Init();
 
     MonolithicControlEntity mce;
@@ -279,8 +323,9 @@ int main(void)
     g_gps_ptr = &gps_driver;
     QMC5883L compass(data_manager.getSensorBuffer());
     g_compass_ptr = &compass;
+    W25Q128FV flash(data_manager.makeSensorConsumer());
+    g_flash_ptr = &flash;
     DShot dshot_driver(data_manager.makeMotorCommandsConsumer());
-
 
     HAL_Delay(2000); // Wait for USB to enumerate
     printf("\n--- BMI270 Initialization ---\n");
@@ -292,8 +337,6 @@ int main(void)
     else
     {
         printf("BMI270 Initialization Failed!\n");
-        while (1)
-            ;
     }
 
     printf("--- DShot Initialization ---\n");
@@ -317,7 +360,7 @@ int main(void)
     }
 
     printf("--- Compass Initialization ---\n");
-    
+
     if (compass.init() == 0)
     {
         printf("Compass Initialized Successfully.\n");
@@ -325,6 +368,16 @@ int main(void)
     else
     {
         printf("Compass Initialization Failed!\n");
+    }
+
+    printf("--- Flash Initialization ---\n");
+    if (flash.init() == 0)
+    {
+        printf("Flash Initialized Successfully.\n");
+    }
+    else
+    {
+        printf("Flash Initialization Failed!\n");
     }
 
     //
@@ -346,6 +399,8 @@ int main(void)
 
     while (1)
     {
+        flash.run();
+        CheckUsb();
         // Run the main flight software logic.
 
         // mce.run();
@@ -374,7 +429,6 @@ int main(void)
 extern "C" void SysTick_Handler(void)
 {
     HAL_IncTick();
-    // The overflow counter is now updated atomically within getCurrentTimeUs().
 }
 
 extern "C" void OTG_FS_IRQHandler(void)
@@ -399,19 +453,16 @@ void I2C1_EV_IRQHandler(void)
 
 extern "C" void TIM2_IRQHandler(void)
 {
-    // This is the interrupt handler for TIM2
     HAL_TIM_IRQHandler(&htim2);
 }
 
 extern "C" void DMA2_Stream0_IRQHandler(void)
 {
-    // This is the interrupt handler for SPI1_RX
     HAL_DMA_IRQHandler(hspi1.hdmarx);
 }
 
 extern "C" void DMA2_Stream3_IRQHandler(void)
 {
-    // This is the interrupt handler for SPI1_TX
     HAL_DMA_IRQHandler(hspi1.hdmatx);
 }
 
@@ -422,14 +473,23 @@ extern "C" void DMA1_Stream0_IRQHandler(void)
 
 extern "C" void DMA1_Stream1_IRQHandler(void)
 {
-    // This is the interrupt handler for USART3_RX
+
     HAL_DMA_IRQHandler(huart3.hdmarx);
 }
 
 extern "C" void DMA1_Stream2_IRQHandler(void)
 {
-    // This is the interrupt handler for UART4_RX
     HAL_DMA_IRQHandler(huart4.hdmarx);
+}
+
+extern "C" void DMA1_Stream3_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(hspi2.hdmarx);
+}
+
+extern "C" void DMA1_Stream4_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(hspi2.hdmatx);
 }
 
 extern "C" void DMA1_Stream6_IRQHandler(void)

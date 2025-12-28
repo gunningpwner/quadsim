@@ -16,6 +16,11 @@ static volatile uint32_t tx_head = 0;
 static volatile uint32_t tx_tail = 0;
 static volatile bool g_vcp_connected = false;
 
+uint8_t RxLastPacket[64];
+volatile uint32_t RxPacketLen = 0;
+volatile uint8_t NewDataFlag = 0;
+volatile int8_t usbStatus = USBD_OK;
+
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
 static int8_t CDC_Init_FS(void);
@@ -81,8 +86,22 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
-  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+  // 1. Smash the incoming data into our mailbox buffer
+  // We limit it to 64 bytes to prevent overflowing RxLastPacket
+  uint32_t safeLen = (*Len > 64) ? 64 : *Len;
+  
+  // Standard memcpy to save the data
+  for(uint32_t i=0; i<safeLen; i++) {
+      RxLastPacket[i] = Buf[i];
+  }
+  
+  RxPacketLen = safeLen;
+  NewDataFlag = 1; // Tell main() "Hey, look at RxLastPacket!"
+
+  // 2. Reset the hardware to receive the next packet
+  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &UserRxBufferFS[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  
   return (USBD_OK);
 }
 
@@ -120,7 +139,7 @@ static int8_t CDC_TxComplete_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
   if (hcdc->TxState == 0 && tx_head != tx_tail) {
       CDC_TxComplete_FS(NULL, NULL, 0);
   }
-
+  usbStatus= USBD_OK;
   return (USBD_OK);
 }
 
@@ -153,6 +172,7 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
       CDC_TxComplete_FS(NULL, NULL, 0);
   }
   __enable_irq(); // --- Exit critical section ---
+  usbStatus = USBD_BUSY;
   return USBD_OK;
 }
 

@@ -6,6 +6,7 @@
 
 // Declare global handles for all used peripherals
 extern SPI_HandleTypeDef hspi1;
+extern SPI_HandleTypeDef hspi2;
 extern UART_HandleTypeDef huart3;
 extern UART_HandleTypeDef huart4;
 extern I2C_HandleTypeDef hi2c1;
@@ -22,6 +23,7 @@ void SystemClock_Config_HSE(void);
 void MX_GPIO_Init(void);
 void MX_DMA_Init(void);
 void MX_SPI1_Init(void);
+void MX_SPI2_Init(void);
 void MX_TIM2_Init(void);
 void MX_TIM4_Init(void);
 void MX_TIM8_Init(void);
