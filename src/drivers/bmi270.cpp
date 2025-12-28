@@ -205,6 +205,7 @@ void BMI270::processRawData()
   int16_t raw_gz = (int16_t)((data_ptr[11] << 8) | data_ptr[10]);
   SensorData* imu_data = m_sensor_buffer.claim();
   imu_data->timestamp= timestamp;
+  imu_data->sensor= SensorData::Type::IMU;
   imu_data->data.imu.accel[0] = (float)raw_ax/ACCEL_SENSITIVITY*G_TO_MS2;
   imu_data->data.imu.accel[1] = (float)raw_ay/ACCEL_SENSITIVITY*G_TO_MS2;
   imu_data->data.imu.accel[2] = (float)raw_az/ACCEL_SENSITIVITY*G_TO_MS2;
