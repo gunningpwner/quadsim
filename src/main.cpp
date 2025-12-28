@@ -157,9 +157,12 @@ void CheckUsb(void) {
         RxLastPacket[RxPacketLen] = 0; 
 
         if (strncmp((char*)RxLastPacket, "DUMP", 4) == 0) {
-            g_flash_ptr->stopWriting();
-            g_flash_ptr->dumpDataToUSB();
 
+            g_flash_ptr->stopWriting();
+            printf("Dumping Flash Data\n");
+            g_flash_ptr->dumpDataToUSB();
+            printf("Dump Complete\n");
+            
         } else if ((strncmp((char*)RxLastPacket, "START", 5) == 0))
         {
             printf("Starting flash write\n");
@@ -168,6 +171,12 @@ void CheckUsb(void) {
         {
             printf("Stopping flash write\n");
             g_flash_ptr->stopWriting();
+        }
+        else if ((strncmp((char*)RxLastPacket, "ERASE", 5) == 0))
+        {
+            printf("Erasing\n");
+            g_flash_ptr->erase();
+            printf("Done\n");
         }
         
         

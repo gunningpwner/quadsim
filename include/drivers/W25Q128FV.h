@@ -20,6 +20,7 @@ public:
     // and 3-byte Address to your buffer
     void writePageDMA_Raw(uint8_t* buffer_with_header, uint16_t total_len);
     void dumpDataToUSB();
+    void erase();
     volatile bool m_dma_transfer_active = false;
 private:
     static constexpr uint8_t CMD_WRITE_ENABLE = 0x06;

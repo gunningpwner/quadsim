@@ -56,7 +56,7 @@ void W25Q128FV::run()
         uint8_t *data_ptr = &page_buffer[4];
         for (size_t i = 0; i < ITEMS_PER_PAGE; i++)
         {
-            SensorData *data = m_sensor_consumer.readLatest();
+            SensorData *data = m_sensor_consumer.readNext();
             memcpy(data_ptr, data, sizeof(SensorData));
             data_ptr += sizeof(SensorData);
         }
@@ -165,4 +165,42 @@ void W25Q128FV::enableWrite()
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
     HAL_SPI_Transmit(&hspi2, &cmd, 1, 100);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
+}
+
+void W25Q128FV::erase()
+{
+    // 1. Safety check: If head is 0, the chip is effectively empty already.
+    if (write_head == 0) {
+        return;
+    }
+
+    // 2. Iterate through 4KB sectors up to the write_head
+    // We start at address 0 and jump 4096 bytes at a time.
+    // The loop condition (addr < write_head) ensures we erase any sector
+    // that has even a single byte of data in it.
+    for (uint32_t addr = 0; addr < write_head; addr += 4096)
+    {
+        enableWrite();
+
+        uint8_t cmd[4];
+        cmd[0] = CMD_SECTOR_ERASE; // 0x20
+        cmd[1] = (addr >> 16) & 0xFF;
+        cmd[2] = (addr >> 8) & 0xFF;
+        cmd[3] = (addr) & 0xFF;
+
+        // Send Erase Command
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+        HAL_SPI_Transmit(&hspi2, cmd, 4, 100);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
+
+        // Wait for sector to erase (typically ~45ms per sector)
+        while (isBusy())
+        {
+            // Optional: Toggle an LED here if you want visual feedback
+            // HAL_Delay(1); 
+        }
+    }
+
+    // 3. Reset the write head so the next log starts at 0
+    write_head = 0;
 }
