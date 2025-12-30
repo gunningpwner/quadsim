@@ -57,6 +57,8 @@ void W25Q128FV::run()
         for (size_t i = 0; i < ITEMS_PER_PAGE; i++)
         {
             SensorData *data = m_sensor_consumer.readNext();
+            if (data==nullptr)
+                break;
             memcpy(data_ptr, data, sizeof(SensorData));
             data_ptr += sizeof(SensorData);
         }
