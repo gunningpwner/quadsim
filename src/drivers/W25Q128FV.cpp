@@ -57,8 +57,10 @@ void W25Q128FV::run()
         for (size_t i = 0; i < ITEMS_PER_PAGE; i++)
         {
             SensorData *data = m_sensor_consumer.readNext();
-            if (data==nullptr)
-                break;
+            if (data == nullptr)
+            {
+                return;
+            }
             memcpy(data_ptr, data, sizeof(SensorData));
             data_ptr += sizeof(SensorData);
         }
@@ -141,10 +143,11 @@ void W25Q128FV::dumpDataToUSB()
         HAL_Delay(1);
     }
 
-    for (uint32_t addr = 0; addr < write_head; addr += 256) {
+    for (uint32_t addr = 0; addr < write_head; addr += 256)
+    {
         readData(addr, page_buffer, 256);
         CDC_Transmit_FS(page_buffer, 256);
-        while(usbStatus == USBD_BUSY)
+        while (usbStatus == USBD_BUSY)
         {
             HAL_Delay(1);
         }
@@ -172,7 +175,8 @@ void W25Q128FV::enableWrite()
 void W25Q128FV::erase()
 {
     // 1. Safety check: If head is 0, the chip is effectively empty already.
-    if (write_head == 0) {
+    if (write_head == 0)
+    {
         return;
     }
 
@@ -199,7 +203,7 @@ void W25Q128FV::erase()
         while (isBusy())
         {
             // Optional: Toggle an LED here if you want visual feedback
-            // HAL_Delay(1); 
+            // HAL_Delay(1);
         }
     }
 
