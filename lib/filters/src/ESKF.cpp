@@ -3,10 +3,7 @@
 #include <cmath>
 #include <Eigen/Geometry>
 #include <cstdint>
-#ifdef SIM
-#include "Logger.h"
-#endif
-#include "timing.h"
+
 
 
 #define R_M 6335439.0f
@@ -83,7 +80,7 @@ void ESKF::run()
             updateGPS(*sensor_data);
             break;
         case SensorData::Type::MAG:
-            // updateMag(*sensor_data);
+            updateMag(*sensor_data);
             break;
         default:
             break;
@@ -105,6 +102,7 @@ void ESKF::run()
     Logger::getInstance().log("AccBias", nominalAccBias, getCurrentTimeUs());
     Logger::getInstance().log("GyroBias", nominalGyroBias, getCurrentTimeUs());
     Logger::getInstance().log("Grav", nominalGrav, getCurrentTimeUs());
+    Logger::getInstance().log("Cov", errorStateCovariance, getCurrentTimeUs());
 #endif
 }
 
@@ -154,10 +152,10 @@ void ESKF::updateIMU(const SensorData &imu_data)
     errorStateCovariance.diagonal().segment<3>(6).array() += gyroVar * dt2;
 
     // Accel Bias Noise (Random Walk)
-    errorStateCovariance.diagonal().segment<3>(9).array() += accBiasVar * dt2;
+    errorStateCovariance.diagonal().segment<3>(9).array() += accBiasVar * dt;
 
     // Gyro Bias Noise (Random Walk)
-    errorStateCovariance.diagonal().segment<3>(12).array() += gyroBiasVar * dt2;
+    errorStateCovariance.diagonal().segment<3>(12).array() += gyroBiasVar * dt;
 
 #ifdef SIM
     Eigen::VectorXf meas(6);
@@ -233,8 +231,8 @@ void ESKF::updateGPS(const SensorData &gps_data)
 
         // Re-inject position error into Reference LLA to keep nominalPos small
         // (Standard strategy for LLA navigation)
-        refLLA.x() += nominalPos.y() / e_coef; // Lat (x) from North (y)
-        refLLA.y() += nominalPos.x() / n_coef; // Lon (y) from East (x)
+        refLLA.x() += nominalPos.x() / n_coef; // Lat (x) from North (y)
+        refLLA.y() += nominalPos.y() / e_coef; // Lon (y) from East (x)
         refLLA.z() += -nominalPos.z();
         nominalPos.setZero();
     }

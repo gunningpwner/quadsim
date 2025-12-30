@@ -2,6 +2,10 @@
 #include "DataManager.h"
 #include "DataTypes.h"
 #include <Eigen/Dense>
+#include "timing.h"
+#ifdef SIM
+#include "Logger.h"
+#endif
 
 // Define fixed-size types to prevent mallocs
 using Matrix18f = Eigen::Matrix<float, 18, 18>;
@@ -40,7 +44,9 @@ private:
         K = errorStateCovariance * H.transpose() * S.ldlt().solve(Eigen::Matrix<float, MeasDim, MeasDim>::Identity());
 
         Eigen::Matrix<float, 18, 1> errorStateMean = K * (measurement - prediction);
-        
+        #ifdef SIM
+        Logger::getInstance().log("errorStateMean", errorStateMean, getCurrentTimeUs());
+        #endif
         // P = (I - K * H) * P
         // Optimized form: P = P - K * (H * P) to reduce operations
         // Or standard Joseph form for stability if needed, but simple form is faster:
@@ -90,11 +96,11 @@ private:
 
     uint64_t last_timestamp;
 
-    float accVar = .01f;
-    float accBiasVar = .0001f;
-    float gyroVar = .01f;
+    float accVar = .05f;
+    float accBiasVar = .01f;
+    float gyroVar = .05f;
     float gyroBiasVar = .0001f;
-    float gpsPosVar = .25f;
-    float gpsVelVar = .01f;
+    float gpsPosVar = .5f;
+    float gpsVelVar = .5f;
     float magVar = .0025f;
 };

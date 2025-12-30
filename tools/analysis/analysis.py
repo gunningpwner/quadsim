@@ -9,7 +9,8 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-%matplotlib inline
+from matplotlib.widgets import Slider
+%matplotlib qt5
 # data_cols = {"AccBias":["x","y","z"],
 #              "GPS":["lat","lon",'alt','vel_n','vel_e','vel_d'],
 #              "Grav":["x","y","z"],
@@ -114,9 +115,143 @@ def quaternion_to_euler(quaternions):
     else:
         # Return the Nx3 array for array input
         return eulers
+def plot_interactive_heatmap(data_tensor, time_array, labels, text_data_tensor=None, title_prefix="Data", cmap='coolwarm', vmin=-1, vmax=1):
+    """
+    Args:
+        data_tensor: Used for the heatmap COLORS (usually Correlation).
+        text_data_tensor: (Optional) Used for the TEXT values (usually Covariance).
+                          If None, defaults to using data_tensor.
+    """
+    rows, cols = data_tensor.shape[1], data_tensor.shape[2]
+    
+    # If no specific text data is provided, use the color data for text
+    if text_data_tensor is None:
+        text_data_tensor = data_tensor
+
+    # 1. Setup the Plot
+    fig, ax = plt.subplots(figsize=(14, 10)) # Made slightly wider for scientific notation
+    plt.subplots_adjust(bottom=0.25) 
+    
+    # Initial Image (Colors based on data_tensor)
+    im = ax.imshow(data_tensor[0], cmap=cmap, vmin=vmin, vmax=vmax)
+    
+    ax.set_xticks(np.arange(cols))
+    ax.set_yticks(np.arange(rows))
+    ax.set_xticklabels(labels, rotation=90)
+    ax.set_yticklabels(labels)
+    ax.set_title(f"{title_prefix} at t={time_array[0]:.2f}s")
+    fig.colorbar(im, ax=ax)
+
+    # 2. Initialize Text Annotations
+    text_annotations = []
+    
+    # Contrast threshold based on the COLOR data (heatmap intensity)
+    range_span = max(abs(vmax), abs(vmin))
+    contrast_threshold = range_span * 0.6 
+
+    for i in range(rows):
+        row_texts = []
+        for j in range(cols):
+            # Value for Color (Correlation)
+            val_color = data_tensor[0, i, j]
+            # Value for Text (Covariance)
+            val_text = text_data_tensor[0, i, j]
+            
+            # Determine text color based on the BACKGROUND intensity
+            text_color = "white" if abs(val_color) > contrast_threshold else "black"
+            
+            # Create text using scientific notation for covariance
+            text = ax.text(j, i, f"{val_text:.2e}", 
+                           ha="center", va="center", 
+                           color=text_color, 
+                           fontsize=6) 
+            row_texts.append(text)
+        text_annotations.append(row_texts)
+
+    # 3. Create the Slider
+    ax_slider = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor='lightgoldenrodyellow')
+    slider = Slider(
+        ax=ax_slider,
+        label='Time (s)',
+        valmin=time_array[0],
+        valmax=time_array[-1],
+        valinit=time_array[0],
+    )
+
+    # 4. Update Function
+    def update(val):
+        t_selected = slider.val
+        idx = (np.abs(time_array - t_selected)).argmin()
+        
+        # Get matrices for this timestep
+        matrix_color = data_tensor[idx]
+        matrix_text = text_data_tensor[idx]
+        
+        # Update heatmap colors
+        im.set_data(matrix_color)
+        
+        # Update text values and text colors
+        for i in range(rows):
+            for j in range(cols):
+                val_c = matrix_color[i, j]
+                val_t = matrix_text[i, j]
+                
+                # Update number (Un-normalized Covariance)
+                text_annotations[i][j].set_text(f"{val_t:.2e}")
+                
+                # Update visibility (based on Correlation background)
+                text_annotations[i][j].set_color("white" if abs(val_c) > contrast_threshold else "black")
+
+        ax.set_title(f"{title_prefix} at t={time_array[idx]:.2f}s")
+        fig.canvas.draw_idle()
+
+    slider.on_changed(update)
+    plt.tight_layout()
+    print(f"Plotting {title_prefix}...")
+    plt.show()
+
+def plot_covariance_heatmap(data_dict):
+    # 1. Extract and reshape data
+    raw_cov = data_dict['data']
+    times = data_dict['time']
+    
+    # Reshape to (N, 18, 18) -> This is the RAW COVARIANCE
+    cov_matrices = raw_cov.reshape(-1, 18, 18)
+    
+    # 2. Pre-compute Correlation Matrices (for COLORS)
+    corr_matrices = []
+    epsilon = 1e-9 
+    
+    print("Pre-computing correlation matrices...")
+    for P in cov_matrices:
+        std_dev = np.sqrt(np.diag(P))
+        denominator = np.outer(std_dev, std_dev) + epsilon
+        rho = P / denominator
+        rho = np.clip(rho, -1, 1)
+        corr_matrices.append(rho)
+        
+    corr_matrices = np.array(corr_matrices)
+
+    labels = ['Px', 'Py', 'Pz', 'Vx', 'Vy', 'Vz', 
+              'Roll', 'Pitch', 'Yaw', 
+              'Ba_x', 'Ba_y', 'Ba_z', 'Bg_x', 'Bg_y', 'Bg_z', 
+              'Gx', 'Gy', 'Gz']
+
+    # 3. Call Generic Plotter
+    plot_interactive_heatmap(
+        data_tensor=corr_matrices,      # Colors = Correlation
+        text_data_tensor=cov_matrices,  # Text = Raw Covariance
+        time_array=times,
+        labels=labels,
+        title_prefix="Covariance Analysis",
+        cmap='coolwarm',
+        vmin=-1,
+        vmax=1
+    )
     
 if __name__ == "__main__":
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-30_13-54-31'
+    plt.close('all')
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-30_14-45-47'
     data = load_data(folder)
     imu_acc = data['IMU']['data'][:,:3]
     
@@ -168,8 +303,17 @@ if __name__ == "__main__":
     plt.grid()
     
     plt.figure(figsize=(10, 6))
+    plt.title("error state")
+    plot_three(data['errorStateMean']['data'][:,:3],times=data['errorStateMean']['time'],label='pos')
+    plot_three(data['errorStateMean']['data'][:,3:6],times=data['errorStateMean']['time'],label='vel')
+    plt.legend()
+    plt.grid()
+    
+    plt.figure(figsize=(10, 6))
     plt.title("LL")
     plt.plot(data['GPS']['time'],data['GPS']['data'][:,0])
     plt.plot(data['GPS']['time'],data['GPS']['data'][:,1])
     plt.legend()
     plt.grid()
+    
+    plot_covariance_heatmap(data['Cov'])

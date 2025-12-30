@@ -49,9 +49,10 @@ void QMC5883L::processRawData()
 
     mag_data->timestamp = timestamp;
     mag_data->sensor = SensorData::Type::MAG;
-    mag_data->data.mag.mag[0] = (int16_t)(m_rx_buf[2] << 8 | m_rx_buf[1]) / SENSITIVITY_2G;
-    mag_data->data.mag.mag[1] = (int16_t)(m_rx_buf[4] << 8 | m_rx_buf[3]) / SENSITIVITY_2G;
+    mag_data->data.mag.mag[0] = (int16_t)(m_rx_buf[4] << 8 | m_rx_buf[3]) / SENSITIVITY_2G;
+    mag_data->data.mag.mag[1] = -(int16_t)(m_rx_buf[2] << 8 | m_rx_buf[1]) / SENSITIVITY_2G;
     mag_data->data.mag.mag[2] = (int16_t)(m_rx_buf[6] << 8 | m_rx_buf[5]) / SENSITIVITY_2G;
     m_sensor_buffer.commit(mag_data);
+    // printf("mag: %f %f %f\n", mag_data->data.mag.mag[0], mag_data->data.mag.mag[1], mag_data->data.mag.mag[2]);
     
 }
