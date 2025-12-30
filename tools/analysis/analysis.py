@@ -116,7 +116,7 @@ def quaternion_to_euler(quaternions):
         return eulers
     
 if __name__ == "__main__":
-    folder=r'C:\Users\RodriguesAT\OneDrive - US Army\Desktop\quadsim\simulation\build\logs\2025-12-22_14-32-45'
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-30_13-54-31'
     data = load_data(folder)
     imu_acc = data['IMU']['data'][:,:3]
     
@@ -138,23 +138,28 @@ if __name__ == "__main__":
     plot_three(data['AccBias']['data'],times=data['AccBias']['time'],label='acc')
     plt.legend()
     plt.grid()
-    
+    plt.figure(figsize=(10, 6))
+    plt.title("Grav")
+    plot_three(data['Grav']['data'],times=data['Grav']['time'],label='est')
+    plt.legend()
+    plt.grid()
     plt.figure(figsize=(10, 6))
     plt.title("Velocity")
     plot_three(data['Vel']['data'],times=data['Vel']['time'],label='Est',ls='--')
     plot_three(data['GPS']['data'][:,3:],times=data['GPS']['time'],label='Meas')
     plt.legend()
     plt.grid()
-    
-    plt.figure(figsize=(10, 6))
-    plt.title("Magnetometer")
-    norm = data['MAG']['data']/np.linalg.norm(data['MAG']['data'],axis=1)[:,np.newaxis]
-    plot_three(norm,times=data['MAG']['time'],label='Meas')
-    plot_three(data['MAG_Ref']['data'],times=data['MAG_Ref']['time'],label='Ref',ls='-.')
-    plot_three(data['MAG_Pred']['data'],times=data['MAG_Pred']['time'],label='Pred',ls='--')
-    plt.legend()
-    plt.grid()
-    
+    try:
+        plt.figure(figsize=(10, 6))
+        plt.title("Magnetometer")
+        norm = data['MAG']['data']/np.linalg.norm(data['MAG']['data'],axis=1)[:,np.newaxis]
+        plot_three(norm,times=data['MAG']['time'],label='Meas')
+        plot_three(data['MAG_Ref']['data'],times=data['MAG_Ref']['time'],label='Ref',ls='-.')
+        plot_three(data['MAG_Pred']['data'],times=data['MAG_Pred']['time'],label='Pred',ls='--')
+        plt.legend()
+        plt.grid()
+    except KeyError:
+        pass
     plt.figure(figsize=(10, 6))
     plt.title("orientation")
     est_ori = np.rad2deg(quaternion_to_euler(data['Quat']['data']))

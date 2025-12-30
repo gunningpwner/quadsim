@@ -96,9 +96,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
     else if (huart->Instance == UART4)
     {
-        printf("gps start: %lu\n",DWT->CYCCNT);
+        // printf("gps start: %lu\n",DWT->CYCCNT);
         g_gps_ptr->handleRxChunk(g_gps_ptr->getRxBuffer(), Size);
-        printf("gps stop: %lu\n",DWT->CYCCNT);
+        // printf("gps stop: %lu\n",DWT->CYCCNT);
         HAL_UARTEx_ReceiveToIdle_DMA(&huart4, g_gps_ptr->getRxBuffer(), 100);
         __HAL_DMA_DISABLE_IT(huart4.hdmarx, DMA_IT_HT);
         
@@ -113,9 +113,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         // We can now process the raw data that the DMA has moved for us.
         if (g_imu_ptr != nullptr)
         {
-            printf("imu start: %lu\n",DWT->CYCCNT);
+            // printf("imu start: %lu\n",DWT->CYCCNT);
             g_imu_ptr->processRawData();
-            printf("imu stop: %lu\n",DWT->CYCCNT);
+            // printf("imu stop: %lu\n",DWT->CYCCNT);
         }
     }
 }
@@ -137,9 +137,9 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
     {
         if (g_compass_ptr != nullptr)
         {
-            printf("mag start: %lu\n",DWT->CYCCNT);
+            // printf("mag start: %lu\n",DWT->CYCCNT);
             g_compass_ptr->processRawData();
-            printf("mag stop: %lu\n",DWT->CYCCNT);
+            // printf("mag stop: %lu\n",DWT->CYCCNT);
         }
     }
 }

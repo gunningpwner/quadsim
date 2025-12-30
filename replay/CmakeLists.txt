@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.10.2)
+project(replay_harness)
+set(CMAKE_CXX_STANDARD 17)
+
+find_package(Eigen3 REQUIRED)
+
+add_executable(replay_harness
+    src/main.cpp
+    ../lib/filters/src/ESKF.cpp)
+
+target_compile_definitions(replay_harness PRIVATE SIM)
+
+target_include_directories(replay_harness
+    PRIVATE
+        ${EIGEN3_INCLUDE_DIR}
+        src
+        ../lib/flight_core/include
+        ../lib/world_model/include
+        ../lib/buffers/include
+        ../lib/filters/include
+)

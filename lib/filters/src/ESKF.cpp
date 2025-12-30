@@ -62,7 +62,7 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
     errorStateCovariance.diagonal().segment<3>(6).setConstant(1.0f);   // Angle
     errorStateCovariance.diagonal().segment<3>(9).setConstant(0.1f);   // Acc Bias
     errorStateCovariance.diagonal().segment<3>(12).setConstant(0.1f);  // Gyro Bias
-    errorStateCovariance.diagonal().segment<3>(15).setConstant(0.05f); // Gravity
+    errorStateCovariance.diagonal().segment<3>(15).setConstant(0.0f); // Gravity
 
     // Initialize Fx identity parts
     Fx.diagonal().head<6>().setConstant(1.0f); // Pos, Vel
@@ -83,11 +83,14 @@ void ESKF::run()
             updateGPS(*sensor_data);
             break;
         case SensorData::Type::MAG:
-            updateMag(*sensor_data);
+            // updateMag(*sensor_data);
             break;
         default:
             break;
         }
+        // printf("pos: %f %f %f\n", nominalPos.x(), nominalPos.y(), nominalPos.z());
+        // printf("vel: %f %f %f\n", nominalVel.x(), nominalVel.y(), nominalVel.z());
+        
         sensor_data = m_sensor_consumer.readNext();
     }
 
@@ -99,6 +102,9 @@ void ESKF::run()
     Eigen::Vector4f quatMeas;
     quatMeas << nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w();
     Logger::getInstance().log("Quat", quatMeas, getCurrentTimeUs());
+    Logger::getInstance().log("AccBias", nominalAccBias, getCurrentTimeUs());
+    Logger::getInstance().log("GyroBias", nominalGyroBias, getCurrentTimeUs());
+    Logger::getInstance().log("Grav", nominalGrav, getCurrentTimeUs());
 #endif
 }
 
@@ -163,13 +169,13 @@ void ESKF::updateIMU(const SensorData &imu_data)
 void ESKF::updateMag(const SensorData &mag_data)
 {
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
-#ifndef SIM
+
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
     Eigen::Vector3f ref_mag = {cosf(inc) * cosf(dec), cosf(inc) * sinf(dec), sinf(inc)};
-#else
-    Eigen::Vector3f ref_mag = {1.0f, 0.0f, 0.0f};
-#endif
+
+    // Eigen::Vector3f ref_mag = {1.0f, 0.0f, 0.0f};
+
 
     Eigen::Vector3f pred_mag = rot_mat.transpose() * ref_mag;
 
@@ -186,6 +192,8 @@ void ESKF::updateMag(const SensorData &mag_data)
 
 #ifdef SIM
     Logger::getInstance().log("MAG", meas, mag_data.timestamp);
+    Logger::getInstance().log("MAG_Ref", ref_mag, getCurrentTimeUs());
+    Logger::getInstance().log("MAG_Pred", pred_mag, getCurrentTimeUs() );
 #endif
 }
 

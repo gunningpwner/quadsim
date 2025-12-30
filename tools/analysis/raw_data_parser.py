@@ -130,6 +130,12 @@ def main():
     # 3. Parse the buffer
     print(f"Captured {len(raw_buffer)} bytes.")
     
+    # --- NEW: SAVE RAW BINARY ---
+    bin_filename = "flight_log.bin"
+    print(f"Saving raw binary to {bin_filename}...")
+    with open(bin_filename, 'wb') as f:
+        f.write(raw_buffer)
+    
     records = []
     
     # Process buffer in PAGE_SIZE (256) byte chunks

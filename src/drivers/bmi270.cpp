@@ -207,11 +207,11 @@ void BMI270::processRawData()
   imu_data->timestamp= timestamp;
   imu_data->sensor= SensorData::Type::IMU;
   imu_data->data.imu.accel[0] = (float)raw_ax/ACCEL_SENSITIVITY*G_TO_MS2;
-  imu_data->data.imu.accel[1] = (float)raw_ay/ACCEL_SENSITIVITY*G_TO_MS2;
-  imu_data->data.imu.accel[2] = (float)raw_az/ACCEL_SENSITIVITY*G_TO_MS2;
+  imu_data->data.imu.accel[1] = -(float)raw_ay/ACCEL_SENSITIVITY*G_TO_MS2;
+  imu_data->data.imu.accel[2] = -(float)raw_az/ACCEL_SENSITIVITY*G_TO_MS2;
 
   imu_data->data.imu.gyro[0] = (float)raw_gx/GYRO_SENSITIVITY*DEG_TO_RAD;
-  imu_data->data.imu.gyro[1] = (float)raw_gy/GYRO_SENSITIVITY*DEG_TO_RAD;
-  imu_data->data.imu.gyro[2] = (float)raw_gz/GYRO_SENSITIVITY*DEG_TO_RAD;
+  imu_data->data.imu.gyro[1] = -(float)raw_gy/GYRO_SENSITIVITY*DEG_TO_RAD;
+  imu_data->data.imu.gyro[2] = -(float)raw_gz/GYRO_SENSITIVITY*DEG_TO_RAD;
   m_sensor_buffer.commit(imu_data);
 }
