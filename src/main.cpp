@@ -307,7 +307,52 @@ void handle_telemetry(Crsf &crsf_receiver)
     // Cycle to the next telemetry type for the next call
     telemetry_phase = (telemetry_phase + 1) % 2;
 }
+void I2C1_ClearBus(void) {
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    // 1. Enable GPIO Clock
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    // 2. Configure SCL (PB8) and SDA (PB9) as Output Open Drain
+    // We are NOT using AF mode yet. We need manual control.
+    GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    // 3. Set SDA High (Release it)
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+
+    // 4. Toggle SCL until the slave releases SDA
+    // Slaves can hold SDA low for up to 9 clock cycles. We'll do a few more to be safe.
+    for (int i = 0; i < 16; i++) {
+        // SCL Low
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+        HAL_Delay(1); // Small delay
+        
+        // SCL High
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+        HAL_Delay(1);
+
+        // Check if SDA is High (Slave released it)
+        if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == GPIO_PIN_SET) {
+            break; 
+        }
+    }
+
+    // 5. Generate a STOP condition (SCL High, then SDA Low -> High)
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); // SCL Low
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // SDA Low
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High (STOP)
+
+    // 6. De-Init the GPIOs so the HAL_I2C_Init function can configure them cleanly
+    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_8 | GPIO_PIN_9);
+}
 int main(void)
 {
     // SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));
@@ -327,6 +372,7 @@ int main(void)
     MX_UART4_Init();
     MX_ADC1_Init();
     MX_USB_DEVICE_Init();
+    I2C1_ClearBus();
     MX_I2C1_Init();
 
     MonolithicControlEntity mce;

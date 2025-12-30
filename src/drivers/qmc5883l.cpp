@@ -9,7 +9,7 @@ QMC5883L::QMC5883L(DataManager::SensorBuffer &m_buffer) : m_sensor_buffer(m_buff
 
 int8_t QMC5883L::init()
 {
-    uint8_t reset = 0b10000000;
+    uint8_t reset = 0x80;
     // Soft reset
     HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL2, 1, &reset, 1, HAL_MAX_DELAY);
     HAL_Delay(350);
@@ -40,7 +40,7 @@ bool QMC5883L::startReadCompass_DMA()
 void QMC5883L::processRawData()
 {   
     // Verify drdy flag is set
-    if (!(m_rx_buf[6]&0b1))
+    if (!(m_rx_buf[0]&0b1))
         return;
     
     uint64_t timestamp = getCurrentTimeUs();
