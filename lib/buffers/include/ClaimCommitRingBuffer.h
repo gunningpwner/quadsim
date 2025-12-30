@@ -147,25 +147,15 @@ public:
     size_t available() const
     {
         // Returns the number of unread items in the buffer
-        size_t head = m_buffer.m_read_head;
-        size_t tail = m_read_idx;
+        size_t current_buf_head = m_buffer.m_read_head;
+        size_t abs_buf_head = current_buf_head + BufferSize * m_buffer.m_wrap_count;
+        size_t abs_read_idx = m_read_idx + BufferSize * last_wrap;
 
-        if (head == BufferSize)
+        if (current_buf_head == BufferSize)
         { // Buffer is empty
             return 0;
         }
-        if (tail > head && last_wrap == m_buffer.m_wrap_count)
-        {
-            return 0;
-        }
-        if (head >= tail)
-        {
-            return head - tail + 1;
-        }
-        else
-        {
-            return BufferSize - tail + head + 1;
-        }
+        return abs_buf_head - abs_read_idx+1;
     }
 
 private:
