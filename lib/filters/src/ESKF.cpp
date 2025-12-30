@@ -8,23 +8,13 @@
 #endif
 #include "timing.h"
 
-#define R_M 6335439.0
-#define R_N 6378137.0
+
+#define R_M 6335439.0f
+#define R_N 6378137.0f
 
 using Eigen::seq;
 using Vec3Map = Eigen::Map<const Eigen::Vector3f>;
-Quaternionf axisAngleToQuaternion(const Vector3f &angularVel, float dt)
-{
-    float theta = angularVel.norm() * dt;
-    if (theta < 1e-6)
-        return Quaternionf::Identity();
 
-    float k = sin(theta / 2) / theta;
-    Quaternionf ret = Quaternionf();
-    ret.w() = cos(theta / 2);
-    ret.vec() = k * angularVel;
-    return ret;
-}
 
 template <typename Derived>
 Eigen::Matrix3f skew(const Eigen::MatrixBase<Derived> &v)
@@ -36,42 +26,47 @@ Eigen::Matrix3f skew(const Eigen::MatrixBase<Derived> &v)
     return m;
 }
 
-ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuffer &state_buffer) : m_sensor_consumer(m_sensor_consumer),
-                                                                                                    m_state_buffer(state_buffer),
-                                                                                                    nominalPos(0, 0, 0),
-                                                                                                    nominalVel(0, 0, 0),
-                                                                                                    nominalQuat(1, 0, 0, 0),
-                                                                                                    nominalAccBias(0, 0, 0),
-                                                                                                    nominalGyroBias(0, 0, 0),
-                                                                                                    nominalGrav(0, 0, 9.81),
-                                                                                                    refLLA(0, 0, 0),
-                                                                                                    last_timestamp(0),
-                                                                                                    errorStateCovariance(18, 18)
+Quaternionf axisAngleToQuaternion(const Eigen::Vector3f &angularVel, float dt)
 {
+    float theta = angularVel.norm() * dt;
+    if (theta < 1e-6f)
+        return Quaternionf::Identity();
+
+    float k = sinf(theta / 2.0f) / theta;
+    Quaternionf ret;
+    ret.w() = cosf(theta / 2.0f);
+    ret.vec() = k * angularVel;
+    return ret;
+}
+
+ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuffer &state_buffer)
+    : m_sensor_consumer(m_sensor_consumer),
+      m_state_buffer(state_buffer),
+      nominalPos(0, 0, 0),
+      nominalVel(0, 0, 0),
+      nominalQuat(1, 0, 0, 0),
+      nominalAccBias(0, 0, 0),
+      nominalGyroBias(0, 0, 0),
+      nominalGrav(0, 0, 9.81f),
+      refLLA(0, 0, 0),
+      last_timestamp(0)
+{
+    // Constructor initialization of matrices is implicit via default constructors
+    // setZero is faster than initialization lists for arrays
     errorStateCovariance.setZero();
-    errorStateCovariance(0, 0) = 1;
-    errorStateCovariance(1, 1) = 1;
-    errorStateCovariance(2, 2) = 1;
+    Fx.setZero();
 
-    errorStateCovariance(3, 3) = 5;
-    errorStateCovariance(4, 4) = 5;
-    errorStateCovariance(5, 5) = 5;
+    // Initialize diagonals
+    errorStateCovariance.diagonal().head<3>().setConstant(1.0f);       // Pos
+    errorStateCovariance.diagonal().segment<3>(3).setConstant(5.0f);   // Vel
+    errorStateCovariance.diagonal().segment<3>(6).setConstant(1.0f);   // Angle
+    errorStateCovariance.diagonal().segment<3>(9).setConstant(0.1f);   // Acc Bias
+    errorStateCovariance.diagonal().segment<3>(12).setConstant(0.1f);  // Gyro Bias
+    errorStateCovariance.diagonal().segment<3>(15).setConstant(0.05f); // Gravity
 
-    errorStateCovariance(6, 6) = 1;
-    errorStateCovariance(7, 7) = 1;
-    errorStateCovariance(8, 8) = 1;
-
-    errorStateCovariance(9, 9) = .1;
-    errorStateCovariance(10, 10) = .1;
-    errorStateCovariance(11, 11) = .1;
-
-    errorStateCovariance(12, 12) = .1;
-    errorStateCovariance(13, 13) = .1;
-    errorStateCovariance(14, 14) = .1;
-
-    errorStateCovariance(15, 15) = .05;
-    errorStateCovariance(16, 16) = .05;
-    errorStateCovariance(17, 17) = .05;
+    // Initialize Fx identity parts
+    Fx.diagonal().head<6>().setConstant(1.0f); // Pos, Vel
+    Fx.block<9, 9>(9, 9).setIdentity();        // Biases, Grav
 }
 
 void ESKF::run()
@@ -96,31 +91,25 @@ void ESKF::run()
         sensor_data = m_sensor_consumer.readNext();
     }
 
-// printf("LLA %f %f %f\n", refLLA.x(), refLLA.y(), refLLA.z());
-// printf("Pos %f %f %f\n", nominalPos.x(), nominalPos.y(), nominalPos.z());
-// printf("Vel %f %f %f\n", nominalVel.x(), nominalVel.y(), nominalVel.z());
 #ifdef SIM
+    // Logging code remains mostly the same, casting to VectorXf only where needed for the logger interface
     Logger::getInstance().log("LLA", refLLA, getCurrentTimeUs());
     Logger::getInstance().log("Pos", nominalPos, getCurrentTimeUs());
     Logger::getInstance().log("Vel", nominalVel, getCurrentTimeUs());
-    VectorXf meas(4);
-    meas << nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w();
-    Logger::getInstance().log("Quat", meas, getCurrentTimeUs());
-    Logger::getInstance().log("AccBias", nominalAccBias, getCurrentTimeUs());
-    Logger::getInstance().log("GyroBias", nominalGyroBias, getCurrentTimeUs());
-    Logger::getInstance().log("Grav", nominalGrav, getCurrentTimeUs());
+    Eigen::Vector4f quatMeas;
+    quatMeas << nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w();
+    Logger::getInstance().log("Quat", quatMeas, getCurrentTimeUs());
 #endif
 }
 
 void ESKF::updateIMU(const SensorData &imu_data)
 {
-    float dt = (imu_data.timestamp - last_timestamp) / 1e6;
-    if (dt < 2e-6)
+    float dt = (imu_data.timestamp - last_timestamp) / 1e6f;
+    if (dt < 2e-6f)
         return;
-    // If dt is quite large between IMU updates, we probably missed some
-    // we'll cap dt to avoid accidentally blowing up the state
-    if (dt > .01)
-        dt = .01;
+    if (dt > .01f)
+        dt = .01f;
+
     last_timestamp = imu_data.timestamp;
     Vec3Map gyro(imu_data.data.imu.gyro.data());
     Vec3Map accel(imu_data.data.imu.accel.data());
@@ -128,65 +117,44 @@ void ESKF::updateIMU(const SensorData &imu_data)
     Quaternionf delta_quat = axisAngleToQuaternion(gyro, dt);
     nominalQuat *= delta_quat;
 
-    Vector3f accCorr = accel - nominalAccBias;
-    Vector3f gyroCorr = gyro - nominalGyroBias;
+    nominalQuat.normalize();
+
+    Eigen::Vector3f accCorr = accel - nominalAccBias;
+    Eigen::Vector3f gyroCorr = gyro - nominalGyroBias;
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
-    nominalPos += nominalVel * dt + (rot_mat * accCorr + nominalGrav) * dt * dt / 2;
-    nominalVel += rot_mat * accCorr * dt + nominalGrav * dt;
+
+    nominalPos += nominalVel * dt + (rot_mat * accCorr + nominalGrav) * (0.5f * dt * dt);
+    nominalVel += (rot_mat * accCorr + nominalGrav) * dt;
+
+    Fx.block<3, 3>(0, 3) = Eigen::Matrix3f::Identity() * dt;
+
+    Fx.block<3, 3>(3, 6) = -rot_mat * skew(accCorr) * dt;
+    Fx.block<3, 3>(3, 9) = -rot_mat * dt;
+
+    Fx.block<3, 3>(3, 15) = Eigen::Matrix3f::Identity() * dt;
 
     Eigen::Matrix3f deltaRot = Eigen::AngleAxisf(gyroCorr.norm() * dt, gyroCorr.normalized()).toRotationMatrix();
+    Fx.block<3, 3>(6, 6) = deltaRot.transpose();
+    Fx.block<3, 3>(6, 12) = -Eigen::Matrix3f::Identity() * dt;
 
-    MatrixXf Fx(18, 18);
-    Fx.setZero();
-    Fx(0, 0) = 1;
-    Fx(1, 1) = 1;
-    Fx(2, 2) = 1;
-    Fx(3, 3) = 1;
-    Fx(4, 4) = 1;
-    Fx(5, 5) = 1;
-    Fx(0, 3) = dt;
-    Fx(1, 4) = dt;
-    Fx(2, 5) = dt;
+    errorStateCovariance = Fx * errorStateCovariance * Fx.transpose();
 
-    Fx(seq(3, 5), seq(6, 8)) = -dt * rot_mat * skew(accCorr);
-    Fx(seq(3, 5), seq(9, 11)) = -rot_mat * dt;
+    float dt2 = dt * dt;
 
-    Fx(3, 15) = dt;
-    Fx(4, 16) = dt;
-    Fx(5, 17) = dt;
+    // Velocity Noise (from Accelerometer White Noise)
+    errorStateCovariance.diagonal().segment<3>(3).array() += accVar * dt2;
 
-    Fx(seq(6, 8), seq(6, 8)) = deltaRot.transpose();
-    Fx(6, 12) = -dt;
-    Fx(7, 13) = -dt;
-    Fx(8, 14) = -dt;
+    // Attitude Noise (from Gyro White Noise)
+    errorStateCovariance.diagonal().segment<3>(6).array() += gyroVar * dt2;
 
-    Fx(seq(9, 17), seq(9, 17)) = MatrixXf::Identity(9, 9);
+    // Accel Bias Noise (Random Walk)
+    errorStateCovariance.diagonal().segment<3>(9).array() += accBiasVar * dt2;
 
-    MatrixXf Fi(18, 12);
-    Fi.setZero();
-    Fi(seq(3, 5), seq(0, 2)) = MatrixXf::Identity(3, 3);
-    Fi(seq(6, 8), seq(3, 5)) = MatrixXf::Identity(3, 3);
-    Fi(seq(9, 11), seq(6, 8)) = MatrixXf::Identity(3, 3);
-    Fi(seq(12, 14), seq(9, 11)) = MatrixXf::Identity(3, 3);
+    // Gyro Bias Noise (Random Walk)
+    errorStateCovariance.diagonal().segment<3>(12).array() += gyroBiasVar * dt2;
 
-    MatrixXf Q(12, 12);
-    Q.setZero();
-    Q(0, 0) = accVar * dt * dt;
-    Q(1, 1) = accVar * dt * dt;
-    Q(2, 2) = accVar * dt * dt;
-    Q(3, 3) = gyroVar * dt * dt;
-    Q(4, 4) = gyroVar * dt * dt;
-    Q(5, 5) = gyroVar * dt * dt;
-    Q(6, 6) = accBiasVar * dt * dt;
-    Q(7, 7) = accBiasVar * dt * dt;
-    Q(8, 8) = accBiasVar * dt * dt;
-    Q(9, 9) = gyroBiasVar * dt * dt;
-    Q(10, 10) = gyroBiasVar * dt * dt;
-    Q(11, 11) = gyroBiasVar * dt * dt;
-
-    errorStateCovariance = Fx * errorStateCovariance * Fx.transpose() + Fi * Q * Fi.transpose();
 #ifdef SIM
-    VectorXf meas(6);
+    Eigen::VectorXf meas(6);
     meas << accel, gyro;
     Logger::getInstance().log("IMU", meas, imu_data.timestamp);
 #endif
@@ -195,100 +163,76 @@ void ESKF::updateIMU(const SensorData &imu_data)
 void ESKF::updateMag(const SensorData &mag_data)
 {
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
-    #ifndef SIM
+#ifndef SIM
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
-    Vector3f ref_mag = {cos(inc) * cos(dec), cos(inc) * sin(dec), sin(inc)};
-    #else
-    Vector3f ref_mag = {1, 0, 0};
-    #endif
-    Vector3f pred_mag = rot_mat.transpose() * ref_mag;
-    
+    Eigen::Vector3f ref_mag = {cosf(inc) * cosf(dec), cosf(inc) * sinf(dec), sinf(inc)};
+#else
+    Eigen::Vector3f ref_mag = {1.0f, 0.0f, 0.0f};
+#endif
 
-    MatrixXf H(3, 18);
+    Eigen::Vector3f pred_mag = rot_mat.transpose() * ref_mag;
+
+    Eigen::Matrix<float, 3, 18> H;
     H.setZero();
-    H(seq(0, 2), seq(6, 8)) = skew(pred_mag);
-    MatrixXf V(3, 3);
-    V.setZero();
-    V(0, 0) = magVar;
-    V(1, 1) = magVar;
-    V(2, 2) = magVar;
-    Vector3f meas = Vec3Map(mag_data.data.mag.mag.data());
+    H.block<3, 3>(0, 6) = skew(pred_mag);
+
+    Eigen::Matrix3f V = Eigen::Matrix3f::Identity() * magVar;
+
+    Eigen::Vector3f meas = Vec3Map(mag_data.data.mag.mag.data());
     meas.normalize();
-    correctionStep(H, V, meas, pred_mag);
+
+    correctionStep<3>(H, V, meas, pred_mag);
+
 #ifdef SIM
     Logger::getInstance().log("MAG", meas, mag_data.timestamp);
-    uint64_t time=getCurrentTimeUs();
-    Logger::getInstance().log("MAG_Pred", pred_mag, time);
-    Logger::getInstance().log("MAG_Ref", ref_mag, time);
 #endif
 }
 
 void ESKF::updateGPS(const SensorData &gps_data)
 {
-    MatrixXf H_x(6, 19);
-    H_x.setZero();
-    H_x(seq(0, 5), seq(0, 5)) = MatrixXf::Identity(6, 6);
 
-    MatrixXf X_deltax(19, 18);
-    X_deltax.setZero();
-    X_deltax(seq(0, 5), seq(0, 5)) = MatrixXf::Identity(6, 6);
+    Eigen::Matrix<float, 6, 18> H;
+    H.setZero();
+    H.block<6, 6>(0, 0).setIdentity();
 
-    X_deltax(6, seq(6, 8)) << -nominalQuat.x(), -nominalQuat.y(), -nominalQuat.z();
-    X_deltax(7, seq(6, 8)) << nominalQuat.w(), -nominalQuat.z(), nominalQuat.y();
-    X_deltax(8, seq(6, 8)) << nominalQuat.z(), nominalQuat.w(), -nominalQuat.x();
-    X_deltax(9, seq(6, 8)) << -nominalQuat.y(), nominalQuat.x(), nominalQuat.w();
-    X_deltax(seq(6, 9), seq(6, 8)) /= 2;
+    Eigen::Matrix<float, 6, 6> V = Eigen::Matrix<float, 6, 6>::Identity();
+    V.block<3, 3>(0, 0) *= gpsPosVar;
+    V.block<3, 3>(3, 3) *= gpsVelVar;
 
-    MatrixXf H = H_x * X_deltax;
-    MatrixXf V = MatrixXf::Identity(6, 6);
-    V(seq(0, 2), seq(0, 2)) *= gpsPosVar;
-    V(seq(3, 5), seq(3, 5)) *= gpsVelVar;
     if (refLLA.isZero())
+    {
         refLLA = Vec3Map(gps_data.data.gps.lla.data());
+    }
     else
     {
-        Vector3f diff = Vec3Map(gps_data.data.gps.lla.data()) - refLLA;
-        float e_coef = (R_N + refLLA.z() * cos(refLLA.y()));
+        Eigen::Vector3f diff = Vec3Map(gps_data.data.gps.lla.data()) - refLLA;
+        float e_coef = (R_N + refLLA.z() * cosf(refLLA.y()));
         float n_coef = (R_M + refLLA.z());
-        // Should be NED
-        Vector3f ned = Vector3f(n_coef * diff.x(),
-                                e_coef * diff.y(),
-                                -diff.z());
 
-        VectorXf meas(6);
+        // NED conversion
+        Eigen::Vector3f ned(n_coef * diff.x(),
+                            e_coef * diff.y(),
+                            -diff.z());
+
+        Eigen::Matrix<float, 6, 1> meas;
         meas << ned, Vec3Map(gps_data.data.gps.vel.data());
-        VectorXf pred(6);
+
+        Eigen::Matrix<float, 6, 1> pred;
         pred << nominalPos, nominalVel;
-        correctionStep(H, V, meas, pred);
-        refLLA.x() += nominalPos.y() / e_coef;
-        refLLA.y() += nominalPos.x() / n_coef;
+
+        correctionStep<6>(H, V, meas, pred);
+
+        // Re-inject position error into Reference LLA to keep nominalPos small
+        // (Standard strategy for LLA navigation)
+        refLLA.x() += nominalPos.y() / e_coef; // Lat (x) from North (y)
+        refLLA.y() += nominalPos.x() / n_coef; // Lon (y) from East (x)
         refLLA.z() += -nominalPos.z();
         nominalPos.setZero();
     }
 #ifdef SIM
-    VectorXf meas(6);
-    meas << Vec3Map(gps_data.data.gps.lla.data()), Vec3Map(gps_data.data.gps.vel.data());
-    Logger::getInstance().log("GPS", meas, gps_data.timestamp);
+    Eigen::VectorXf logMeas(6);
+    logMeas << Vec3Map(gps_data.data.gps.lla.data()), Vec3Map(gps_data.data.gps.vel.data());
+    Logger::getInstance().log("GPS", logMeas, gps_data.timestamp);
 #endif
-}
-
-void ESKF::correctionStep(MatrixXf H, MatrixXf V, VectorXf measurement, VectorXf prediction)
-{
-    MatrixXf K = errorStateCovariance * H.transpose() * (H * errorStateCovariance * H.transpose() + V).inverse();
-    VectorXf errorStateMean = K * (measurement - prediction);
-    errorStateCovariance = (MatrixXf::Identity(18, 18) - K * H) * errorStateCovariance;
-    nominalPos += errorStateMean.head(3);
-    nominalVel += errorStateMean.segment(3, 3);
-    Quaternionf deltaQuat = axisAngleToQuaternion(errorStateMean.segment(6, 3), 1);
-    nominalQuat *= deltaQuat;
-    nominalQuat.normalize();
-    nominalAccBias += errorStateMean.segment(9, 3);
-    nominalGyroBias += errorStateMean.segment(12, 3);
-    nominalGrav += errorStateMean.segment(15, 3);
-
-    MatrixXf G = MatrixXf::Identity(18, 18);
-    G(seq(6, 8), seq(6, 8)) -= skew(0.5f * errorStateMean.segment(6, 3));
-
-    errorStateCovariance = G * errorStateCovariance * G.transpose();
 }
