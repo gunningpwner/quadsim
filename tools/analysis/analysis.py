@@ -251,22 +251,22 @@ def plot_covariance_heatmap(data_dict):
     
 if __name__ == "__main__":
     plt.close('all')
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-30_14-45-47'
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-30_20-06-24'
     data = load_data(folder)
-    imu_acc = data['IMU']['data'][:,:3]
-    
-    plt.figure(figsize=(10, 6))
-    plt.title("Acc")
-    plot_three(data['IMU']['data'][:,:3],times=data['IMU']['time'],label='meas')
-    plt.legend()
-    plt.grid()
-    
-    plt.figure(figsize=(10, 6))
-    plt.title("Gyro")
-    plot_three(data['IMU']['data'][:,3:],times=data['IMU']['time'],label='meas')
-    plt.legend()
-    plt.grid()
-    
+    try:
+        plt.figure(figsize=(10, 6))
+        plt.title("Acc")
+        plot_three(data['IMU']['data'][:,:3],times=data['IMU']['time'],label='meas')
+        plt.legend()
+        plt.grid()
+        
+        plt.figure(figsize=(10, 6))
+        plt.title("Gyro")
+        plot_three(data['IMU']['data'][:,3:],times=data['IMU']['time'],label='meas')
+        plt.legend()
+        plt.grid()
+    except KeyError:
+        pass
     plt.figure(figsize=(10, 6))
     plt.title("Bias")
     plot_three(data['GyroBias']['data'],times=data['GyroBias']['time'],label='gyro',ls='--')
@@ -306,6 +306,7 @@ if __name__ == "__main__":
     plt.title("error state")
     plot_three(data['errorStateMean']['data'][:,:3],times=data['errorStateMean']['time'],label='pos')
     plot_three(data['errorStateMean']['data'][:,3:6],times=data['errorStateMean']['time'],label='vel')
+    plot_three(data['errorStateMean']['data'][:,3:6]*180/3.14,times=data['errorStateMean']['time'],label='rpy')
     plt.legend()
     plt.grid()
     

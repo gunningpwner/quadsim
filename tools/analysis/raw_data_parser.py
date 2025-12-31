@@ -1,23 +1,16 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Dec 28 15:28:59 2025
-
-@author: gunni
-"""
-
 import serial
 import struct
 import csv
 import time
 import argparse
 import sys
+import os
 
 # Configuration matches C++ struct alignment for STM32
-# Format: < (Little Endian) Q (uint64) B (uint8) 3x (pad) 6f (6 floats) 4x (tail pad)
-# Total size: 8 + 1 + 3 + 24 + 4 = 40 bytes
 STRUCT_FMT = '<QB3x6f4x' 
 STRUCT_SIZE = struct.calcsize(STRUCT_FMT)
 PAGE_SIZE = 256
+ITEMS_PER_PAGE = 6
 
 # Sensor Types Enum
 SENSOR_TYPE_MAP = {
@@ -27,14 +20,11 @@ SENSOR_TYPE_MAP = {
 }
 
 def parse_sensor_data(raw_bytes):
-    """
-    Parses a single 40-byte chunk into a dictionary.
-    """
     try:
         unpacked = struct.unpack(STRUCT_FMT, raw_bytes)
         timestamp = unpacked[0]
         sensor_type_id = unpacked[1]
-        data_floats = unpacked[2:] # Tuple of 6 floats
+        data_floats = unpacked[2:] 
 
         sensor_type = SENSOR_TYPE_MAP.get(sensor_type_id, f"UNKNOWN({sensor_type_id})")
 
@@ -52,18 +42,37 @@ def parse_sensor_data(raw_bytes):
         print(f"Error unpacking struct: {e}")
         return None
 
+def start_new_files(base_name, file_counter, fieldnames):
+    """Closes old files (if exist) and opens new CSV and BIN files."""
+    name_parts = os.path.splitext(base_name)
+    
+    # 1. Create filenames
+    csv_name = f"{name_parts[0]}_part{file_counter}.csv"
+    bin_name = f"{name_parts[0]}_part{file_counter}.bin"
+    
+    print(f"--> Starting Log #{file_counter}: {csv_name} & {bin_name}")
+    
+    # 2. Open CSV
+    f_csv = open(csv_name, 'w', newline='')
+    writer = csv.DictWriter(f_csv, fieldnames=fieldnames)
+    writer.writeheader()
+
+    # 3. Open BIN
+    f_bin = open(bin_name, 'wb')
+    
+    return f_csv, writer, f_bin
+
 def main():
     parser = argparse.ArgumentParser(description='Dump Flash Data from STM32')
-    parser.add_argument('port', type=str, help='COM port (e.g., COM3 or /dev/ttyUSB0)')
+    parser.add_argument('port', type=str, help='COM port')
     parser.add_argument('--baud', type=int, default=115200, help='Baud rate')
-    parser.add_argument('--output', type=str, default='flight_log.csv', help='Output CSV file')
+    parser.add_argument('--output', type=str, default='flight_log.csv', help='Base Output CSV file')
+    
     if len(sys.argv) == 1:
-        # EDIT THESE VALUES FOR YOUR SETUP
-        my_args = ['COM10', '--baud', '57600']
-        print(f"No cmdline args found. Using manual defaults: {my_args}")
+        my_args = ['COM10', '--baud', '57600'] 
+        print(f"No cmdline args found. Using defaults: {my_args}")
         args = parser.parse_args(my_args)
     else:
-        # Otherwise, parse arguments from the terminal as usual
         args = parser.parse_args()
 
     print(f"Opening {args.port} at {args.baud} baud...")
@@ -74,110 +83,122 @@ def main():
         print(f"Could not open port: {e}")
         sys.exit(1)
 
-    # Give the connection a moment to settle
     time.sleep(2)
-
-    # 1. Send the DUMP command
     print("Sending DUMP command...")
     ser.write(b'DUMP')
     
-    # 2. Read the stream
-    print("Reading data stream... (Press Ctrl+C to stop early)")
-    
+    print("Reading stream... (Ctrl+C to stop)")
     raw_buffer = bytearray()
     capture_active = False
     
     try:
         while True:
-            # Read chunks
             chunk = ser.read(1024) 
             if not chunk:
-                # If timeout occurs and we were capturing, we might be done
                 if capture_active:
-                    print("Read timeout - assuming end of stream.")
+                    print("Read timeout - assuming end.")
                     break
                 continue
 
             raw_buffer.extend(chunk)
 
-            # Check for Start condition if not yet active
             if not capture_active:
-                # Look for the print statement from C++ code
                 start_idx = raw_buffer.find(b'Dumping Flash Data')
                 if start_idx != -1:
-                    print("Stream started detected.")
-                    # Trim everything before the start message + newline
-                    # Assuming C++ prints "Dumping Flash Data...\n"
+                    print("Stream start detected.")
                     newline_idx = raw_buffer.find(b'\n', start_idx)
                     if newline_idx != -1:
                         raw_buffer = raw_buffer[newline_idx+1:]
                         capture_active = True
 
-            # Check for End condition
             if capture_active:
                 end_idx = raw_buffer.find(b'Dump Complete')
                 if end_idx != -1:
                     print("End of stream detected.")
-                    # Trim the end message
                     raw_buffer = raw_buffer[:end_idx]
                     break
-
     except KeyboardInterrupt:
-        print("\nInterrupted by user.")
+        print("\nInterrupted.")
+    finally:
+        ser.close()
 
-    ser.close()
+    print(f"Total Capture: {len(raw_buffer)} bytes.")
 
-    # 3. Parse the buffer
-    print(f"Captured {len(raw_buffer)} bytes.")
+    # --- PARSING AND SPLITTING LOGIC ---
+    print(f"Processing pages...")
     
-    # --- NEW: SAVE RAW BINARY ---
-    bin_filename = "flight_log.bin"
-    print(f"Saving raw binary to {bin_filename}...")
-    with open(bin_filename, 'wb') as f:
-        f.write(raw_buffer)
+    keys = ['timestamp', 'type', 'd0', 'd1', 'd2', 'd3', 'd4', 'd5']
     
-    records = []
+    # State tracking
+    last_timestamp = 0
+    file_counter = 1
     
-    # Process buffer in PAGE_SIZE (256) byte chunks
-    # We only process full pages.
+    current_csv_file = None
+    csv_writer = None
+    current_bin_file = None
+    
+    # Initialize first file set
+    current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys)
+
     total_pages = len(raw_buffer) // PAGE_SIZE
+    records_written = 0
     
-    print(f"Processing {total_pages} pages...")
-
     for i in range(total_pages):
         page_start = i * PAGE_SIZE
         page_end = page_start + PAGE_SIZE
-        page_data = raw_buffer[page_start:page_end]
-
-        # In every 256-byte page, there are N items followed by padding
-        # ITEMS_PER_PAGE = 256 // 40 = 6
-        items_per_page = 6
         
-        for j in range(items_per_page):
-            item_start = j * STRUCT_SIZE
-            item_end = item_start + STRUCT_SIZE
+        # Grab the raw page bytes
+        page_data = raw_buffer[page_start : page_end]
+
+        # Scan the page first to check for reboots
+        # We look at the first valid item to decide if this page belongs to a new file
+        first_valid_ts = None
+        for j in range(ITEMS_PER_PAGE):
+            item_bytes = page_data[j * STRUCT_SIZE : (j + 1) * STRUCT_SIZE]
+            parsed = parse_sensor_data(item_bytes)
+            if parsed and parsed['timestamp'] != 0 and parsed['timestamp'] != 0xFFFFFFFFFFFFFFFF:
+                first_valid_ts = parsed['timestamp']
+                break
+        
+        # TIME JUMP DETECTION (Page Level)
+        # If the first valid item in this page is "older" than our last seen time, we split.
+        if first_valid_ts is not None and first_valid_ts < last_timestamp:
+            print(f"Time jump detected! (Old: {last_timestamp}, New: {first_valid_ts})")
             
-            item_bytes = page_data[item_start:item_end]
+            # Close old files
+            current_csv_file.close()
+            current_bin_file.close()
             
+            # Start new files
+            file_counter += 1
+            current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys)
+            
+            # Reset tracking
+            last_timestamp = 0
+
+        # WRITE BINARY: Dump the entire raw page into the current .bin file
+        # This preserves the exact Flash structure (including padding)
+        current_bin_file.write(page_data)
+
+        # PROCESS CSV: Parse items and write rows
+        for j in range(ITEMS_PER_PAGE):
+            item_bytes = page_data[j * STRUCT_SIZE : (j + 1) * STRUCT_SIZE]
             parsed = parse_sensor_data(item_bytes)
             
-            # Filter out empty records (timestamp 0 usually means unwritten flash)
-            # You can remove this check if 0 is valid for you
-            if parsed and parsed['timestamp'] != 0xFFFFFFFFFFFFFFFF and parsed['timestamp'] != 0:
-                records.append(parsed)
+            if not parsed or parsed['timestamp'] == 0xFFFFFFFFFFFFFFFF or parsed['timestamp'] == 0:
+                continue
+                
+            csv_writer.writerow(parsed)
+            last_timestamp = parsed['timestamp']
+            records_written += 1
 
-    # 4. Write to CSV
-    if records:
-        print(f"Writing {len(records)} records to {args.output}...")
-        keys = ['timestamp', 'type', 'd0', 'd1', 'd2', 'd3', 'd4', 'd5']
-        
-        with open(args.output, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=keys)
-            writer.writeheader()
-            writer.writerows(records)
-        print("Done.")
-    else:
-        print("No valid records found.")
+    # Final Cleanup
+    if current_csv_file:
+        current_csv_file.close()
+    if current_bin_file:
+        current_bin_file.close()
+
+    print(f"Done. Processed {records_written} records across {file_counter} file sets.")
 
 if __name__ == '__main__':
     main()

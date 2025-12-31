@@ -85,34 +85,36 @@ void ESKF::run()
         default:
             break;
         }
-        // printf("pos: %f %f %f\n", nominalPos.x(), nominalPos.y(), nominalPos.z());
-        // printf("vel: %f %f %f\n", nominalVel.x(), nominalVel.y(), nominalVel.z());
+        #ifdef SIM
+            // Logging code remains mostly the same, casting to VectorXf only where needed for the logger interface
+            Logger::getInstance().log("LLA", refLLA, getCurrentTimeUs());
+            Logger::getInstance().log("Pos", nominalPos, getCurrentTimeUs());
+            Logger::getInstance().log("Vel", nominalVel, getCurrentTimeUs());
+            Eigen::Vector4f quatMeas;
+            quatMeas << nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w();
+            Logger::getInstance().log("Quat", quatMeas, getCurrentTimeUs());
+            Logger::getInstance().log("AccBias", nominalAccBias, getCurrentTimeUs());
+            Logger::getInstance().log("GyroBias", nominalGyroBias, getCurrentTimeUs());
+            Logger::getInstance().log("Grav", nominalGrav, getCurrentTimeUs());
+            Logger::getInstance().log("Cov", errorStateCovariance, getCurrentTimeUs());
+        #endif
         
         sensor_data = m_sensor_consumer.readNext();
     }
 
-#ifdef SIM
-    // Logging code remains mostly the same, casting to VectorXf only where needed for the logger interface
-    Logger::getInstance().log("LLA", refLLA, getCurrentTimeUs());
-    Logger::getInstance().log("Pos", nominalPos, getCurrentTimeUs());
-    Logger::getInstance().log("Vel", nominalVel, getCurrentTimeUs());
-    Eigen::Vector4f quatMeas;
-    quatMeas << nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w();
-    Logger::getInstance().log("Quat", quatMeas, getCurrentTimeUs());
-    Logger::getInstance().log("AccBias", nominalAccBias, getCurrentTimeUs());
-    Logger::getInstance().log("GyroBias", nominalGyroBias, getCurrentTimeUs());
-    Logger::getInstance().log("Grav", nominalGrav, getCurrentTimeUs());
-    Logger::getInstance().log("Cov", errorStateCovariance, getCurrentTimeUs());
-#endif
+
 }
 
 void ESKF::updateIMU(const SensorData &imu_data)
 {
+
     float dt = (imu_data.timestamp - last_timestamp) / 1e6f;
     if (dt < 2e-6f)
         return;
-    if (dt > .01f)
-        dt = .01f;
+    if (last_timestamp == 0){
+        last_timestamp = imu_data.timestamp;
+        return;
+    }
 
     last_timestamp = imu_data.timestamp;
     Vec3Map gyro(imu_data.data.imu.gyro.data());
@@ -191,7 +193,7 @@ void ESKF::updateMag(const SensorData &mag_data)
     float raw_y = mag_data.data.mag.mag[1];
     float raw_z = mag_data.data.mag.mag[2];
     // Approximation for now
-    float tilt_deg = -6.7f; 
+    float tilt_deg = -3.0f; 
     float theta = tilt_deg * (3.14159265f / 180.0f);
     float corr_x = raw_x * cosf(theta) + raw_z * sinf(theta);
     float corr_y = raw_y; 
@@ -200,6 +202,7 @@ void ESKF::updateMag(const SensorData &mag_data)
     Eigen::Vector3f meas;
     meas << corr_x, corr_y, corr_z;
     meas.normalize();
+
 
     correctionStep<3>(H, V, meas, pred_mag);
 
