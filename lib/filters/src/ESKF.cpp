@@ -167,7 +167,10 @@ void ESKF::updateIMU(const SensorData &imu_data)
 void ESKF::updateMag(const SensorData &mag_data)
 {
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
-
+    // We haven't gotten a gps measurement yet
+    // So we have no idea what the magnetometer measurement should look like
+    if (refLLA.isZero())
+        return;
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
     Eigen::Vector3f ref_mag = {cosf(inc) * cosf(dec), cosf(inc) * sinf(dec), sinf(inc)};
@@ -183,7 +186,19 @@ void ESKF::updateMag(const SensorData &mag_data)
 
     Eigen::Matrix3f V = Eigen::Matrix3f::Identity() * magVar;
 
-    Eigen::Vector3f meas = Vec3Map(mag_data.data.mag.mag.data());
+    // Compass is mounted with a tilt.
+    float raw_x = mag_data.data.mag.mag[0];
+    float raw_y = mag_data.data.mag.mag[1];
+    float raw_z = mag_data.data.mag.mag[2];
+    // Approximation for now
+    float tilt_deg = -6.7f; 
+    float theta = tilt_deg * (3.14159265f / 180.0f);
+    float corr_x = raw_x * cosf(theta) + raw_z * sinf(theta);
+    float corr_y = raw_y; 
+    float corr_z = -raw_x * sinf(theta) + raw_z * cosf(theta);
+
+    Eigen::Vector3f meas;
+    meas << corr_x, corr_y, corr_z;
     meas.normalize();
 
     correctionStep<3>(H, V, meas, pred_mag);
