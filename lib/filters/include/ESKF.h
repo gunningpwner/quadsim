@@ -45,6 +45,14 @@ private:
 
         Eigen::Matrix<float, 18, 1> errorStateMean = K * (measurement - prediction);
         #ifdef SIM
+        if constexpr (MeasDim == 3)
+        {
+        Logger::getInstance().log("K_MAG", K, getCurrentTimeUs());
+        }
+        else
+        {
+            Logger::getInstance().log("K_GPS", K, getCurrentTimeUs());
+        }
         Logger::getInstance().log("errorStateMean", errorStateMean, getCurrentTimeUs());
         #endif
         // P = (I - K * H) * P

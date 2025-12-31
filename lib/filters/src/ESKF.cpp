@@ -4,6 +4,7 @@
 #include <Eigen/Geometry>
 #include <cstdint>
 
+#define DEG2RAD (M_PI / 180.0f)
 
 
 #define R_M 6335439.0f
@@ -117,7 +118,8 @@ void ESKF::updateIMU(const SensorData &imu_data)
     }
 
     last_timestamp = imu_data.timestamp;
-    Vec3Map gyro(imu_data.data.imu.gyro.data());
+    Eigen::Vector3f gyro(imu_data.data.imu.gyro.data());
+    gyro*=DEG2RAD;
     Vec3Map accel(imu_data.data.imu.accel.data());
 
     Quaternionf delta_quat = axisAngleToQuaternion(gyro, dt);
@@ -231,12 +233,12 @@ void ESKF::updateGPS(const SensorData &gps_data)
     else
     {
         Eigen::Vector3f diff = Vec3Map(gps_data.data.gps.lla.data()) - refLLA;
-        float e_coef = (R_N + refLLA.z() * cosf(refLLA.y()));
+        float e_coef = (R_N + refLLA.z()) * cosf(refLLA.y()* DEG2RAD);
         float n_coef = (R_M + refLLA.z());
 
         // NED conversion
-        Eigen::Vector3f ned(n_coef * diff.x(),
-                            e_coef * diff.y(),
+        Eigen::Vector3f ned(n_coef * diff.x()* DEG2RAD,
+                            e_coef * diff.y()* DEG2RAD,
                             -diff.z());
 
         Eigen::Matrix<float, 6, 1> meas;
