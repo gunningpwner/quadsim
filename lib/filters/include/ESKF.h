@@ -105,9 +105,9 @@ private:
     uint64_t last_timestamp;
 
 
-    float accVar = .05f;
+    float accVar = .00157f;
     float accBiasVar = .01f;
-    float gyroVar = .05f;
+    float gyroVar = .000122f;
     float gyroBiasVar = .001f;
     float gpsPosVar = .5f;
     float gpsVelVar = .5f;

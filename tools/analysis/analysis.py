@@ -115,7 +115,7 @@ def quaternion_to_euler(quaternions):
     else:
         # Return the Nx3 array for array input
         return eulers
-def plot_interactive_heatmap(data_tensor, time_array, labels, text_data_tensor=None, title_prefix="Data", cmap='coolwarm', vmin=-1, vmax=1):
+def plot_interactive_heatmap(data_tensor, time_array,x_labels, y_labels, text_data_tensor=None, title_prefix="Data", cmap='coolwarm', vmin=-1, vmax=1):
     """
     Args:
         data_tensor: Used for the heatmap COLORS (usually Correlation).
@@ -137,8 +137,8 @@ def plot_interactive_heatmap(data_tensor, time_array, labels, text_data_tensor=N
     
     ax.set_xticks(np.arange(cols))
     ax.set_yticks(np.arange(rows))
-    ax.set_xticklabels(labels, rotation=90)
-    ax.set_yticklabels(labels)
+    ax.set_xticklabels(x_labels, rotation=90)
+    ax.set_yticklabels(y_labels)
     ax.set_title(f"{title_prefix} at t={time_array[0]:.2f}s")
     fig.colorbar(im, ax=ax)
 
@@ -242,7 +242,8 @@ def plot_covariance_heatmap(data_dict):
         data_tensor=corr_matrices,      # Colors = Correlation
         text_data_tensor=cov_matrices,  # Text = Raw Covariance
         time_array=times,
-        labels=labels,
+        x_labels=labels,
+        y_labels=labels,
         title_prefix="Covariance Analysis",
         cmap='coolwarm',
         vmin=-1,
@@ -251,7 +252,8 @@ def plot_covariance_heatmap(data_dict):
     
 if __name__ == "__main__":
     plt.close('all')
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-30_20-06-24'
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-31_14-53-08'
+    # folder=r"C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2025-12-31_11-16-06"
     data = load_data(folder)
     try:
         plt.figure(figsize=(10, 6))
@@ -273,11 +275,11 @@ if __name__ == "__main__":
     plot_three(data['AccBias']['data'],times=data['AccBias']['time'],label='acc')
     plt.legend()
     plt.grid()
-    plt.figure(figsize=(10, 6))
-    plt.title("Grav")
-    plot_three(data['Grav']['data'],times=data['Grav']['time'],label='est')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title("Grav")
+    # plot_three(data['Grav']['data'],times=data['Grav']['time'],label='est')
+    # plt.legend()
+    # plt.grid()
     plt.figure(figsize=(10, 6))
     plt.title("Velocity")
     plot_three(data['Vel']['data'],times=data['Vel']['time'],label='Est',ls='--')
@@ -311,10 +313,24 @@ if __name__ == "__main__":
     plt.grid()
     
     plt.figure(figsize=(10, 6))
-    plt.title("LL")
-    plt.plot(data['GPS']['time'],data['GPS']['data'][:,0])
-    plt.plot(data['GPS']['time'],data['GPS']['data'][:,1])
+    plt.title("error state")
+    plot_three(data['errorStateMean']['data'][:,6:9],times=data['errorStateMean']['time'],label='acc bias')
+    plot_three(data['errorStateMean']['data'][:,9:12],times=data['errorStateMean']['time'],label='gyro bias')
     plt.legend()
     plt.grid()
+    labels = ['Px', 'Py', 'Pz', 'Vx', 'Vy', 'Vz', 
+              'Roll', 'Pitch', 'Yaw', 
+              'Ba_x', 'Ba_y', 'Ba_z', 'Bg_x', 'Bg_y', 'Bg_z', 
+              'Gx', 'Gy', 'Gz']
+    # plot_interactive_heatmap(data['K_GPS']['data'].reshape(-1,18,6), data['K_GPS']['time'], x_labels=['Pos N','Pos E','Pos D','Vel N',' Vel E', 'Vel D'],y_labels=labels)
+    
+    # plot_interactive_heatmap(data['K_MAG']['data'].reshape(-1,3,18), data['K_GPS']['time'], y_labels=['MAGX','MAGY','MAGZ'],x_labels=labels)
+
+    # plt.figure(figsize=(10, 6))
+    # plt.title("LL")
+    # plt.plot(data['GPS']['time'],data['GPS']['data'][:,0])
+    # plt.plot(data['GPS']['time'],data['GPS']['data'][:,1])
+    # plt.legend()
+    # plt.grid()
     
     plot_covariance_heatmap(data['Cov'])
