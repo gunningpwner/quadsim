@@ -5,6 +5,7 @@
 PROTO Quadcopter [
   field SFVec3f translation 0 0 0
   field SFRotation rotation 0 0 1 0
+  field SFRotation imu_mount 0 0 1 0
   field SFFloat bodyMass 1
   field SFString name "robot"
   field SFString controller "<extern>"
@@ -25,24 +26,31 @@ PROTO Quadcopter [
     }
     children [
       DEF Body Shape {
-        appearance PBRAppearance {
+          appearance PBRAppearance {
+        }
+        geometry Box {
+          size 0.1 0.1 0.1
+        }
       }
-      geometry Box {
-        size 0.1 0.1 0.1
-      }
+      Pose {
+        rotation IS imu_mount
+        children [
+          Accelerometer {
+            name "accelerometer"
+          }
+          Gyro {
+            name "gyro"
+          }
+        ]
       }
       GPS {
         name "gps"
       }
-      Gyro {
-        name "gyro"
-      }
+
       Compass {
         name "compass"
       }
-      Accelerometer {
-        name "accelerometer"
-      }
+
       InertialUnit {
         name "inertial_unit"
       }

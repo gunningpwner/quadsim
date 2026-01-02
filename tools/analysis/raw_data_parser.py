@@ -42,14 +42,16 @@ def parse_sensor_data(raw_bytes):
         print(f"Error unpacking struct: {e}")
         return None
 
-def start_new_files(base_name, file_counter, fieldnames):
+def start_new_files(base_name, file_counter, fieldnames,folder=None):
     """Closes old files (if exist) and opens new CSV and BIN files."""
     name_parts = os.path.splitext(base_name)
     
     # 1. Create filenames
     csv_name = f"{name_parts[0]}_part{file_counter}.csv"
     bin_name = f"{name_parts[0]}_part{file_counter}.bin"
-    
+    if folder:
+        csv_name = os.path.join(folder,csv_name)
+        bin_name = os.path.join(folder,bin_name)
     print(f"--> Starting Log #{file_counter}: {csv_name} & {bin_name}")
     
     # 2. Open CSV
@@ -138,7 +140,8 @@ def main():
     current_bin_file = None
     
     # Initialize first file set
-    current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys)
+    folder='../../data'
+    current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys,folder=folder)
 
     total_pages = len(raw_buffer) // PAGE_SIZE
     records_written = 0
@@ -162,7 +165,7 @@ def main():
         
         # TIME JUMP DETECTION (Page Level)
         # If the first valid item in this page is "older" than our last seen time, we split.
-        if first_valid_ts is not None and first_valid_ts < last_timestamp:
+        if (first_valid_ts is not None and last_timestamp!=0) and (first_valid_ts < last_timestamp or parsed['timestamp']-last_timestamp>10e6) :
             print(f"Time jump detected! (Old: {last_timestamp}, New: {first_valid_ts})")
             
             # Close old files
@@ -171,7 +174,7 @@ def main():
             
             # Start new files
             file_counter += 1
-            current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys)
+            current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys,folder=folder)
             
             # Reset tracking
             last_timestamp = 0

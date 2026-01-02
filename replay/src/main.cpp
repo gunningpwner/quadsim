@@ -53,7 +53,8 @@ int main(int argc, char *argv[])
         for (size_t i = 0; i < ITEMS_PER_PAGE; i++)
         {
             SensorData current_data = reinterpret_cast<SensorData *>(page_buffer.data())[i];
-
+            if (current_data.timestamp>18446744073709)
+                return -1;
             SensorData *buf = m_sensor_buffer.claim();
             memcpy(buf, &current_data, sizeof(SensorData));
             m_sensor_buffer.commit(buf);

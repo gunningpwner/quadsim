@@ -44,6 +44,12 @@ void W25Q128FV::run()
 {
     if (!m_should_write)
         return;
+    //Check if flash is full or will be full
+    // W25Q128FV capacity is 16MB (0x1000000)
+    if (write_head >= 0x1000000 - 256) {
+        m_should_write = false;
+        return;
+    }
     if (m_sensor_consumer.available() >= ITEMS_PER_PAGE)
     {
         if (isBusy())
