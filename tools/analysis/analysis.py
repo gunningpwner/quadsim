@@ -27,7 +27,10 @@ def load_data(folder):
     for f in glob(os.path.join(folder,"*.csv")):
         data_name = os.path.basename(f).replace(".csv","")
         array = np.genfromtxt(f,delimiter=',',skip_footer=1)
-        shape = array[0,1:3].astype(int)
+        try:
+            shape = array[0,1:3].astype(int)
+        except IndexError:
+            print(f)
         array =np.delete(array,[1,2],axis=1)
         
         data[data_name] = {"data":array[:,1:],"shape":shape,"time":array[:,0]*1e-6}
@@ -252,13 +255,14 @@ def plot_covariance_heatmap(data_dict):
     
 if __name__ == "__main__":
     plt.close('all')
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2025-12-31_14-53-08'
-    # folder=r"C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2025-12-31_11-16-06"
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-02_15-47-36'
+    # folder=r"C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2026-01-02_13-37-04"
     data = load_data(folder)
     try:
         plt.figure(figsize=(10, 6))
         plt.title("Acc")
         plot_three(data['IMU']['data'][:,:3],times=data['IMU']['time'],label='meas')
+        plot_three(data['acc_rot']['data'][:,:3],times=data['acc_rot']['time'],label='rotated',ls='--')
         plt.legend()
         plt.grid()
         
@@ -275,11 +279,19 @@ if __name__ == "__main__":
     plot_three(data['AccBias']['data'],times=data['AccBias']['time'],label='acc')
     plt.legend()
     plt.grid()
-    # plt.figure(figsize=(10, 6))
-    # plt.title("Grav")
-    # plot_three(data['Grav']['data'],times=data['Grav']['time'],label='est')
-    # plt.legend()
-    # plt.grid()
+    plt.figure(figsize=(10, 6))
+    plt.title("Grav")
+    plot_three(data['Grav']['data'],times=data['Grav']['time'],label='est')
+    plt.legend()
+    plt.grid()
+    plt.figure(figsize=(10, 6))
+    plt.title("Position")
+    plot_three(data['Pos']['data'],times=data['Pos']['time'],label='Est',ls='--')
+    plot_three(data['GPS']['data'][:,:3],times=data['GPS']['time'],label='Meas')
+
+    plt.legend()
+    plt.grid()
+    
     plt.figure(figsize=(10, 6))
     plt.title("Velocity")
     plot_three(data['Vel']['data'],times=data['Vel']['time'],label='Est',ls='--')
@@ -308,23 +320,32 @@ if __name__ == "__main__":
     plt.title("error state")
     plot_three(data['errorStateMean']['data'][:,:3],times=data['errorStateMean']['time'],label='pos')
     plot_three(data['errorStateMean']['data'][:,3:6],times=data['errorStateMean']['time'],label='vel')
-    plot_three(data['errorStateMean']['data'][:,3:6]*180/3.14,times=data['errorStateMean']['time'],label='rpy')
+    plot_three(data['errorStateMean']['data'][:,6:9]*180/3.14,times=data['errorStateMean']['time'],label='rpy')
+    plt.legend()
+    plt.grid()
+    
+    plt.figure(figsize=(10, 6))
+    plt.title("error")
+    plot_three(data['Err_GPS']['data'][:,:3],times=data['Err_GPS']['time'],label='pos')
+    plot_three(data['Err_GPS']['data'][:,3:6],times=data['Err_GPS']['time'],label='vel')
     plt.legend()
     plt.grid()
     
     plt.figure(figsize=(10, 6))
     plt.title("error state")
-    plot_three(data['errorStateMean']['data'][:,6:9],times=data['errorStateMean']['time'],label='acc bias')
-    plot_three(data['errorStateMean']['data'][:,9:12],times=data['errorStateMean']['time'],label='gyro bias')
+    plot_three(data['errorStateMean']['data'][:,9:12],times=data['errorStateMean']['time'],label='acc bias')
+    plot_three(data['errorStateMean']['data'][:,12:15],times=data['errorStateMean']['time'],label='gyro bias')
     plt.legend()
     plt.grid()
+    
+    
     labels = ['Px', 'Py', 'Pz', 'Vx', 'Vy', 'Vz', 
               'Roll', 'Pitch', 'Yaw', 
               'Ba_x', 'Ba_y', 'Ba_z', 'Bg_x', 'Bg_y', 'Bg_z', 
               'Gx', 'Gy', 'Gz']
     # plot_interactive_heatmap(data['K_GPS']['data'].reshape(-1,18,6), data['K_GPS']['time'], x_labels=['Pos N','Pos E','Pos D','Vel N',' Vel E', 'Vel D'],y_labels=labels)
     
-    # plot_interactive_heatmap(data['K_MAG']['data'].reshape(-1,3,18), data['K_GPS']['time'], y_labels=['MAGX','MAGY','MAGZ'],x_labels=labels)
+    # plot_interactive_heatmap(data['K_MAG']['data'].reshape(-1,18,3), data['K_MAG']['time'], x_labels=['MAGX','MAGY','MAGZ'],y_labels=labels)
 
     # plt.figure(figsize=(10, 6))
     # plt.title("LL")
@@ -333,4 +354,8 @@ if __name__ == "__main__":
     # plt.legend()
     # plt.grid()
     
-    plot_covariance_heatmap(data['Cov'])
+    # plot_covariance_heatmap(data['Cov'])
+    for fig_num in plt.get_fignums():
+        fig = plt.figure(fig_num)
+        plt.axvline(1632091722*1e-6,ls='--',color='k')
+    

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <Eigen/Geometry>
 #include <cstdint>
-
+#include <iostream>
 #define DEG2RAD (M_PI / 180.0f)
 
 
@@ -56,10 +56,10 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
 
     // Initialize diagonals
     errorStateCovariance.diagonal().head<3>().setConstant(1.0f);       // Pos
-    errorStateCovariance.diagonal().segment<3>(3).setConstant(5.0f);   // Vel
+    errorStateCovariance.diagonal().segment<3>(3).setConstant(1.0f);   // Vel
     errorStateCovariance.diagonal().segment<3>(6).setConstant(1.0f);   // Angle
-    errorStateCovariance.diagonal().segment<3>(9).setConstant(0.1f);   // Acc Bias
-    errorStateCovariance.diagonal().segment<3>(12).setConstant(0.1f);  // Gyro Bias
+    errorStateCovariance.diagonal().segment<3>(9).setConstant(0.0f);   // Acc Bias
+    errorStateCovariance.diagonal().segment<3>(12).setConstant(0.0f);  // Gyro Bias
     errorStateCovariance.diagonal().segment<3>(15).setConstant(0.0f); // Gravity
 
     // Initialize Fx identity parts
@@ -122,13 +122,12 @@ void ESKF::updateIMU(const SensorData &imu_data)
     gyro*=DEG2RAD;
     Vec3Map accel(imu_data.data.imu.accel.data());
 
-    Quaternionf delta_quat = axisAngleToQuaternion(gyro, dt);
+    Eigen::Vector3f accCorr = accel - nominalAccBias;
+    Eigen::Vector3f gyroCorr = gyro - nominalGyroBias;
+    Quaternionf delta_quat = axisAngleToQuaternion(gyroCorr, dt);
     nominalQuat *= delta_quat;
 
     nominalQuat.normalize();
-
-    Eigen::Vector3f accCorr = accel - nominalAccBias;
-    Eigen::Vector3f gyroCorr = gyro - nominalGyroBias;
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
 
     nominalPos += nominalVel * dt + (rot_mat * accCorr + nominalGrav) * (0.5f * dt * dt);
@@ -165,6 +164,7 @@ void ESKF::updateIMU(const SensorData &imu_data)
     Eigen::VectorXf meas(6);
     meas << accel, gyro;
     Logger::getInstance().log("IMU", meas, imu_data.timestamp);
+    Logger::getInstance().log("acc_rot", rot_mat * accCorr, imu_data.timestamp);
 #endif
 }
 
@@ -195,7 +195,7 @@ void ESKF::updateMag(const SensorData &mag_data)
     float raw_y = mag_data.data.mag.mag[1];
     float raw_z = mag_data.data.mag.mag[2];
     // Approximation for now
-    float tilt_deg = -3.0f; 
+    float tilt_deg = -0.0f;  
     float theta = tilt_deg * (3.14159265f / 180.0f);
     float corr_x = raw_x * cosf(theta) + raw_z * sinf(theta);
     float corr_y = raw_y; 
@@ -235,7 +235,6 @@ void ESKF::updateGPS(const SensorData &gps_data)
         Eigen::Vector3f diff = Vec3Map(gps_data.data.gps.lla.data()) - refLLA;
         float e_coef = (R_N + refLLA.z()) * cosf(refLLA.y()* DEG2RAD);
         float n_coef = (R_M + refLLA.z());
-
         // NED conversion
         Eigen::Vector3f ned(n_coef * diff.x()* DEG2RAD,
                             e_coef * diff.y()* DEG2RAD,
@@ -251,14 +250,15 @@ void ESKF::updateGPS(const SensorData &gps_data)
 
         // Re-inject position error into Reference LLA to keep nominalPos small
         // (Standard strategy for LLA navigation)
-        refLLA.x() += nominalPos.x() / n_coef; // Lat (x) from North (y)
-        refLLA.y() += nominalPos.y() / e_coef; // Lon (y) from East (x)
-        refLLA.z() += -nominalPos.z();
-        nominalPos.setZero();
+        // refLLA.x() += nominalPos.x() / n_coef; // Lat (x) from North (y)
+        // refLLA.y() += nominalPos.y() / e_coef; // Lon (y) from East (x)
+        // refLLA.z() += -nominalPos.z();
+        // nominalPos.setZero();
+        #ifdef SIM
+            Eigen::VectorXf logMeas(6);
+            logMeas << ned, Vec3Map(gps_data.data.gps.vel.data());
+            Logger::getInstance().log("GPS", logMeas, gps_data.timestamp);
+        #endif
     }
-#ifdef SIM
-    Eigen::VectorXf logMeas(6);
-    logMeas << Vec3Map(gps_data.data.gps.lla.data()), Vec3Map(gps_data.data.gps.vel.data());
-    Logger::getInstance().log("GPS", logMeas, gps_data.timestamp);
-#endif
+
 }

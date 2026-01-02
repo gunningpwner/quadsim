@@ -48,10 +48,12 @@ private:
         if constexpr (MeasDim == 3)
         {
         Logger::getInstance().log("K_MAG", K, getCurrentTimeUs());
+        Logger::getInstance().log("Err_MAG", measurement - prediction, getCurrentTimeUs());
         }
         else
         {
             Logger::getInstance().log("K_GPS", K, getCurrentTimeUs());
+            Logger::getInstance().log("Err_GPS", measurement - prediction, getCurrentTimeUs());
         }
         Logger::getInstance().log("errorStateMean", errorStateMean, getCurrentTimeUs());
         #endif
@@ -66,16 +68,16 @@ private:
         
         // Small angle approximation for quaternion update
         Vector3f angleErr = errorStateMean.template segment<3>(6);
-        if(angleErr.norm() > 1e-6) {
+        if constexpr (MeasDim == 3) {
              Quaternionf deltaQuat(Eigen::AngleAxisf(angleErr.norm(), angleErr.normalized()));
              nominalQuat *= deltaQuat;
              nominalQuat.normalize();
+             nominalGyroBias += errorStateMean.template segment<3>(12);
         }
 
         nominalAccBias += errorStateMean.template segment<3>(9);
-        nominalGyroBias += errorStateMean.template segment<3>(12);
+        
         nominalGrav += errorStateMean.template segment<3>(15);
-
         // ESKF Reset
         Matrix18f G = Matrix18f::Identity();
         // Uses skew symmetric matrix of half the error
@@ -106,10 +108,10 @@ private:
 
 
     float accVar = .00157f;
-    float accBiasVar = .01f;
+    float accBiasVar = .001f;
     float gyroVar = .000122f;
     float gyroBiasVar = .001f;
-    float gpsPosVar = .5f;
-    float gpsVelVar = .5f;
-    float magVar = .0025f;
+    float gpsPosVar = 10.0f;
+    float gpsVelVar = 10.0f;
+    float magVar = 1.0f;
 };
