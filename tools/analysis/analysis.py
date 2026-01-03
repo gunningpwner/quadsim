@@ -255,7 +255,7 @@ def plot_covariance_heatmap(data_dict):
     
 if __name__ == "__main__":
     plt.close('all')
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-02_15-47-36'
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-03_16-00-31'
     # folder=r"C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2026-01-02_13-37-04"
     data = load_data(folder)
     try:
@@ -357,5 +357,5 @@ if __name__ == "__main__":
     # plot_covariance_heatmap(data['Cov'])
     for fig_num in plt.get_fignums():
         fig = plt.figure(fig_num)
-        plt.axvline(1632091722*1e-6,ls='--',color='k')
+        # plt.axvline(1632091722*1e-6,ls='--',color='k')
     

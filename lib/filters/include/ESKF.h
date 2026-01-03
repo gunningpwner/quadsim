@@ -26,7 +26,6 @@ private:
     void updateIMU(const SensorData &imu_data);
     void updateMag(const SensorData &mag_data);
     void updateGPS(const SensorData &gps_data);
-
     // Templated correction step handles 3D (Mag) and 6D (GPS) measurements 
     // without dynamic allocation.
     template <int MeasDim>
@@ -44,6 +43,30 @@ private:
         K = errorStateCovariance * H.transpose() * S.ldlt().solve(Eigen::Matrix<float, MeasDim, MeasDim>::Identity());
 
         Eigen::Matrix<float, 18, 1> errorStateMean = K * (measurement - prediction);
+        
+        // P = (I - K * H) * P
+        // Optimized form: P = P - K * (H * P) to reduce operations
+        // Or standard Joseph form for stability if needed, but simple form is faster:
+        errorStateCovariance = (Matrix18f::Identity() - K * H) * errorStateCovariance;
+
+        // Injection
+        nominalPos += errorStateMean.template head<3>();
+        nominalVel += errorStateMean.template segment<3>(3);
+        
+        // Small angle approximation for quaternion update
+        
+        if constexpr (MeasDim == 3) {
+            Vector3f angleErr = errorStateMean.template segment<3>(6);
+            Quaternionf deltaQuat(Eigen::AngleAxisf(angleErr.norm(), angleErr.normalized()));
+            nominalQuat *= deltaQuat;
+            nominalQuat.normalize();
+            nominalGyroBias += errorStateMean.template segment<3>(12);
+        }
+        else {
+            errorStateMean.segment<3>(6).setZero();
+            errorStateMean.segment<3>(12).setZero();
+
+        }
         #ifdef SIM
         if constexpr (MeasDim == 3)
         {
@@ -57,24 +80,6 @@ private:
         }
         Logger::getInstance().log("errorStateMean", errorStateMean, getCurrentTimeUs());
         #endif
-        // P = (I - K * H) * P
-        // Optimized form: P = P - K * (H * P) to reduce operations
-        // Or standard Joseph form for stability if needed, but simple form is faster:
-        errorStateCovariance = (Matrix18f::Identity() - K * H) * errorStateCovariance;
-
-        // Injection
-        nominalPos += errorStateMean.template head<3>();
-        nominalVel += errorStateMean.template segment<3>(3);
-        
-        // Small angle approximation for quaternion update
-        Vector3f angleErr = errorStateMean.template segment<3>(6);
-        if constexpr (MeasDim == 3) {
-             Quaternionf deltaQuat(Eigen::AngleAxisf(angleErr.norm(), angleErr.normalized()));
-             nominalQuat *= deltaQuat;
-             nominalQuat.normalize();
-             nominalGyroBias += errorStateMean.template segment<3>(12);
-        }
-
         nominalAccBias += errorStateMean.template segment<3>(9);
         
         nominalGrav += errorStateMean.template segment<3>(15);
@@ -110,7 +115,7 @@ private:
     float accVar = .00157f;
     float accBiasVar = .001f;
     float gyroVar = .000122f;
-    float gyroBiasVar = .001f;
+    float gyroBiasVar = .0001f;
     float gpsPosVar = 10.0f;
     float gpsVelVar = 10.0f;
     float magVar = 1.0f;

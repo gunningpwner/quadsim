@@ -57,9 +57,9 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
     // Initialize diagonals
     errorStateCovariance.diagonal().head<3>().setConstant(1.0f);       // Pos
     errorStateCovariance.diagonal().segment<3>(3).setConstant(1.0f);   // Vel
-    errorStateCovariance.diagonal().segment<3>(6).setConstant(1.0f);   // Angle
-    errorStateCovariance.diagonal().segment<3>(9).setConstant(0.0f);   // Acc Bias
-    errorStateCovariance.diagonal().segment<3>(12).setConstant(0.0f);  // Gyro Bias
+    errorStateCovariance.diagonal().segment<3>(6).setConstant(10.0f);   // Angle
+    errorStateCovariance.diagonal().segment<3>(9).setConstant(0.1f);   // Acc Bias
+    errorStateCovariance.diagonal().segment<3>(12).setConstant(0.1f);  // Gyro Bias
     errorStateCovariance.diagonal().segment<3>(15).setConstant(0.0f); // Gravity
 
     // Initialize Fx identity parts
@@ -125,11 +125,11 @@ void ESKF::updateIMU(const SensorData &imu_data)
     Eigen::Vector3f accCorr = accel - nominalAccBias;
     Eigen::Vector3f gyroCorr = gyro - nominalGyroBias;
     Quaternionf delta_quat = axisAngleToQuaternion(gyroCorr, dt);
-    nominalQuat *= delta_quat;
 
-    nominalQuat.normalize();
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
 
+    nominalQuat *= delta_quat;
+    nominalQuat.normalize();
     nominalPos += nominalVel * dt + (rot_mat * accCorr + nominalGrav) * (0.5f * dt * dt);
     nominalVel += (rot_mat * accCorr + nominalGrav) * dt;
 

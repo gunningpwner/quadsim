@@ -55,6 +55,13 @@ int main(int argc, char *argv[])
             SensorData current_data = reinterpret_cast<SensorData *>(page_buffer.data())[i];
             if (current_data.timestamp>18446744073709)
                 return -1;
+
+            // if (current_data.sensor == SensorData::Type::IMU)
+            // {
+            //     current_data.data.imu.gyro[0]=0.0f;
+            //     current_data.data.imu.gyro[1]=0.0f;
+            //     current_data.data.imu.gyro[2]=0.0f;
+            // }
             SensorData *buf = m_sensor_buffer.claim();
             memcpy(buf, &current_data, sizeof(SensorData));
             m_sensor_buffer.commit(buf);
