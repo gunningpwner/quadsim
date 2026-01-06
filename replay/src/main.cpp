@@ -56,12 +56,24 @@ int main(int argc, char *argv[])
             if (current_data.timestamp>18446744073709)
                 return -1;
 
-            // if (current_data.sensor == SensorData::Type::IMU)
-            // {
-            //     current_data.data.imu.gyro[0]=0.0f;
-            //     current_data.data.imu.gyro[1]=0.0f;
-            //     current_data.data.imu.gyro[2]=0.0f;
-            // }
+            if (current_data.sensor == SensorData::Type::GPS)
+            {
+                current_data.data.gps.lla[0]=34.730892181396484;
+                current_data.data.gps.lla[1]=-86.70575714111328;
+                current_data.data.gps.lla[2]=156.2570037841797;
+                current_data.data.gps.vel[0]=0;
+                current_data.data.gps.vel[1]=0;
+                current_data.data.gps.vel[2]=0;
+            }
+            else if (current_data.sensor == SensorData::Type::IMU)
+            {
+                current_data.data.imu.accel[0]=0;
+                current_data.data.imu.accel[1]=0;
+                current_data.data.imu.accel[2]=-9.81;
+                // current_data.data.imu.gyro[0]=0;
+                // current_data.data.imu.gyro[1]=0;
+                // current_data.data.imu.gyro[2]=0;
+            }
             SensorData *buf = m_sensor_buffer.claim();
             memcpy(buf, &current_data, sizeof(SensorData));
             m_sensor_buffer.commit(buf);

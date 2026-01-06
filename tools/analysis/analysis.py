@@ -255,7 +255,7 @@ def plot_covariance_heatmap(data_dict):
     
 if __name__ == "__main__":
     plt.close('all')
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-03_16-00-31'
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-05_18-19-02'
     # folder=r"C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2026-01-02_13-37-04"
     data = load_data(folder)
     try:

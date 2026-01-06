@@ -113,10 +113,10 @@ private:
 
 
     float accVar = .00157f;
-    float accBiasVar = .001f;
+    float accBiasVar = .0010f;
     float gyroVar = .000122f;
-    float gyroBiasVar = .0001f;
-    float gpsPosVar = 10.0f;
-    float gpsVelVar = 10.0f;
+    float gyroBiasVar = .001f;
+    float gpsPosVar = .1f;
+    float gpsVelVar = .1f;
     float magVar = 1.0f;
 };
