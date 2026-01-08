@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900 text-white">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Data Visualizer (Att + Mag + Accel + Pos)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <style>
+        #scene-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none; 
+        }
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px;
+            border-radius: 50%; background: #22d3ee; cursor: pointer; margin-top: -6px; 
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #4b5563; border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans">
+
+    <header class="bg-gray-800 p-4 shadow-md z-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+            <h1 class="text-xl font-bold">Flight Data Visualizer</h1>
+            <p class="text-xs text-gray-400 mt-1">
+                Required files: <span id="req-files" class="font-mono text-cyan-300"></span>
+            </p>
+        </div>
+        
+        <div class="bg-gray-700 p-3 rounded border border-gray-600 flex items-center gap-3">
+            <label class="text-sm font-bold text-gray-200">Select Folder:</label>
+            <input type="file" id="folder-input" webkitdirectory directory multiple class="block text-xs text-gray-400
+              file:mr-2 file:py-2 file:px-4 file:rounded file:border-0
+              file:text-sm file:font-semibold file:bg-blue-600 file:text-white
+              hover:file:bg-blue-500 cursor-pointer"
+            />
+        </div>
+    </header>
+
+    <div class="bg-gray-700 p-2 flex justify-center gap-4 shadow-lg text-xs md:text-sm flex-wrap z-10 relative border-b border-gray-600 font-mono">
+        <div class="flex items-center gap-2">
+            <span>Time:</span> <span id="time-display" class="font-bold text-white">0.00</span>s
+        </div>
+        <div class="text-gray-500">|</div>
+        <div class="text-cyan-400">R:<span id="roll-value">0.0</span> P:<span id="pitch-value">0.0</span> Y:<span id="yaw-value">0.0</span></div>
+        <div class="text-gray-500">|</div>
+        <div class="text-green-400">Pos:<span id="pos-value" class="text-white">0,0,0</span></div>
+        <div class="text-gray-500">|</div>
+        <div class="text-pink-400">Mag:<span id="mag-value" class="text-white">N/A</span></div>
+        <div class="text-gray-500">|</div>
+        <div class="text-orange-400">Acc:<span id="acc-value" class="text-white">N/A</span></div>
+    </div>
+
+    <main class="flex-grow flex-shrink min-h-0 relative">
+        <div id="scene-container" class="absolute inset-0"></div>
+        
+        <div class="absolute top-4 left-4 bg-gray-900 bg-opacity-75 p-3 rounded text-xs pointer-events-none select-none text-white">
+            <div class="font-bold mb-2 border-b border-gray-700 pb-1">Legend</div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-yellow-400 rounded-full"></span> <span>Body Up</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-pink-500 rounded-full"></span> <span>Mag Vector</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-orange-400 rounded-full"></span> <span>Accel (Meas+Bias)</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-cyan-400 rounded-full"></span> <span>Mag Ref (World)</span></div>
+            <div class="mt-2 text-gray-400 italic">Left Click: Rotate | Scroll: Zoom</div>
+        </div>
+
+        <div id="loading-overlay" class="hidden absolute inset-0 bg-gray-900 bg-opacity-80 flex justify-center items-center z-20">
+            <div class="text-center">
+                <div class="text-2xl font-bold animate-pulse mb-2">Processing Data...</div>
+                <div id="loading-status" class="text-sm text-gray-400"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-800 p-4 flex flex-col gap-3 shadow-inner z-10 relative">
+        <div class="w-full px-4">
+            <input type="range" id="time-slider" min="0" max="100" value="0" class="w-full" disabled>
+        </div>
+
+        <div class="flex justify-center items-center gap-4">
+            <button id="play-pause-btn" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-6 rounded-lg transition-all w-24" disabled>
+                Play
+            </button>
+            <select id="speed-select" class="bg-gray-700 text-white text-sm rounded p-1">
+                <option value="0.1">0.1x</option>
+                <option value="1" selected>1.0x</option>
+                <option value="5">5.0x</option>
+            </select>
+        </div>
+        <div id="status-message" class="text-center text-xs text-gray-400">Waiting for folder upload...</div>
+    </footer>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ==========================================
+        // CONFIGURATION: EDIT FILE NAMES HERE
+        // ==========================================
+        const FILE_NAMES = {
+            ATTITUDE:       'Quat.csv',    // Quaternions
+            MAG:            'MAG.csv',     // Magnetometer
+            ACCEL_MEASURED: 'IMU.csv',     // Measured Acceleration
+            ACCEL_BIAS:     'AccBias.csv', // Accelerometer Bias
+            POS_ENU:        'Pos.csv'   // Position (East, North, Up)
+        };
+        // ==========================================
+
+        // --- Global Variables ---
+        let scene, camera, renderer, controls;
+        let vehicleGroup, quadModel; // vehicleGroup moves, quadModel rotates
+        let magArrowHelper, accArrowHelper;
+        
+        // Data Store
+        let flightData = []; // { t, roll, pitch, yaw, eulerObject }
+        let magData = [];    // { t, x, y, z }
+        let accData = [];    // { t, x, y, z }
+        let posData = [];    // { t, e, n, u }
+        
+        // Temp storage for accel processing
+        let tempAccMeas = [];
+        let tempAccBias = [];
+
+        // Playback State
+        let isPlaying = false;
+        let playbackIndex = 0;
+        let lastFrameTime = 0;
+        let playbackSpeed = 1.0;
+
+        // UI
+        const fileInput = document.getElementById('folder-input');
+        const statusMsg = document.getElementById('status-message');
+        const reqFilesDisplay = document.getElementById('req-files');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingStatus = document.getElementById('loading-status');
+        
+        // Display Config Names
+        reqFilesDisplay.textContent = Object.values(FILE_NAMES).join(', ');
+
+        // --- 1. Three.js Setup ---
+        function initThreeJS() {
+            const container = document.getElementById('scene-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222);
+
+            const aspect = container.clientWidth / container.clientHeight;
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 10000);
+            camera.position.set(5, 5, 5); 
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; 
+            controls.dampingFactor = 0.05;
+
+            // Lights & Grid
+            scene.add(new THREE.AmbientLight(0xaaaaaa));
+            const dl = new THREE.DirectionalLight(0xffffff, 1);
+            dl.position.set(100, 100, 50);
+            scene.add(dl);
+            
+            // Large Grid
+            const grid = new THREE.GridHelper(200, 50, 0x888888, 0x333333);
+            scene.add(grid);
+
+            // --- VEHICLE GROUP ---
+            // This group handles POSITION (Translation)
+            vehicleGroup = new THREE.Group();
+            scene.add(vehicleGroup);
+
+            // --- QUAD MODEL ---
+            // This group handles ATTITUDE (Rotation)
+            quadModel = new THREE.Group();
+            vehicleGroup.add(quadModel); // Add Quad to Vehicle Group
+            
+            // Body
+            quadModel.add(new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1), new THREE.MeshStandardMaterial({ color: 0xcccccc })));
+            
+            // Arms
+            const armGeo = new THREE.BoxGeometry(0.15, 0.05, 2.5);
+            const armMat = new THREE.MeshStandardMaterial({ color: 0x999999 });
+            const arm1 = new THREE.Mesh(armGeo, armMat); arm1.rotation.y = Math.PI/4;
+            const arm2 = new THREE.Mesh(armGeo, armMat); arm2.rotation.y = -Math.PI/4;
+            quadModel.add(arm1, arm2);
+
+            // Props
+            const propGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.03, 16);
+            const frontMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 });
+            const backMat = new THREE.MeshStandardMaterial({ color: 0x555555, transparent: true, opacity: 0.8 });
+            const d = 1.25 * Math.sin(Math.PI/4) * 1.414;
+            
+            const p1 = new THREE.Mesh(propGeo, frontMat); p1.position.set(d, 0.05, -d); quadModel.add(p1);
+            const p2 = new THREE.Mesh(propGeo, frontMat); p2.position.set(-d, 0.05, -d); quadModel.add(p2);
+            const p3 = new THREE.Mesh(propGeo, backMat); p3.position.set(d, 0.05, d); quadModel.add(p3);
+            const p4 = new THREE.Mesh(propGeo, backMat); p4.position.set(-d, 0.05, d); quadModel.add(p4);
+            
+            // Local Vectors (Rotate with body)
+            // Yellow: Body Up
+            quadModel.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1.5, 0xffff00));
+            // Pink: Mag
+            magArrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,0), 0, 0xff00ff);
+            quadModel.add(magArrowHelper);
+            // Orange: Accel
+            accArrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,0), 0, 0xffa500);
+            quadModel.add(accArrowHelper);
+            
+            // --- REFERENCE VECTORS ---
+            // These are attached to vehicleGroup (move with drone) but NOT quadModel (do not rotate)
+            
+            // Mag Reference (Fixed Direction in World)
+            // FRD to ThreeJS: (Right, -Down, -Forward) -> (y, -z, -x)
+            const refMagVector = new THREE.ArrowHelper(new THREE.Vector3(-0.0346784,-0.892678,-0.449359), new THREE.Vector3(0,0,0), 1.5, 0x00ffff);
+            vehicleGroup.add(refMagVector); // Attached to position, but fixed orientation
+
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            animate();
+        }
+
+        // --- 2. Data Processing ---
+
+        function normalizeTime(t) {
+            return t > 100000000 ? t / 1000000.0 : t;
+        }
+
+        // Helper to parse generic CSV with 3D vector data
+        function parseVectorCSV(text) {
+            const lines = text.trim().split(/\r?\n/);
+            if (lines.length < 1) return [];
+            
+            let startRow = /[a-zA-Z]/.test(lines[0]) ? 1 : 0;
+            
+            // Fallback indices
+            let idxT=0, idxX=1, idxY=2, idxZ=3;
+            
+            // If header exists, try to find names? (Skipping for simplicity, assuming generic Vector export)
+            // If file has more columns (like the previous upload), adjust.
+            const firstData = lines[startRow].split(',');
+            if (firstData.length >= 6) { idxX=3; idxY=4; idxZ=5; } 
+
+            const data = [];
+            for(let i=startRow; i<lines.length; i++) {
+                const cols = lines[i].split(',').map(Number);
+                if(cols.length < 4 || isNaN(cols[idxX])) continue;
+                data.push({
+                    t: normalizeTime(cols[idxT]),
+                    x: cols[idxX],
+                    y: cols[idxY],
+                    z: cols[idxZ]
+                });
+            }
+            return data;
+        }
+
+        fileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (!files.length) return;
+
+            loadingOverlay.classList.remove('hidden');
+            loadingStatus.textContent = "Scanning files...";
+
+            // Reset Data
+            flightData = []; magData = []; tempAccMeas = []; tempAccBias = []; accData = []; posData = [];
+
+            let promises = [];
+
+            for (let file of files) {
+                if (file.name === FILE_NAMES.ATTITUDE) {
+                    promises.push(readFile(file).then(text => processAttitude(text)));
+                } else if (file.name === FILE_NAMES.MAG) {
+                    promises.push(readFile(file).then(text => { magData = parseVectorCSV(text); }));
+                } else if (file.name === FILE_NAMES.ACCEL_MEASURED) {
+                    promises.push(readFile(file).then(text => { tempAccMeas = parseVectorCSV(text); }));
+                } else if (file.name === FILE_NAMES.ACCEL_BIAS) {
+                    promises.push(readFile(file).then(text => { tempAccBias = parseVectorCSV(text); }));
+                } else if (file.name === FILE_NAMES.POS_ENU) {
+                    promises.push(readFile(file).then(text => { posData = parseVectorCSV(text); }));
+                }
+            }
+
+            await Promise.all(promises);
+            
+            processAccelData();
+            
+            loadingOverlay.classList.add('hidden');
+            if (flightData.length > 0) {
+                statusMsg.textContent = `Loaded. Frames: ${flightData.length}. Pos: ${posData.length}`;
+                initPlayback();
+            } else {
+                statusMsg.textContent = "Error: No valid Attitude data found.";
+            }
+        });
+
+        function readFile(file) {
+            return new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.readAsText(file);
+            });
+        }
+
+        function processAttitude(text) {
+            const lines = text.trim().split(/\r?\n/);
+            if (lines.length < 2) return;
+            const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+            
+            let idxT = headers.indexOf('time');
+            if (idxT === -1) idxT = headers.indexOf('timestamp');
+            if (idxT === -1) idxT = 0; 
+
+            let idxW = headers.findIndex(h => ['qw','q1','w'].includes(h));
+            let idxX = headers.findIndex(h => ['qx','q2','x'].includes(h));
+            let idxY = headers.findIndex(h => ['qy','q3','y'].includes(h));
+            let idxZ = headers.findIndex(h => ['qz','q4','z'].includes(h));
+            
+            if (idxW === -1) { idxW=6; idxX=3; idxY=4; idxZ=5; }
+
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',').map(Number);
+                if (cols.length < 4 || isNaN(cols[idxW])) continue;
+
+                const q1=cols[idxW], q2=cols[idxX], q3=cols[idxY], q4=cols[idxZ];
+                const roll = Math.atan2(2*(q1*q2+q3*q4), 1-2*(q2**2+q3**2)); 
+                const pitch = Math.asin(Math.max(-1, Math.min(1, 2*(q1*q3-q4*q2))));
+                const yaw = Math.atan2(2*(q1*q4+q2*q3), 1-2*(q3**2+q4**2));
+
+                flightData.push({
+                    t: normalizeTime(cols[idxT]),
+                    rollDeg: (roll * 180 / Math.PI).toFixed(1),
+                    pitchDeg: (pitch * 180 / Math.PI).toFixed(1),
+                    yawDeg: (yaw * 180 / Math.PI).toFixed(1),
+                    euler: new THREE.Euler(pitch, -yaw, -roll, 'YXZ')
+                });
+            }
+        }
+
+        function processAccelData() {
+            if (tempAccMeas.length === 0) return;
+            const count = Math.min(tempAccMeas.length, tempAccBias.length);
+            if (tempAccBias.length === 0) {
+                accData = tempAccMeas;
+                return;
+            }
+            accData = [];
+            for(let i=0; i<count; i++) {
+                accData.push({
+                    t: tempAccMeas[i].t,
+                    x: tempAccMeas[i].x + tempAccBias[i].x,
+                    y: tempAccMeas[i].y + tempAccBias[i].y,
+                    z: tempAccMeas[i].z + tempAccBias[i].z
+                });
+            }
+        }
+
+        function initPlayback() {
+            const slider = document.getElementById('time-slider');
+            const playBtn = document.getElementById('play-pause-btn');
+            
+            const t0 = flightData[0].t;
+            flightData.forEach(d => d.tRelative = d.t - t0);
+            
+            slider.disabled = false;
+            playBtn.disabled = false;
+            slider.max = flightData.length - 1;
+            slider.value = 0;
+            playbackIndex = 0;
+            updateFrame(0);
+        }
+
+        // --- 3. Animation & Updates ---
+
+        function findClosest(dataArr, targetTime) {
+            if (!dataArr || dataArr.length === 0) return null;
+            return dataArr.reduce((prev, curr) => 
+                Math.abs(curr.t - targetTime) < Math.abs(prev.t - targetTime) ? curr : prev
+            );
+        }
+
+        function updateFrame(index) {
+            if (!flightData[index]) return;
+            const data = flightData[index];
+            
+            // Text Updates
+            document.getElementById('time-display').textContent = data.t.toFixed(2);
+            document.getElementById('roll-value').textContent = data.rollDeg;
+            document.getElementById('pitch-value').textContent = data.pitchDeg;
+            document.getElementById('yaw-value').textContent = data.yawDeg;
+
+            // 1. Attitude Update (Rotates the Quad Mesh inside the Vehicle Group)
+            if (quadModel) quadModel.setRotationFromEuler(data.euler);
+
+            // 2. Position Update (Moves the Vehicle Group)
+            if (posData.length > 0) {
+                const pos = findClosest(posData, data.t);
+                if (pos) {
+                    // Mapping NED
+                    const newPos = new THREE.Vector3(pos.y, -pos.z, -pos.x); 
+                    
+                    // Move Vehicle
+                    const prevPos = vehicleGroup.position.clone();
+                    vehicleGroup.position.copy(newPos);
+                    
+                    // Move Camera (Follow Mode)
+                    const delta = newPos.clone().sub(prevPos);
+                    camera.position.add(delta);
+                    controls.target.copy(newPos);
+                    
+                    document.getElementById('pos-value').textContent = 
+                        `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}`;
+                }
+            }
+
+            // 3. Vector Updates
+            updateVector(magData, data.t, magArrowHelper, document.getElementById('mag-value'));
+            updateVector(accData, data.t, accArrowHelper, document.getElementById('acc-value'));
+        }
+
+        function updateVector(dataSource, currentTime, arrowObj, textObj) {
+            if(!dataSource.length) {
+                arrowObj.visible = false;
+                return;
+            }
+
+            const match = findClosest(dataSource, currentTime);
+            if(match) {
+                textObj.textContent = `[${match.x.toFixed(2)}, ${match.y.toFixed(2)}, ${match.z.toFixed(2)}]`;
+                
+                // FRD to ThreeJS: (Right, -Down, -Forward) -> (y, -z, -x)
+                const dir = new THREE.Vector3(match.y, -match.z, -match.x);
+                
+                if (dir.length() > 0.01) {
+                    dir.normalize();
+                    arrowObj.setDirection(dir);
+                    arrowObj.setLength(1.5, 0.4, 0.2);
+                    arrowObj.visible = true;
+                }
+            }
+        }
+
+        // Event Listeners for Playback
+        const slider = document.getElementById('time-slider');
+        slider.addEventListener('input', (e) => {
+            if (isPlaying) togglePlay();
+            playbackIndex = parseInt(e.target.value);
+            updateFrame(playbackIndex);
+        });
+
+        document.getElementById('play-pause-btn').addEventListener('click', togglePlay);
+        document.getElementById('speed-select').addEventListener('change', (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+        });
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('play-pause-btn');
+            btn.textContent = isPlaying ? "Pause" : "Play";
+            btn.classList.toggle('bg-blue-600');
+            btn.classList.toggle('bg-red-600');
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // OrbitControls with damping
+
+            if (isPlaying && flightData.length > 0) {
+                const now = performance.now();
+                const dt = now - lastFrameTime;
+                const interval = 1000 / (30 * playbackSpeed);
+
+                if (dt > interval) {
+                    playbackIndex++;
+                    if (playbackIndex >= flightData.length) {
+                        playbackIndex = 0;
+                        togglePlay();
+                        playbackIndex = flightData.length - 1;
+                    }
+                    slider.value = playbackIndex;
+                    updateFrame(playbackIndex);
+                    lastFrameTime = now;
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        initThreeJS();
+    </script>
+</body>
+</html>
