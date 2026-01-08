@@ -2,10 +2,12 @@
 #include "drivers/GPS_config.h"
 #include "timing.h"
 
-
 extern UART_HandleTypeDef huart4;
 
-GPS::GPS(DataManager::SensorBuffer &m_sensor_buffer): m_sensor_buffer(m_sensor_buffer){}
+GPS::GPS(DataManager::SensorBuffer &m_sensor_buffer) : 
+    m_sensor_buffer(m_sensor_buffer),
+    last_sat_count(0) 
+    {}
 
 struct __attribute__((packed)) UbxHeader
 {
@@ -18,43 +20,43 @@ struct __attribute__((packed)) UbxHeader
 
 struct __attribute__((packed)) UBX_NAV_PVT_MSG
 {
-    uint32_t iTOW;    // GPS time of week [ms]
-    uint16_t year;    // Year [AD]
-    uint8_t month;    // Month [1-12]
-    uint8_t day;      // Day of month [1-31]
-    uint8_t hour;     // Hour of day [0-23]
-    uint8_t min;      // Minute of hour [0-59]
-    uint8_t sec;      // Second of minute [0-60]
+    uint32_t iTOW; // GPS time of week [ms]
+    uint16_t year; // Year [AD]
+    uint8_t month; // Month [1-12]
+    uint8_t day;   // Day of month [1-31]
+    uint8_t hour;  // Hour of day [0-23]
+    uint8_t min;   // Minute of hour [0-59]
+    uint8_t sec;   // Second of minute [0-60]
     // Validity Flags
-    uint8_t validDate : 1; // Date Validity Flag
-    uint8_t validTime : 1; // Time Validity Flag
+    uint8_t validDate : 1;     // Date Validity Flag
+    uint8_t validTime : 1;     // Time Validity Flag
     uint8_t fullyResolved : 1; // 1 if UTC time of day has been fully resolved
-    uint8_t validMag : 1; // Magnetic Declination Validity Flag
-    uint8_t validFiller:4; // Filler
-    uint32_t tAcc;    // Time accuracy estimate [ns]
-    int32_t nano;     // Nanoseconds of second [ns]
-    uint8_t fixType;  // GNSSfix Type (e.g., no fix, 2D, 3D)
+    uint8_t validMag : 1;      // Magnetic Declination Validity Flag
+    uint8_t validFiller : 4;   // Filler
+    uint32_t tAcc;             // Time accuracy estimate [ns]
+    int32_t nano;              // Nanoseconds of second [ns]
+    uint8_t fixType;           // GNSSfix Type (e.g., no fix, 2D, 3D)
     // Fix Status Flags
-    uint8_t gnssFixOk:1; // 1 if valid fix
-    uint8_t diffSoln:1; // 1 if differential corrections applied
-    uint8_t psmState:3; // Power Save Mode State
-    uint8_t headVehValid:1; // Vehicle Heading Validity Flag
-    uint8_t carrSoln:2; // Carrier phase range solution status
-    uint8_t flags2;   // Additional fix status flags
-    uint8_t numSV;    // Number of satellites used in fix
-    int32_t lon;      // Longitude [1e-7 deg]
-    int32_t lat;      // Latitude [1e-7 deg]
-    int32_t height;   // Height above ellipsoid [mm]
-    int32_t hMSL;     // Height above mean sea level [mm]
-    uint32_t hAcc;    // Horizontal accuracy estimate [mm]
-    uint32_t vAcc;    // Vertical accuracy estimate [mm]
-    int32_t velN;     // NED north velocity [mm/s]
-    int32_t velE;     // NED east velocity [mm/s]
-    int32_t velD;     // NED down velocity [mm/s]
-    int32_t gSpeed;   // Ground Speed (2-D) [mm/s]
-    int32_t headMot;  // Heading of motion (2-D) [1e-5 deg]
-    uint32_t sAcc;    // Speed accuracy estimate [mm]
-    uint32_t headAcc; // Heading accuracy estimate [1e-5 deg]
+    uint8_t gnssFixOk : 1;    // 1 if valid fix
+    uint8_t diffSoln : 1;     // 1 if differential corrections applied
+    uint8_t psmState : 3;     // Power Save Mode State
+    uint8_t headVehValid : 1; // Vehicle Heading Validity Flag
+    uint8_t carrSoln : 2;     // Carrier phase range solution status
+    uint8_t flags2;           // Additional fix status flags
+    uint8_t numSV;            // Number of satellites used in fix
+    int32_t lon;              // Longitude [1e-7 deg]
+    int32_t lat;              // Latitude [1e-7 deg]
+    int32_t height;           // Height above ellipsoid [mm]
+    int32_t hMSL;             // Height above mean sea level [mm]
+    uint32_t hAcc;            // Horizontal accuracy estimate [mm]
+    uint32_t vAcc;            // Vertical accuracy estimate [mm]
+    int32_t velN;             // NED north velocity [mm/s]
+    int32_t velE;             // NED east velocity [mm/s]
+    int32_t velD;             // NED down velocity [mm/s]
+    int32_t gSpeed;           // Ground Speed (2-D) [mm/s]
+    int32_t headMot;          // Heading of motion (2-D) [1e-5 deg]
+    uint32_t sAcc;            // Speed accuracy estimate [mm]
+    uint32_t headAcc;         // Heading accuracy estimate [1e-5 deg]
 };
 
 int8_t GPS::init()
@@ -86,10 +88,10 @@ void GPS::handleRxChunk(uint8_t *buf, uint16_t len)
     // Class and ID for UBX-NAV-PVT
     if (h->cls == 0x01 && h->id == 0x07)
     {
-        UBX_NAV_PVT_MSG *msg = reinterpret_cast<UBX_NAV_PVT_MSG *>(buf+sizeof(UbxHeader));
-        if (msg->gnssFixOk==1 && msg->fixType==3)
+        UBX_NAV_PVT_MSG *msg = reinterpret_cast<UBX_NAV_PVT_MSG *>(buf + sizeof(UbxHeader));
+        if (msg->gnssFixOk == 1 && msg->fixType == 3)
         {
-            
+
             SensorData *gps_data = m_sensor_buffer.claim();
             gps_data->sensor = SensorData::Type::GPS;
             gps_data->timestamp = timestamp;
@@ -101,9 +103,10 @@ void GPS::handleRxChunk(uint8_t *buf, uint16_t len)
             gps_data->data.gps.vel[2] = msg->velD * 1e-3;
             // gps_data.Satellites = msg->numSV;
             m_sensor_buffer.commit(gps_data);
+
+            last_sat_count = msg->numSV;
         }
     }
-    
 }
 
 void GPS::writeUBXMessage(uint8_t msg_class, uint8_t msg_id, const uint8_t *payload, uint16_t payload_len)

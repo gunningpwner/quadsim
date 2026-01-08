@@ -184,6 +184,9 @@ void CheckUsb(void) {
             printf("Erasing\n");
             g_flash_ptr->erase();
             printf("Done\n");
+        } else if ((strncmp((char*)RxLastPacket, "STATUS", 5) == 0))
+        {
+            printf("%d Sats\n",g_gps_ptr->getLastSatCount());
         }
         
         
