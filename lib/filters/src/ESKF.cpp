@@ -105,6 +105,9 @@ void ESKF::run()
                 refLLA = Vec3Map(sensor_data->data.gps.lla.data());
                 break;
             }
+            if (waitingForMag){
+                break;
+            }
             updateGPS(*sensor_data);
             break;
         case SensorData::Type::MAG:
@@ -200,13 +203,11 @@ void ESKF::updateIMU(const SensorData &imu_data)
 
 void ESKF::updateMag(const SensorData &mag_data)
 {
-    Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
 
 
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
     Eigen::Vector3f ref_mag = {cosf(inc) * cosf(dec), cosf(inc) * sinf(dec), sinf(inc)};
-
 
     // Eigen::Vector3f ref_mag = {1.0f, 0.0f, 0.0f};
 
@@ -215,36 +216,40 @@ void ESKF::updateMag(const SensorData &mag_data)
     Eigen::Vector3f corr_mag = magCorrInv * (meas - magBias);
     // Rotate from sensor frame to body frame
     Eigen::Vector3f rot_corr_mag = magRotMat * corr_mag;
+    rot_corr_mag.normalize();
 
     // Use first magnetometer measurement to set yaw
-    if (firstMag)
+    if (waitingForMag)
     {
-        ref_mag.z()=0.0f;
-        ref_mag.normalize();
-        rot_corr_mag.z()=0.0f;
-        rot_corr_mag.normalize();
+        Eigen::Vector3f mag_local = nominalQuat * rot_corr_mag;
+        mag_local.z() = 0.0f;
+        mag_local.normalize();
+        Eigen::Vector3f tmp_ref = ref_mag;
+        tmp_ref.z() = 0.0f;
+        tmp_ref.normalize();
 
-        nominalQuat = Eigen::Quaternionf::FromTwoVectors(rot_corr_mag, ref_mag)*nominalQuat;
+        nominalQuat = Eigen::Quaternionf::FromTwoVectors(mag_local, tmp_ref) * nominalQuat;
         nominalQuat.normalize();
 
         //Go ahead and remove any false biases we might've acquired while aligning
         nominalAccBias.setZero();
         nominalGyroBias.setZero();
-        firstMag = false;
-        return;
+        waitingForMag = false;
     }
-
+    
     Eigen::Matrix3f V = Eigen::Matrix3f::Identity() * magVar;
     Eigen::Vector3f pred_mag;
-    for (int i = 0; i < 3; i++)
-    {
-    pred_mag = rot_mat.transpose() * ref_mag;
+
+    // Iterative Kalman Filters are a thing I guess.
+    // If it doesn't work the first time, just try it a few more.
+    // for (int i = 0; i < 3; i++)
+    // {
+    pred_mag = nominalQuat.conjugate() * ref_mag;
     Eigen::Matrix<float, 3, 18> H;
     H.setZero();
     H.block<3, 3>(0, 6) = skew(pred_mag);
-
     correctionStep<3>(H, V, rot_corr_mag, pred_mag);
-    }
+    // }
 #ifdef SIM
     Logger::getInstance().log("MAG", meas, mag_data.timestamp);
     Logger::getInstance().log("MAG_Corr", rot_corr_mag, getCurrentTimeUs());

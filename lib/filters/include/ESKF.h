@@ -109,7 +109,7 @@ private:
 
     uint64_t last_timestamp;
 
-    bool firstMag=true;
+    bool waitingForMag=true;
 
     float accVar = .00157f;
     float accBiasVar = .001f;
