@@ -116,6 +116,7 @@ private:
 
     uint64_t last_timestamp;
 
+    bool firstMag=true;
 
     float accVar = .157f;
     float accBiasVar = .001f;

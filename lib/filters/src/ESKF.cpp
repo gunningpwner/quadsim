@@ -73,9 +73,9 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
     float tilt = 35.0f * DEG2RAD;
     float tiltcos = cosf(tilt);
     float tiltsin = sinf(tilt);
-    magRotMat << tiltcos, 0, -tiltsin,
+    magRotMat << tiltcos, 0, tiltsin,
         0, 1, 0,
-        tiltsin, 0, tiltcos;
+        -tiltsin, 0, tiltcos;
 }
 
 void ESKF::run()
@@ -83,15 +83,35 @@ void ESKF::run()
     SensorData *sensor_data = m_sensor_consumer.readNext();
     while (sensor_data != nullptr)
     {
+        // Filter initialization process
+        // Align body up vector to first imu measurement
+        // Set refLLA to first GPS measurement
+        // Align yaw to first mag measurement
         switch (sensor_data->sensor)
         {
         case SensorData::Type::IMU:
+            
+            if(last_timestamp==0){
+                Vector3f meas(sensor_data->data.imu.accel.data());
+                meas.normalize();
+                nominalQuat = Eigen::Quaternionf::FromTwoVectors(meas, -Vector3f::UnitZ());
+                last_timestamp = sensor_data->timestamp;
+                break;
+            }    
             updateIMU(*sensor_data);
             break;
         case SensorData::Type::GPS:
+            if (refLLA.isZero()){
+                refLLA = Vec3Map(sensor_data->data.gps.lla.data());
+                break;
+            }
             updateGPS(*sensor_data);
             break;
         case SensorData::Type::MAG:
+            if (refLLA.isZero()){
+                break;
+            }
+            // Would set initial yaw here, but need to many internal things from updateMag so we just do it there
             updateMag(*sensor_data);
             break;
         default:
@@ -181,13 +201,12 @@ void ESKF::updateIMU(const SensorData &imu_data)
 void ESKF::updateMag(const SensorData &mag_data)
 {
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
-    // We haven't gotten a gps measurement yet
-    // So we have no idea what the magnetometer measurement should look like
-    if (refLLA.isZero())
-        return;
+
+
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
     Eigen::Vector3f ref_mag = {cosf(inc) * cosf(dec), cosf(inc) * sinf(dec), sinf(inc)};
+
 
     // Eigen::Vector3f ref_mag = {1.0f, 0.0f, 0.0f};
 
@@ -196,6 +215,25 @@ void ESKF::updateMag(const SensorData &mag_data)
     Eigen::Vector3f corr_mag = magCorrInv * (meas - magBias);
     // Rotate from sensor frame to body frame
     Eigen::Vector3f rot_corr_mag = magRotMat * corr_mag;
+
+    // Use first magnetometer measurement to set yaw
+    if (firstMag)
+    {
+        ref_mag.z()=0.0f;
+        ref_mag.normalize();
+        rot_corr_mag.z()=0.0f;
+        rot_corr_mag.normalize();
+
+        nominalQuat = Eigen::Quaternionf::FromTwoVectors(rot_corr_mag, ref_mag)*nominalQuat;
+        nominalQuat.normalize();
+
+        //Go ahead and remove any false biases we might've acquired while aligning
+        nominalAccBias.setZero();
+        nominalGyroBias.setZero();
+        firstMag = false;
+        return;
+    }
+
 
     Eigen::Vector3f pred_mag = rot_mat.transpose() * ref_mag;
 
