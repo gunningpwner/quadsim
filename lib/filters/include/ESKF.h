@@ -11,6 +11,7 @@
 using Matrix18f = Eigen::Matrix<float, 18, 18>;
 using Vector18f = Eigen::Matrix<float, 18, 1>;
 using Vector3f = Eigen::Vector3f;
+using Matrix3f = Eigen::Matrix3f;
 using Quaternionf = Eigen::Quaternionf;
 
 class ESKF
@@ -109,14 +110,18 @@ private:
     Matrix18f errorStateCovariance;
     Matrix18f Fx;
 
+    Matrix3f magCorrInv;
+    Matrix3f magRotMat;
+    Vector3f magBias;
+
     uint64_t last_timestamp;
 
 
-    float accVar = .00157f;
+    float accVar = .157f;
     float accBiasVar = .001f;
-    float gyroVar = .000122f;
+    float gyroVar = .0122f;
     float gyroBiasVar = .0001f;
-    float gpsPosVar = 10.0f;
-    float gpsVelVar = 10.0f;
+    float gpsPosVar = 1.0f;
+    float gpsVelVar = 3.0f;
     float magVar = 1.0f;
 };
