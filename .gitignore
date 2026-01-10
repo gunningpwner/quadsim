@@ -5,5 +5,5 @@ build/*
 .pio
 ./lib/*
 */__pycache__/**
-data/*
+
 *.wbproj
