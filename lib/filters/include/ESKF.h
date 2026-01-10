@@ -55,19 +55,12 @@ private:
         nominalVel += errorStateMean.template segment<3>(3);
         
         // Small angle approximation for quaternion update
-        
-        if constexpr (MeasDim == 3) {
-            Vector3f angleErr = errorStateMean.template segment<3>(6);
-            Quaternionf deltaQuat(Eigen::AngleAxisf(angleErr.norm(), angleErr.normalized()));
-            nominalQuat *= deltaQuat;
-            nominalQuat.normalize();
-            nominalGyroBias += errorStateMean.template segment<3>(12);
-        }
-        else {
-            errorStateMean.segment<3>(6).setZero();
-            errorStateMean.segment<3>(12).setZero();
+        Vector3f angleErr = errorStateMean.template segment<3>(6);
+        Quaternionf deltaQuat(Eigen::AngleAxisf(angleErr.norm(), angleErr.normalized()));
+        nominalQuat *= deltaQuat;
+        nominalQuat.normalize();
+        nominalGyroBias += errorStateMean.template segment<3>(12);
 
-        }
         #ifdef SIM
         if constexpr (MeasDim == 3)
         {
@@ -118,11 +111,11 @@ private:
 
     bool firstMag=true;
 
-    float accVar = .157f;
+    float accVar = .00157f;
     float accBiasVar = .001f;
-    float gyroVar = .0122f;
-    float gyroBiasVar = .0001f;
+    float gyroVar = .000122f;
+    float gyroBiasVar = .000001f;
     float gpsPosVar = 1.0f;
     float gpsVelVar = 3.0f;
-    float magVar = 1.0f;
+    float magVar = 0.1f;
 };

@@ -193,6 +193,7 @@ void ESKF::updateIMU(const SensorData &imu_data)
     Eigen::VectorXf meas(6);
     meas << accel, gyro;
     Logger::getInstance().log("IMU", meas, imu_data.timestamp);
+    Logger::getInstance().log("Gyro", gyroCorr, imu_data.timestamp);
     Logger::getInstance().log("acc_rot", rot_mat * accCorr, imu_data.timestamp);
 #endif
 }
