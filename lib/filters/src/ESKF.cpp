@@ -31,7 +31,7 @@ Quaternionf axisAngleToQuaternion(const Eigen::Vector3f &angularVel, float dt)
     float k = sinf(theta / 2.0f) / theta;
     Quaternionf ret;
     ret.w() = cosf(theta / 2.0f);
-    ret.vec() = k * angularVel;
+    ret.vec() = k * angularVel*dt;
     return ret;
 }
 
@@ -149,7 +149,6 @@ void ESKF::updateIMU(const SensorData &imu_data)
 
     last_timestamp = imu_data.timestamp;
     Eigen::Vector3f gyro(imu_data.data.imu.gyro.data());
-    gyro *= DEG2RAD;
     Vec3Map accel(imu_data.data.imu.accel.data());
 
     Eigen::Vector3f accCorr = accel - nominalAccBias;
@@ -234,19 +233,17 @@ void ESKF::updateMag(const SensorData &mag_data)
         return;
     }
 
-
-    Eigen::Vector3f pred_mag = rot_mat.transpose() * ref_mag;
-
-    
+    Eigen::Matrix3f V = Eigen::Matrix3f::Identity() * magVar;
+    Eigen::Vector3f pred_mag;
+    for (int i = 0; i < 3; i++)
+    {
+    pred_mag = rot_mat.transpose() * ref_mag;
     Eigen::Matrix<float, 3, 18> H;
     H.setZero();
     H.block<3, 3>(0, 6) = skew(pred_mag);
 
-    Eigen::Matrix3f V = Eigen::Matrix3f::Identity() * magVar;
-
-
     correctionStep<3>(H, V, rot_corr_mag, pred_mag);
-
+    }
 #ifdef SIM
     Logger::getInstance().log("MAG", meas, mag_data.timestamp);
     Logger::getInstance().log("MAG_Corr", rot_corr_mag, getCurrentTimeUs());
