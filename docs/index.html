@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Data Visualizer (Att + Mag + Accel + Pos)</title>
+    <title>Flight Data Visualizer (Dynamic Gyro Arcs)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script type="importmap">
@@ -61,6 +61,8 @@
         <div class="text-gray-500">|</div>
         <div class="text-green-400">Pos:<span id="pos-value" class="text-white">0,0,0</span></div>
         <div class="text-gray-500">|</div>
+        <div class="text-purple-400">Gyro:<span id="gyro-value" class="text-white">N/A</span></div>
+        <div class="text-gray-500">|</div>
         <div class="text-pink-400">Mag:<span id="mag-value" class="text-white">N/A</span></div>
         <div class="text-gray-500">|</div>
         <div class="text-orange-400">Acc:<span id="acc-value" class="text-white">N/A</span></div>
@@ -74,6 +76,9 @@
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-yellow-400 rounded-full"></span> <span>Body Up</span></div>
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-pink-500 rounded-full"></span> <span>Mag Vector</span></div>
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-orange-400 rounded-full"></span> <span>Accel (Meas+Bias)</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 border border-white" style="border-color: red"></span> <span>Gyro X (Roll Rate)</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 border border-white" style="border-color: lime"></span> <span>Gyro Y (Pitch Rate)</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 border border-white" style="border-color: cyan"></span> <span>Gyro Z (Yaw Rate)</span></div>
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-cyan-400 rounded-full"></span> <span>Mag Ref (World)</span></div>
             <div class="mt-2 text-gray-400 italic">Left Click: Rotate | Scroll: Zoom</div>
         </div>
@@ -92,14 +97,27 @@
         </div>
 
         <div class="flex justify-center items-center gap-4">
+            <button id="prev-btn" class="bg-gray-600 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all" disabled>
+                &lt;
+            </button>
             <button id="play-pause-btn" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-6 rounded-lg transition-all w-24" disabled>
                 Play
+            </button>
+            <button id="next-btn" class="bg-gray-600 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all" disabled>
+                &gt;
             </button>
             <select id="speed-select" class="bg-gray-700 text-white text-sm rounded p-1">
                 <option value="0.1">0.1x</option>
                 <option value="1" selected>1.0x</option>
                 <option value="5">5.0x</option>
             </select>
+            
+            <div class="w-px h-6 bg-gray-600 mx-2"></div>
+
+            <label class="flex items-center gap-2 text-white text-sm cursor-pointer select-none">
+                <input type="checkbox" id="follow-cam-checkbox" checked class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500 accent-blue-600">
+                <span>Follow</span>
+            </label>
         </div>
         <div id="status-message" class="text-center text-xs text-gray-400">Waiting for folder upload...</div>
     </footer>
@@ -109,29 +127,32 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         // ==========================================
-        // CONFIGURATION: EDIT FILE NAMES HERE
+        // CONFIGURATION
         // ==========================================
         const FILE_NAMES = {
-            ATTITUDE:       'Quat.csv',    // Quaternions
-            MAG:            'MAG_Corr.csv',     // Magnetometer
-            ACCEL_MEASURED: 'IMU.csv',     // Measured Acceleration
-            ACCEL_BIAS:     'AccBias.csv', // Accelerometer Bias
-            POS_ENU:        'Pos.csv'   // Position (East, North, Up)
+            ATTITUDE:       'Quat.csv',
+            MAG:            'MAG_Corr.csv',
+            ACCEL_MEASURED: 'IMU.csv',
+            ACCEL_BIAS:     'AccBias.csv',
+            POS_ENU:        'Pos.csv',
+            GYRO:           'Gyro.csv'
         };
-        // ==========================================
 
         // --- Global Variables ---
         let scene, camera, renderer, controls;
-        let vehicleGroup, quadModel; // vehicleGroup moves, quadModel rotates
+        let vehicleGroup, quadModel; 
         let magArrowHelper, accArrowHelper;
         
-        // Data Store
-        let flightData = []; // { t, roll, pitch, yaw, eulerObject }
-        let magData = [];    // { t, x, y, z }
-        let accData = [];    // { t, x, y, z }
-        let posData = [];    // { t, e, n, u }
+        // Gyro Container Groups (These hold the dynamic meshes)
+        let gyroGroupX, gyroGroupY, gyroGroupZ; 
         
-        // Temp storage for accel processing
+        // Data Store
+        let flightData = [];
+        let magData = [];
+        let accData = [];
+        let posData = [];
+        let gyroData = [];
+        
         let tempAccMeas = [];
         let tempAccBias = [];
 
@@ -140,6 +161,7 @@
         let playbackIndex = 0;
         let lastFrameTime = 0;
         let playbackSpeed = 1.0;
+        let cameraFollowsDrone = true;
 
         // UI
         const fileInput = document.getElementById('folder-input');
@@ -147,8 +169,8 @@
         const reqFilesDisplay = document.getElementById('req-files');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingStatus = document.getElementById('loading-status');
+        const followCheckbox = document.getElementById('follow-cam-checkbox');
         
-        // Display Config Names
         reqFilesDisplay.textContent = Object.values(FILE_NAMES).join(', ');
 
         // --- 1. Three.js Setup ---
@@ -159,7 +181,7 @@
 
             const aspect = container.clientWidth / container.clientHeight;
             camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 10000);
-            camera.position.set(5, 5, 5); 
+            camera.position.set(.5,.5,.5); 
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(container.clientWidth, container.clientHeight);
@@ -169,30 +191,23 @@
             controls.enableDamping = true; 
             controls.dampingFactor = 0.05;
 
-            // Lights & Grid
             scene.add(new THREE.AmbientLight(0xaaaaaa));
             const dl = new THREE.DirectionalLight(0xffffff, 1);
             dl.position.set(100, 100, 50);
             scene.add(dl);
             
-            // Large Grid
             const grid = new THREE.GridHelper(200, 50, 0x888888, 0x333333);
             scene.add(grid);
 
-            // --- VEHICLE GROUP ---
-            // This group handles POSITION (Translation)
+            // --- VEHICLE GROUPS ---
             vehicleGroup = new THREE.Group();
             scene.add(vehicleGroup);
 
-            // --- QUAD MODEL ---
-            // This group handles ATTITUDE (Rotation)
             quadModel = new THREE.Group();
-            vehicleGroup.add(quadModel); // Add Quad to Vehicle Group
+            vehicleGroup.add(quadModel); 
             
-            // Body
+            // Body & Arms
             quadModel.add(new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1), new THREE.MeshStandardMaterial({ color: 0xcccccc })));
-            
-            // Arms
             const armGeo = new THREE.BoxGeometry(0.15, 0.05, 2.5);
             const armMat = new THREE.MeshStandardMaterial({ color: 0x999999 });
             const arm1 = new THREE.Mesh(armGeo, armMat); arm1.rotation.y = Math.PI/4;
@@ -205,28 +220,46 @@
             const backMat = new THREE.MeshStandardMaterial({ color: 0x555555, transparent: true, opacity: 0.8 });
             const d = 1.25 * Math.sin(Math.PI/4) * 1.414;
             
-            const p1 = new THREE.Mesh(propGeo, frontMat); p1.position.set(d, 0.05, -d); quadModel.add(p1);
-            const p2 = new THREE.Mesh(propGeo, frontMat); p2.position.set(-d, 0.05, -d); quadModel.add(p2);
-            const p3 = new THREE.Mesh(propGeo, backMat); p3.position.set(d, 0.05, d); quadModel.add(p3);
-            const p4 = new THREE.Mesh(propGeo, backMat); p4.position.set(-d, 0.05, d); quadModel.add(p4);
+            // Helper to add props quickly
+            const addProp = (x, z, mat) => {
+                const m = new THREE.Mesh(propGeo, mat);
+                m.position.set(x, 0.05, z);
+                quadModel.add(m);
+            };
+            addProp(d, -d, frontMat); addProp(-d, -d, frontMat);
+            addProp(d, d, backMat); addProp(-d, d, backMat);
             
-            // Local Vectors (Rotate with body)
-            // Yellow: Body Up
+            vehicleGroup.scale.set(.1,.1,.1);
+            // Standard Vectors
             quadModel.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1.5, 0xffff00));
-            // Pink: Mag
             magArrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,0), 0, 0xff00ff);
             quadModel.add(magArrowHelper);
-            // Orange: Accel
             accArrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,0), 0, 0xffa500);
             quadModel.add(accArrowHelper);
+
+            // --- GYRO RINGS SETUP (Groups) ---
+            // We create container Groups for alignment. The Mesh inside will be recreated every frame.
             
+            // X-Axis Gyro (Roll) -> Red. 
+            // Needs to circle the X axis. Default Torus circles Z. Rotate group Y=90.
+            gyroGroupX = new THREE.Group();
+            quadModel.add(gyroGroupX);
+
+            // Y-Axis Gyro (Pitch) -> Green.
+            // Needs to circle the Z axis (Lateral). Default Torus circles Z. No rotation needed.
+            gyroGroupY = new THREE.Group();
+            gyroGroupY.rotation.y = Math.PI / 2;
+            quadModel.add(gyroGroupY);
+            
+            // Z-Axis Gyro (Yaw) -> Cyan/Blue.
+            // Needs to circle the Y axis (Vertical). Default Torus circles Z. Rotate group X=90.
+            gyroGroupZ = new THREE.Group();
+            gyroGroupZ.rotation.x = Math.PI / 2;
+            quadModel.add(gyroGroupZ);
+
             // --- REFERENCE VECTORS ---
-            // These are attached to vehicleGroup (move with drone) but NOT quadModel (do not rotate)
-            
-            // Mag Reference (Fixed Direction in World)
-            // FRD to ThreeJS: (Right, -Down, -Forward) -> (y, -z, -x)
             const refMagVector = new THREE.ArrowHelper(new THREE.Vector3(-0.0346784,-0.892678,-0.449359), new THREE.Vector3(0,0,0), 1.5, 0x00ffff);
-            vehicleGroup.add(refMagVector); // Attached to position, but fixed orientation
+            vehicleGroup.add(refMagVector);
 
             window.addEventListener('resize', () => {
                 camera.aspect = container.clientWidth / container.clientHeight;
@@ -242,27 +275,27 @@
             return t > 100000000 ? t / 1000000.0 : t;
         }
 
-        // Helper to parse generic CSV with 3D vector data
-        function parseVectorCSV(text) {
+        // Added optional startIdx to support generic CSVs or mapped ones
+        function parseVectorCSV(text, startIdx) {
             const lines = text.trim().split(/\r?\n/);
             if (lines.length < 1) return [];
-            
             let startRow = /[a-zA-Z]/.test(lines[0]) ? 1 : 0;
             
-            // Fallback indices
-            let idxT=0, idxX=1, idxY=2, idxZ=3;
-            
-            // If header exists, try to find names? (Skipping for simplicity, assuming generic Vector export)
-            // If file has more columns (like the previous upload), adjust.
-            const firstData = lines[startRow].split(',');
-            if (firstData.length >= 6) { idxX=3; idxY=4; idxZ=5; } 
+            // Default detection if startIdx not provided
+            let idxX=1, idxY=2, idxZ=3;
+            if (startIdx !== undefined) {
+                idxX = startIdx; idxY = startIdx+1; idxZ = startIdx+2;
+            } else {
+                const firstData = lines[startRow].split(',');
+                if (firstData.length >= 6) { idxX=3; idxY=4; idxZ=5; } 
+            }
 
             const data = [];
             for(let i=startRow; i<lines.length; i++) {
                 const cols = lines[i].split(',').map(Number);
                 if(cols.length < 4 || isNaN(cols[idxX])) continue;
                 data.push({
-                    t: normalizeTime(cols[idxT]),
+                    t: normalizeTime(cols[0]), // Assume time is col 0
                     x: cols[idxX],
                     y: cols[idxY],
                     z: cols[idxZ]
@@ -279,31 +312,37 @@
             loadingStatus.textContent = "Scanning files...";
 
             // Reset Data
-            flightData = []; magData = []; tempAccMeas = []; tempAccBias = []; accData = []; posData = [];
+            flightData = []; magData = []; tempAccMeas = []; tempAccBias = []; accData = []; posData = []; gyroData = [];
 
             let promises = [];
 
             for (let file of files) {
                 if (file.name === FILE_NAMES.ATTITUDE) {
                     promises.push(readFile(file).then(text => processAttitude(text)));
-                } else if (file.name === FILE_NAMES.MAG) {
+                }
+                if (file.name === FILE_NAMES.MAG) {
                     promises.push(readFile(file).then(text => { magData = parseVectorCSV(text); }));
-                } else if (file.name === FILE_NAMES.ACCEL_MEASURED) {
+                } 
+                if (file.name === FILE_NAMES.ACCEL_MEASURED) {
                     promises.push(readFile(file).then(text => { tempAccMeas = parseVectorCSV(text); }));
-                } else if (file.name === FILE_NAMES.ACCEL_BIAS) {
+                } 
+                if (file.name === FILE_NAMES.ACCEL_BIAS) {
                     promises.push(readFile(file).then(text => { tempAccBias = parseVectorCSV(text); }));
-                } else if (file.name === FILE_NAMES.POS_ENU) {
+                } 
+                if (file.name === FILE_NAMES.POS_ENU) {
                     promises.push(readFile(file).then(text => { posData = parseVectorCSV(text); }));
+                } 
+                if (file.name === FILE_NAMES.GYRO) {
+                    promises.push(readFile(file).then(text => { gyroData = parseVectorCSV(text); })); 
                 }
             }
 
             await Promise.all(promises);
-            
             processAccelData();
             
             loadingOverlay.classList.add('hidden');
             if (flightData.length > 0) {
-                statusMsg.textContent = `Loaded. Frames: ${flightData.length}. Pos: ${posData.length}`;
+                statusMsg.textContent = `Loaded. Frames: ${flightData.length}. Gyro: ${gyroData.length}`;
                 initPlayback();
             } else {
                 statusMsg.textContent = "Error: No valid Attitude data found.";
@@ -324,7 +363,6 @@
             const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
             
             let idxT = headers.indexOf('time');
-            if (idxT === -1) idxT = headers.indexOf('timestamp');
             if (idxT === -1) idxT = 0; 
 
             let idxW = headers.findIndex(h => ['qw','q1','w'].includes(h));
@@ -374,12 +412,16 @@
         function initPlayback() {
             const slider = document.getElementById('time-slider');
             const playBtn = document.getElementById('play-pause-btn');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
             
             const t0 = flightData[0].t;
             flightData.forEach(d => d.tRelative = d.t - t0);
             
             slider.disabled = false;
             playBtn.disabled = false;
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
             slider.max = flightData.length - 1;
             slider.value = 0;
             playbackIndex = 0;
@@ -405,33 +447,33 @@
             document.getElementById('pitch-value').textContent = data.pitchDeg;
             document.getElementById('yaw-value').textContent = data.yawDeg;
 
-            // 1. Attitude Update (Rotates the Quad Mesh inside the Vehicle Group)
+            // 1. Attitude
             if (quadModel) quadModel.setRotationFromEuler(data.euler);
 
-            // 2. Position Update (Moves the Vehicle Group)
+            // 2. Position
             if (posData.length > 0) {
                 const pos = findClosest(posData, data.t);
                 if (pos) {
-                    // Mapping NED
                     const newPos = new THREE.Vector3(pos.y, -pos.z, -pos.x); 
-                    
-                    // Move Vehicle
                     const prevPos = vehicleGroup.position.clone();
                     vehicleGroup.position.copy(newPos);
                     
-                    // Move Camera (Follow Mode)
-                    const delta = newPos.clone().sub(prevPos);
-                    camera.position.add(delta);
-                    controls.target.copy(newPos);
-                    
+                    if (cameraFollowsDrone) {
+                        const delta = newPos.clone().sub(prevPos);
+                        camera.position.add(delta);
+                        controls.target.copy(newPos);
+                    }
                     document.getElementById('pos-value').textContent = 
                         `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}`;
                 }
             }
 
-            // 3. Vector Updates
+            // 3. Vectors
             updateVector(magData, data.t, magArrowHelper, document.getElementById('mag-value'));
             updateVector(accData, data.t, accArrowHelper, document.getElementById('acc-value'));
+            
+            // 4. Gyro Visualization (Dynamic Arcs)
+            updateGyro(gyroData, data.t);
         }
 
         function updateVector(dataSource, currentTime, arrowObj, textObj) {
@@ -439,14 +481,10 @@
                 arrowObj.visible = false;
                 return;
             }
-
             const match = findClosest(dataSource, currentTime);
             if(match) {
                 textObj.textContent = `[${match.x.toFixed(2)}, ${match.y.toFixed(2)}, ${match.z.toFixed(2)}]`;
-                
-                // FRD to ThreeJS: (Right, -Down, -Forward) -> (y, -z, -x)
                 const dir = new THREE.Vector3(match.y, -match.z, -match.x);
-                
                 if (dir.length() > 0.01) {
                     dir.normalize();
                     arrowObj.setDirection(dir);
@@ -456,7 +494,71 @@
             }
         }
 
-        // Event Listeners for Playback
+        // --- DYNAMIC GYRO ARC LOGIC ---
+        function updateDynamicArc(group, value, color) {
+            // 1. Clear previous mesh
+            while(group.children.length > 0){ 
+                const child = group.children[0];
+                if(child.geometry) child.geometry.dispose();
+                if(child.material) child.material.dispose();
+                group.remove(child); 
+            }
+            value*=1;
+            // 2. Threshold check
+            if (Math.abs(value) < 0.05) return; // Too small to see
+
+            // 3. Calculate Arc Length (Pie Slice)
+            // Scaling: 1 rad/s (approx 57 deg/s) = 45 degrees of arc
+            const sensitivity = 0.8; 
+            let arcLen = Math.abs(value) * sensitivity;
+            if (arcLen > Math.PI * 1.9) arcLen = Math.PI * 1.9; // Max cap just under 360
+
+            // 4. Create Geometry
+            // TorusGeometry(radius, tube, radialSegments, tubularSegments, arc)
+            const radius = 1.0;
+            const tube = 0.05;
+            const geo = new THREE.TorusGeometry(radius, tube, 8, 20, arcLen);
+            const mat = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.8 });
+            const mesh = new THREE.Mesh(geo, mat);
+
+            // 5. Handle Direction (CW vs CCW)
+            // TorusGeometry creates an arc from angle 0 to arcLen (Counter-Clockwise).
+            // If value is Positive (CCW rotation): Arc is perfect (0 to len).
+            // If value is Negative (CW rotation): We want it to look like it's going CW. 
+            // We rotate the mesh by -arcLen. 
+            // Example: Arc is 90 deg. 
+            // Pos: Starts at 0, goes to 90.
+            // Neg: Rotate start to -90. Goes to 0. Visually looks like a CW trail ending at 0.
+            
+            if (value < 0) {
+                mesh.rotation.z = -arcLen;
+            }
+
+            group.add(mesh);
+        }
+
+        function updateGyro(dataSource, currentTime) {
+            if (!dataSource.length) {
+                document.getElementById('gyro-value').textContent = "N/A";
+                return;
+            }
+            const match = findClosest(dataSource, currentTime);
+            if (match) {
+                document.getElementById('gyro-value').textContent = 
+                    `[${match.x.toFixed(2)}, ${match.y.toFixed(2)}, ${match.z.toFixed(2)}]`;
+                
+                // Update X (Roll) -> Red
+                updateDynamicArc(gyroGroupX, -match.x, 0xff0000);
+                
+                // Update Y (Pitch) -> Green
+                updateDynamicArc(gyroGroupY, match.y, 0x00ff00);
+                
+                // Update Z (Yaw) -> Cyan
+                updateDynamicArc(gyroGroupZ, match.z, 0x00ffff);
+            }
+        }
+
+        // Event Listeners
         const slider = document.getElementById('time-slider');
         slider.addEventListener('input', (e) => {
             if (isPlaying) togglePlay();
@@ -464,10 +566,27 @@
             updateFrame(playbackIndex);
         });
 
+        followCheckbox.addEventListener('change', (e) => {
+            cameraFollowsDrone = e.target.checked;
+        });
+
         document.getElementById('play-pause-btn').addEventListener('click', togglePlay);
+        document.getElementById('prev-btn').addEventListener('click', () => stepFrame(-1));
+        document.getElementById('next-btn').addEventListener('click', () => stepFrame(1));
         document.getElementById('speed-select').addEventListener('change', (e) => {
             playbackSpeed = parseFloat(e.target.value);
         });
+
+        function stepFrame(delta) {
+            if (isPlaying) togglePlay();
+            let newIndex = playbackIndex + delta;
+            if (newIndex < 0) newIndex = 0;
+            if (newIndex >= flightData.length) newIndex = flightData.length - 1;
+            
+            playbackIndex = newIndex;
+            slider.value = playbackIndex;
+            updateFrame(playbackIndex);
+        }
 
         function togglePlay() {
             isPlaying = !isPlaying;
@@ -479,7 +598,7 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            controls.update(); // OrbitControls with damping
+            controls.update(); 
 
             if (isPlaying && flightData.length > 0) {
                 const now = performance.now();
