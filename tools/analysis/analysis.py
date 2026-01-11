@@ -255,7 +255,7 @@ def plot_covariance_heatmap(data_dict):
     
 if __name__ == "__main__":
     plt.close('all')
-    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-03_16-00-31'
+    folder=r'C:\Users\gunni\Desktop\quadsim\replay\build\logs\2026-01-10_18-17-04'
     # folder=r"C:\Users\gunni\Desktop\quadsim\simulation\build\logs\2026-01-02_13-37-04"
     data = load_data(folder)
     try:
@@ -301,7 +301,7 @@ if __name__ == "__main__":
     try:
         plt.figure(figsize=(10, 6))
         plt.title("Magnetometer")
-        norm = data['MAG']['data']/np.linalg.norm(data['MAG']['data'],axis=1)[:,np.newaxis]
+        norm = data['MAG_Corr']['data']/np.linalg.norm(data['MAG_Corr']['data'],axis=1)[:,np.newaxis]
         plot_three(norm,times=data['MAG']['time'],label='Meas')
         plot_three(data['MAG_Ref']['data'],times=data['MAG_Ref']['time'],label='Ref',ls='-.')
         plot_three(data['MAG_Pred']['data'],times=data['MAG_Pred']['time'],label='Pred',ls='--')
@@ -324,19 +324,19 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid()
     
-    plt.figure(figsize=(10, 6))
-    plt.title("error")
-    plot_three(data['Err_GPS']['data'][:,:3],times=data['Err_GPS']['time'],label='pos')
-    plot_three(data['Err_GPS']['data'][:,3:6],times=data['Err_GPS']['time'],label='vel')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title("error")
+    # plot_three(data['Err_GPS']['data'][:,:3],times=data['Err_GPS']['time'],label='pos')
+    # plot_three(data['Err_GPS']['data'][:,3:6],times=data['Err_GPS']['time'],label='vel')
+    # plt.legend()
+    # plt.grid()
     
-    plt.figure(figsize=(10, 6))
-    plt.title("error state")
-    plot_three(data['errorStateMean']['data'][:,9:12],times=data['errorStateMean']['time'],label='acc bias')
-    plot_three(data['errorStateMean']['data'][:,12:15],times=data['errorStateMean']['time'],label='gyro bias')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title("error state")
+    # plot_three(data['errorStateMean']['data'][:,9:12],times=data['errorStateMean']['time'],label='acc bias')
+    # plot_three(data['errorStateMean']['data'][:,12:15],times=data['errorStateMean']['time'],label='gyro bias')
+    # plt.legend()
+    # plt.grid()
     
     
     labels = ['Px', 'Py', 'Pz', 'Vx', 'Vy', 'Vz', 
