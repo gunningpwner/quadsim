@@ -109,5 +109,6 @@ void GeometricController::updateRotationControl()
     Matrix3f rot_mat = QuatMap(state_data->orientation.data()).toRotationMatrix();
     Vector3f rot_err = skewnt(rot_desired.transpose() * rot_mat - rot_mat.transpose() * rot_desired) / 2.0f;
     Vector3f omega_err = omega - rot_mat.transpose() * rot_desired * ang_vel_desired;
-    Vector3f moment = -kr * rot_err - komega * omega_err + omega.cross(inertia_mat * omega) - inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
+    // Vector3f moment = -kr * rot_err - komega * omega_err + omega.cross(inertia_mat * omega) - inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
+    Vector3f ang_acc_cmd = -kr * rot_err - komega * omega_err +  inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
 }
