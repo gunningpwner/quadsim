@@ -24,6 +24,7 @@ W25Q128FV *g_flash_ptr = nullptr;
 
 static volatile uint32_t s_overflow_count = 0;
 static volatile uint32_t s_last_dwt_cyccnt = 0;
+static uint32_t s_cycles_per_us = 0;
 
 extern uint8_t RxLastPacket[];
 extern volatile uint32_t RxPacketLen;
@@ -36,6 +37,7 @@ void initTime()
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     s_last_dwt_cyccnt = DWT->CYCCNT;
+    s_cycles_per_us = HAL_RCC_GetHCLKFreq() / 1000000;
 }
 
 uint64_t getCurrentTimeUs()
@@ -59,7 +61,7 @@ uint64_t getCurrentTimeUs()
     __enable_irq();
 
     // Scale to microseconds
-    return total_cycles / (HAL_RCC_GetHCLKFreq() / 1000000);
+    return total_cycles / s_cycles_per_us;
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -113,9 +115,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         // We can now process the raw data that the DMA has moved for us.
         if (g_imu_ptr != nullptr)
         {
-            // printf("imu start: %lu\n",DWT->CYCCNT);
+            // uint32_t start=DWT->CYCCNT;
             g_imu_ptr->processRawData();
-            // printf("imu stop: %lu\n",DWT->CYCCNT);
+            // printf("imu: %lu\n",DWT->CYCCNT-start);
         }
     }
 }
@@ -469,7 +471,7 @@ int main(void)
         CheckUsb();
         // Run the main flight software logic.
 
-        mce.run();
+        // mce.run();
 
         // // Periodically send CRSF telemetry
         // if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {
