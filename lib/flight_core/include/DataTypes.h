@@ -33,10 +33,11 @@ struct SensorData
 
 struct StateEstimate{
     uint64_t timestamp;
-    std::array<float, 3> position_ecef;
-    std::array<float, 3> velocity_ecef;
+    std::array<float, 3> position_enu;
+    std::array<float, 3> velocity_enu;
     std::array<float, 4> orientation;
-    std::array<float, 3> angular_velocity_body;
+    std::array<float, 3> ref_lla;
+    std::array<float, 3> angular_vel;
 
 };
 
