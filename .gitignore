@@ -4,6 +4,6 @@
 build/*
 .pio
 ./lib/*
-*/__pycache__/**
+**/__pycache__/**
 
 *.wbproj

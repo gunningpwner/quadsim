@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
 from scipy.spatial.transform import Rotation
 import pandas as pd
+from SimCore import Quadcopter
+from DataLogger import DataLogger
 # %matplotlib qt
 # --- Configuration Classes ---
 @dataclass
@@ -15,40 +17,7 @@ class SensorConfig:
     name: str
 
 # --- Data Logger ---
-class DataLogger:
-    def __init__(self):
-        self.data: Dict[str, List[list]] = {}
 
-    def log(self, time: float, **kwargs):
-        """
-        Logs variables with their timestamp.
-        Usage: logger.log(t, acc=np.array([0,0,9.8]), alt=100.0)
-        Structure stored: [[t, x, y, z], [t, x, y, z], ...]
-        """
-        for key, val in kwargs.items():
-            if key not in self.data:
-                self.data[key] = []
-            
-            # Normalize input to a flat list so we can prepend time
-            if np.isscalar(val):
-                val_list = [val]
-            elif isinstance(val, np.ndarray):
-                val_list = val.flatten().tolist()
-            elif isinstance(val, list):
-                val_list = val
-            else:
-                # Fallback for other iterables
-                val_list = list(val)
-            
-            # Store [Time, Data_0, Data_1, ...]
-            self.data[key].append([time] + val_list)
-
-    def get_arrays(self):
-        """
-        Returns dictionary of numpy arrays.
-        Format: key -> NxM array where Column 0 is Time.
-        """
-        return {k: np.array(v) for k, v in self.data.items()}
 def skew_symmetric(array):
     
     return np.array([[0,-array[2], array[1]],
@@ -214,80 +183,7 @@ def quaternion_product(p, q):
     z = pw * qz + px * qy - py * qx + pz * qw
     
     return np.array([w, x, y, z])
-# --- Updated Physics Model ---
-class Quadcopter:
-    def __init__(self, initial_state: np.ndarray):
-        self.state = initial_state
-        self.g = 9.81
-        self.mass = 1.0
-        self.mag_earth = np.array([1.0, 0.0, 0.0]) 
-        self.mag_earth = self.mag_earth / np.linalg.norm(self.mag_earth)
-    def rotate_vector(self, q: np.ndarray, v: np.ndarray) -> np.ndarray:
-        """Rotates vector v by quaternion q (Body -> Earth)"""
-        qw, qx, qy, qz = q
-        
-        # Standard Rotation Matrix (Body to Earth)
-        R = np.array([
-            [1 - 2*qy**2 - 2*qz**2,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw],
-            [    2*qx*qy + 2*qz*qw, 1 - 2*qx**2 - 2*qz**2,     2*qy*qz - 2*qx*qw],
-            [    2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx**2 - 2*qy**2]
-        ])
-        return R @ v
 
-    def get_true_acceleration_earth(self, state: np.ndarray, control_input: np.ndarray) -> np.ndarray:
-        """
-        Calculates the true coordinate acceleration in the Earth Frame.
-        This includes Gravity + Thrust (and Drag if we added it).
-        """
-        q = state[6:10]
-        
-        # 1. Thrust: Rotate Body frame thrust into Earth frame
-        thrust_body = control_input[0:3]
-        thrust_earth = self.rotate_vector(q, thrust_body)
-        
-        # 2. Gravity: Defined in Earth frame (Z-Up)
-        gravity_earth = np.array([0, 0, -self.g])
-        
-        # 3. Newton's 2nd Law: F = ma  ->  a = F/m
-        # Note: In a real sim, you would add Drag here: (Thrust + Drag + Gravity) / m
-        accel_earth = gravity_earth + (thrust_earth / self.mass)
-        return accel_earth
-
-    def get_state_derivative(self, state: np.ndarray, control_input: np.ndarray) -> np.ndarray:
-        # Unpack
-        vel = state[3:6]
-        q = state[6:10]
-        rates = state[10:13]
-
-        # 1. Position Dot
-        pos_dot = vel
-
-        # 2. Velocity Dot (Use the helper we just made)
-        vel_dot = self.get_true_acceleration_earth(state, control_input)
-
-        # 3. Quaternion Dot
-        qw, qx, qy, qz = q
-        q_dot = 0.5 * np.array([
-            [-qx, -qy, -qz],
-            [ qw, -qz,  qy],
-            [ qz,  qw, -qx],
-            [-qy,  qx,  qw]
-        ]) @ rates
-
-        # 4. Rates Dot (Simplified torque model)
-        rates_dot = control_input[3:6] 
-
-        return np.concatenate([pos_dot, vel_dot, q_dot, rates_dot])
-
-    def step(self, dt: float, control_input: np.ndarray):
-        k1 = self.get_state_derivative(self.state, control_input)
-        self.state = self.state + k1 * dt
-        
-        # Normalize Quaternion
-        q = self.state[6:10]
-        self.state[6:10] = q / np.linalg.norm(q)
-        
-        return self.state
 # --- Sensor Base Class ---
 class Sensor:
     def __init__(self, config: SensorConfig):
@@ -353,7 +249,7 @@ class IMU(Sensor): # Assumes 'Sensor' base class from previous code exists
             true_rates = true_state[10:13]
             
             # 2. Get Coordinate Acceleration in Earth Frame (Includes Gravity acting on object)
-            accel_earth = quad_model.get_true_acceleration_earth(true_state, control_input)
+            accel_earth = quad_model.get_true_acceleration_earth(true_state, control_input[0:3])
             
             # 3. Define Gravity Vector in Earth Frame
             gravity_earth = np.array([0, 0, -9.81])
@@ -465,7 +361,7 @@ class EstimatorFramework:
             else:
                 u_control = np.array([0, 0, 9.8, 0, 0, 0])
             # Physics Step
-            true_state = self.quad.step(self.dt_sim, u_control)
+            true_state,_ = self.quad.step(self.dt_sim, u_control)
             
             # Sensor Updates
             imu_data = self.imu.get_measurement(self.time, true_state, u_control, self.quad)
