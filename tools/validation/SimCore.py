@@ -29,11 +29,11 @@ def quaternion_product(p, q):
 # --- [Motor Dynamics from SimCore] ---
 @dataclass
 class MotorParams:
-    tau: float = 0.04        # 25ms time constant [cite: 78, 296]
+    tau: float = 0.025        # 25ms time constant [cite: 78, 296]
     omega_max: float = 30000  # RPM [cite: 166]
     kappa: float = 0.5        # Non-linearity [cite: 77, 166]
     omega_idle: float = 1500  # Armed idle RPM [cite: 164, 166]
-    k_thrust: float = 1.0e-7  # Thrust coefficient (T = k*w^2) [cite: 78]
+    k_thrust: float = 1.3e-7  # Thrust coefficient (T = k*w^2) [cite: 78]
     k_torque: float = 1.0e-8  # Drag/Reaction torque coefficient [cite: 78]
     j_rotor: float = 1e-5     # Rotor inertia for B2 reaction torque [cite: 66]
 
@@ -64,7 +64,7 @@ class Quadcopter:
         self.state = initial_state # [pos(3), vel(3), quat(4), rates(3)]
         self.g = 9.81
         self.mass = 1.0
-        self.J = np.diag([0.01, 0.01, 0.02])
+        self.J = np.diag([0.1, 0.1, 0.2])
         self.J_inv = np.linalg.inv(self.J)
         self.mag_earth = np.array([1.0, 0.0, 0.0])
         
@@ -104,9 +104,9 @@ class Quadcopter:
         m_body = m_b1 + np.array([0, 0, m_yaw])
         return f_body, m_body, omega, omega_dot
 
-    def get_true_acceleration_earth(self, state: np.ndarray, f_body: np.ndarray) -> np.ndarray:
+    def get_true_acceleration_earth(self, state: np.ndarray, ) -> np.ndarray:
         q = state[6:10]
-        f_earth = self.rotate_vector(q, f_body)
+        f_earth = self.rotate_vector(q, self.f_body)
         return np.array([0, 0, -self.g]) + (f_earth / self.mass)
 
     def get_state_derivative(self, state: np.ndarray, f_body: np.ndarray, m_body: np.ndarray):
@@ -116,7 +116,8 @@ class Quadcopter:
 
         # Kinematics
         pos_dot = vel
-        vel_dot = self.get_true_acceleration_earth(state, f_body)
+        self.f_body=f_body
+        vel_dot = self.get_true_acceleration_earth(state)
         
         # Quaternion rates
         qw, qx, qy, qz = q
@@ -137,7 +138,6 @@ class Quadcopter:
         if self.use_motors:
             self.motors.step(inputs,dt)
             f_body, m_body, rpm, rpm_dot = self.get_forces_and_moments()
-            
             # RK1 (Euler) integration
             k1 = self.get_state_derivative(self.state, f_body, m_body)
         else:
