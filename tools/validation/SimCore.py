@@ -32,7 +32,7 @@ class MotorParams:
     tau: float = 0.025        # 25ms time constant [cite: 78, 296]
     omega_max: float = 30000  # RPM [cite: 166]
     kappa: float = 0.5        # Non-linearity [cite: 77, 166]
-    omega_idle: float = 1500  # Armed idle RPM [cite: 164, 166]
+    omega_idle: float = 100  # Armed idle RPM [cite: 164, 166]
     k_thrust: float = 1.3e-7  # Thrust coefficient (T = k*w^2) [cite: 78]
     k_torque: float = 1.0e-8  # Drag/Reaction torque coefficient [cite: 78]
     j_rotor: float = 1e-5     # Rotor inertia for B2 reaction torque [cite: 66]

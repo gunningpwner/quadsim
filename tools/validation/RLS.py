@@ -81,7 +81,7 @@ class EstimatorFramework:
         self.quad = Quadcopter(initial_state=x0,use_motors=True)
         self.logger = DataLogger()
         self.time = 0.0
-        self.dt_sim = 0.005
+        self.dt_sim = 0.0005
         self.rls = RLSEstimator(self.dt_sim,self.logger)
         
         self.imu = IMU(SensorConfig(
@@ -205,11 +205,13 @@ class RLSEstimator:
         
         imu_diff=imu_data-self._last_imu
         
-        X=2*omega*omega_diff
+        # X=2*omega*omega_diff
+        X=omega**2-self._last_omega**2
         self.B1, self.spf_P = self.parallelRLS(self.B1, imu_diff[:3], X, self.spf_P)
         imu_dot_diff = imu_diff/self._dt-self._last_imu_dot
         omega_d_diff=omega_d-self._last_omega_d
-        X=np.hstack([1e-5*X,1e-3*omega_d_diff])
+        X=np.hstack([X,omega_d_diff])
+
         self.B2,self.rot_P = self.parallelRLS(self.B2, imu_dot_diff[3:], X, self.rot_P)
         
         self.logger.log(t,b1=self.B1,b2=self.B2,X=X,imu_diff=imu_diff,imu_dot_diff=imu_dot_diff[3:],
