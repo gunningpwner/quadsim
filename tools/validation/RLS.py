@@ -3,77 +3,10 @@ import matplotlib.pyplot as plt
 import scipy.signal as sig
 from SimCore import Quadcopter
 from DataLogger import DataLogger
+from utils import quaternion_to_euler
+from Sensors import IMU,SensorConfig
 plt.close('all')
-def quaternion_to_euler(quaternions):
-    """
-    Converts a Quaternion (Hamilton Convention: [w, x, y, z]) or an 
-    nx4 array of Quaternions to Euler angles (roll, pitch, yaw) 
-    (intrinsic Z-Y-X sequence).
 
-    Args:
-        quaternions (np.array): A 4-element unit quaternion [w, x, y, z] 
-                                or an nx4 array of quaternions.
-
-    Returns:
-        np.array: A 3-element array [roll, pitch, yaw] in radians, 
-                  or an nx3 array of [roll, pitch, yaw] for array input.
-    """
-    # Ensure input is a NumPy array and determine if it's a single quaternion or an array
-    quaternions = np.asarray(quaternions)
-    
-    # Check if the input is a single 4-element quaternion
-    is_single_quaternion = quaternions.ndim == 1 or quaternions.shape[-1] != 4
-    if is_single_quaternion:
-        # Reshape to a 1x4 array for unified processing
-        q = quaternions.reshape(1, 4)
-        was_single = True
-    else:
-        # Input is an nx4 array
-        q = quaternions
-        was_single = False
-
-    # Separate quaternion components
-    # The convention is [w, x, y, z]
-    q_w = q[:, 0]
-    q_x = q[:, 1]
-    q_y = q[:, 2]
-    q_z = q[:, 3]
-    
-    # --- Calculations for Z-Y-X (Roll-Pitch-Yaw) sequence ---
-    
-    # Roll (Rotation around X-axis)
-    # roll = atan2(2*(q_w*q_x + q_y*q_z), 1 - 2*(q_x**2 + q_y**2))
-    sinr_cosp = 2.0 * (q_w * q_x + q_y * q_z)
-    cosr_cosp = 1.0 - 2.0 * (q_x**2 + q_y**2)
-    roll = np.arctan2(sinr_cosp, cosr_cosp)
-    
-    # Pitch (Rotation around Y-axis)
-    # pitch = asin(2*(q_w*q_y - q_z*q_x))
-    sinp = 2.0 * (q_w * q_y - q_z * q_x)
-    
-    # Clamping the argument of arcsin to the range [-1, 1] to prevent
-    # domain errors due to floating point inaccuracies
-    # The max value for sinp is +/-1.0, but float precision can cause values
-    # slightly outside this range (e.g., 1.0000000000000002)
-    sinp = np.clip(sinp, -1.0, 1.0)
-    pitch = np.arcsin(sinp)
-    
-    # Yaw (Rotation around Z-axis)
-    # yaw = atan2(2*(q_w*q_z + q_x*q_y), 1 - 2*(q_y**2 + q_z**2))
-    siny_cosp = 2.0 * (q_w * q_z + q_x * q_y)
-    cosy_cosp = 1.0 - 2.0 * (q_y**2 + q_z**2)
-    yaw = np.arctan2(siny_cosp, cosy_cosp)
-    
-    # Combine the results into an Nx3 array
-    eulers = np.stack((roll, pitch, yaw), axis=-1)
-    
-    # Return the correct shape based on the input
-    if was_single:
-        # Return a 1D array if a single quaternion was input
-        return eulers.flatten()
-    else:
-        # Return the Nx3 array for array input
-        return eulers
 class BiquadFilter:
     def __init__(self, cutoff_hz, fs):
         """
@@ -112,13 +45,14 @@ class BiquadFilter:
 class ExcitationGenerator:
     def __init__(self):
         self._time=0
-        self.zero_time=50/1000
+        self.zero_time=30/1000
         self.step_level=.4
-        self.step_time=40/1000
+        self.step_time=50/1000
         self.ramp_max=.7
-        self.ramp_time=50/1000
+        self.ramp_time=150/1000
+        self.wait_time=100/1000
         self.dur = self.zero_time+self.step_time+self.ramp_time
-        self.time_left=self.dur
+        self.time_left=self.dur+self.wait_time
         
     def __call__(self,dt):
         if self._time<self.zero_time:
@@ -130,11 +64,11 @@ class ExcitationGenerator:
         else:
             ret=0
         self._time+=dt
-        self.time_left=self.dur-self._time
+        self.time_left=self.dur+self.wait_time-self._time
         return ret
     def reset(self):
         self._time=0
-        self.time_left=self.dur
+        self.time_left=self.dur+self.wait_time
         
 class EstimatorFramework:
     def __init__(self):
@@ -149,6 +83,14 @@ class EstimatorFramework:
         self.time = 0.0
         self.dt_sim = 0.005
         self.rls = RLSEstimator(self.dt_sim,self.logger)
+        
+        self.imu = IMU(SensorConfig(
+            update_rate_hz=2000.0,
+            noise_std=np.array([0.0]*3 + [0.00]*3), 
+            bias=np.array([0.0]*3+[.0]*3),
+            name="IMU"
+        ))
+        
     def run(self, duration_sec: float):
         steps = int(duration_sec / self.dt_sim)
         gen=ExcitationGenerator()
@@ -158,13 +100,17 @@ class EstimatorFramework:
             u_control=np.zeros(4)
             if motor_idx<4:
                 u_control[motor_idx]=gen(self.dt_sim)
-                if gen.time_left<=0:
-                    gen.reset()
-                    motor_idx+=1
-            
-            true_state,omega = self.quad.step(self.dt_sim, u_control)
+                
 
-            self.rls.update_motors(self.time, u_control, omega)
+            true_state,omega = self.quad.step(self.dt_sim, u_control)
+            if gen.time_left<=0 and (omega[motor_idx]-15000)<5:
+                gen.reset()
+                motor_idx+=1
+            imu_data = self.imu.get_measurement(self.time, true_state, self.quad)
+            if imu_data is not None:
+                self.logger.log(self.time,imu_acc=imu_data[:3],imu_gyr=imu_data[3:])
+            
+            self.rls.run(self.time, u_control, omega,imu_data)
             
             self.logger.log(self.time, 
                             truth_pos=true_state[:3],truth_vel=true_state[3:6],
@@ -174,44 +120,100 @@ class EstimatorFramework:
 class RLSEstimator:
     def __init__(self,dt,logger):
         self.motor_params=np.zeros((4,4))
-        self.motor_p = np.tile(np.eye(4)[:,:,np.newaxis],(1,1,4))*1000
+        self.motor_p = np.tile(np.eye(4)[:,:,np.newaxis],(1,1,4))*100
+        self.B1=np.zeros((4,3))
+        self.B2=np.zeros((8,3))
+        self.spf_P=np.eye(4)*100
+        
+        self.rot_P=np.eye(8)*100
         
         self._last_omega=np.zeros(4)
+        self._last_omega_d=np.zeros(4)
+        self._last_imu=np.zeros(6)
+        
         self._dt=dt
         self.logger=logger
         self.base_lambda=np.exp(dt/.2)
         self.RLS_COV_MAX = 1e10
         self.RLS_COV_MIN = 1e-6
+    
+    def run(self,t,control_input,omega,imu_data):
+        
+        
+        self.update_motors(t, control_input, omega)
+        if imu_data is not None:
+            self.update_control_eff(t, omega, imu_data)
+            self._last_imu_dot = (imu_data-self._last_imu)/self._dt
+            self._last_imu=imu_data
+            
+        omega_d=(omega-self._last_omega)/self._dt
+        self._last_omega_d=omega_d
+        self._last_omega=omega.copy()
+        
+        
+    def singularRLS(self,parameters, Y,X,P):
+        X=X[:,np.newaxis]
+        current_lambda = self.base_lambda
+        if any(np.diag(P)>self.RLS_COV_MAX):
+            current_lambda = 1.0 + 0.1 * (1.0 - self.base_lambda) 
+            
+        K=P@X/(current_lambda+X.T@P@X)
+
+        P =(P-K@X.T@P)/current_lambda
+        e=Y-X.T@parameters
+        parameters = parameters+K@e
+        return parameters,P
+    
+    def parallelRLS(self,parameters, Y,X,P):
+        X=X[:,np.newaxis]
+        current_lambda = self.base_lambda
+        if any(np.diag(P)>self.RLS_COV_MAX):
+            current_lambda = 1.0 + 0.1 * (1.0 - self.base_lambda) 
+            
+        K=P@X/(current_lambda+X.T@P@X)
+
+        P =(P-K@X.T@P)/current_lambda
+        e=Y.reshape(1, -1)-X.T@parameters
+        parameters = parameters+K@e
+        return parameters,P
+        
     def update_motors(self,t,control_input,omega):
         if not self._last_omega.any():
-            self._last_omega=omega
             return
         omega_d=(omega-self._last_omega)/self._dt
-        self._last_omega=omega.copy() # Need to update the state!
         
-        X = np.vstack([control_input,np.sqrt(control_input),np.ones(4),-omega_d])
-        e=omega-np.einsum('ij,ji->i', X.T, self.motor_params) # Fixed dot product alignment
-        K = np.zeros((4,4))
-
         for i in range(4):
-            # --- Dynamic Lambda Logic ---
-            current_lambda = self.base_lambda
-            for row in range(4):
-                if self.motor_p[row, row, i] > self.RLS_COV_MAX:
-                    # Attempt return to lower P by un-forgetting
-                    current_lambda = 1.0 + 0.1 * (1.0 - self.base_lambda) 
-                    break
-            # ----------------------------
+            X=np.array([control_input[i],np.sqrt(control_input[i]),1,-omega_d[i]])
+            par_out,P_out=self.singularRLS(self.motor_params[:,i], omega[i], X, self.motor_p[:,:,i])
+            self.motor_params[:,i]=par_out
+            self.motor_p[:,:,i]=P_out
 
-            P=self.motor_p[:,:,i]
-            X_sub=X[:,np.newaxis,i]
+
             
-            # Use current_lambda instead of self.lamba
-            K[:,i]=P@X_sub@np.linalg.inv(current_lambda+X_sub.T@P@X_sub)[:,0]
-            self.motor_p[:,:,i]=(P-K[:,np.newaxis,i]@X_sub.T@P)/current_lambda
-            
-        self.motor_params=self.motor_params+K*e
         self.logger.log(t,motor_estimates=self.motor_params)
+    
+    def update_control_eff(self,t,omega,imu_data):
+        if not self._last_omega.any():
+            return
+        if not self._last_omega_d.any():
+            return
+        if not self._last_imu.any():
+            return
+        omega_diff=(omega-self._last_omega)
+        omega_d=omega_diff/self._dt
+        
+        
+        imu_diff=imu_data-self._last_imu
+        
+        X=2*omega*omega_diff
+        self.B1, self.spf_P = self.parallelRLS(self.B1, imu_diff[:3], X, self.spf_P)
+        imu_dot_diff = imu_diff/self._dt-self._last_imu_dot
+        omega_d_diff=omega_d-self._last_omega_d
+        X=np.hstack([1e-5*X,1e-3*omega_d_diff])
+        self.B2,self.rot_P = self.parallelRLS(self.B2, imu_dot_diff[3:], X, self.rot_P)
+        
+        self.logger.log(t,b1=self.B1,b2=self.B2,X=X,imu_diff=imu_diff,imu_dot_diff=imu_dot_diff[3:],
+                        omega_diff=omega_diff,omega_d_dif=omega_d_diff)
         
 if __name__ == "__main__":
     # Initialize Framework
@@ -235,7 +237,7 @@ if __name__ == "__main__":
     
     
     # Run Simulation
-    sim.run(duration_sec=1)
+    sim.run(duration_sec=2)
     
     # Plotting Results
     data = sim.logger.get_arrays()
@@ -278,3 +280,36 @@ if __name__ == "__main__":
         ax.set_title(titles[i])
         ax.plot(data['motor_estimates'][:,0],mot[:,i,:])
         ax.grid()
+        
+    fig,axes=plt.subplots(2,2)
+    plt.suptitle("F2omegadomega")
+    mot=data['b1'][:,1:].reshape((-1,4,3))
+    for i in range(4):
+        ax=axes[i//2,i%2]
+        ax.set_title(f"motor {i}")
+        ax.plot(data['b1'][:,0],mot[:,i,:])
+        ax.grid()
+        
+    fig,axes=plt.subplots(2,2)
+    plt.suptitle("pqr2omegadomega")
+    mot=data['b2'][:,1:].reshape((-1,8,3))
+    for i in range(4):
+        ax=axes[i//2,i%2]
+        ax.set_title(f"motor {i}")
+        ax.plot(data['b2'][:,0],mot[:,i,:])
+        ax.grid()
+        
+    fig,axes=plt.subplots(2,2)
+    plt.suptitle("pqrdomegad")
+    mot=data['b2'][:,1:].reshape((-1,8,3))
+    for i in range(4):
+        ax=axes[i//2,i%2]
+        ax.set_title(f"motor {i}")
+        ax.plot(data['b2'][:,0],mot[:,4+i,:])
+        ax.grid()
+    plt.figure(figsize=(10, 6))
+    plot_three(data['imu_acc'][:,1:],'IMU',times=data['imu_acc'][:,0],ls='--')
+    
+    pls=2*data['omega_diff'][:,1:]*data['omega'][7:,1:]
+    pls3=data['b1'][:,1:].reshape((-1,4,3))[:,:,2]
+    pls4=data['imu_diff'][:,:4]
