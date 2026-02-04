@@ -4,6 +4,7 @@ import scipy.signal as sig
 from SimCore import Quadcopter
 from DataLogger import DataLogger
 import utils
+import os
 from Sensors import IMU,SensorConfig
 plt.close('all')
 
@@ -83,7 +84,7 @@ class EstimatorFramework:
         self.time = 0.0
         self.dt_sim = 0.0005
         self.rls = RLSEstimator(self.dt_sim,self.logger)
-        self.controller=INDI(self.dt_sim)
+        self.controller=INDI(self.dt_sim,self.logger)
         self.imu = IMU(SensorConfig(
             update_rate_hz=2000.0,
             noise_std=np.array([0.0]*3 + [0.00]*3), 
@@ -221,25 +222,27 @@ class RLSEstimator:
 
         self.B2,self.rot_P = self.parallelRLS(self.B2, imu_dot_diff[3:], X, self.rot_P)
         
-        self.logger.log(t,b1=self.B1,b2=self.B2,X=X,imu_diff=imu_diff,imu_dot_diff=imu_dot_diff[3:],
-                        omega_diff=omega_diff,omega_d_dif=omega_d_diff)
+        self.logger.log(t,b1=self.B1,b2=self.B2,X=X,imu_diff=imu_diff,imu_dot_diff=imu_dot_diff[3:],)
 
 class INDI:
-    def __init__(self,dt):
+    def __init__(self,dt,logger):
         self.dt=dt
         self.u_old = np.zeros(4)
-        
-        self.att_gains = np.array([6.0, 6.0, 6.0]) 
-        self.rate_gains = np.array([20.0, 20.0, 20.0]) 
+        self.u_est = np.zeros(4)
+        self.att_gains = np.array([3,3,3]) 
+        self.rate_gains = np.array([6,6,6]) 
         
         # Limits
         self.max_tilt_rate = np.radians(360.0)
         self.max_yaw_rate = np.radians(200.0)
         self.last_ang=np.zeros(3)
         self.last_omega=np.zeros(4)
+        self.logger=logger
     def run(self,t,state,imu_data,omega_0):
         quat=np.array([1,0,0,0])
-        ang_acc = self.get_desired_angular_accel(state,quat)
+        ang_acc = self.get_desired_angular_accel(state,quat,t)
+        if not self.last_ang.any():
+            self.last_ang=imu_data[3:]
         ang_acc_meas=(imu_data[3:]-self.last_ang)/self.dt
         v_ref = np.array([0,0,0,*ang_acc])
         v0=np.array([0,0,0,*ang_acc_meas])
@@ -249,7 +252,7 @@ class INDI:
         self.last_omega=omega_0
         return self.calculate_control_inputs(t, v_ref, v0, omega_0, omega_dot)
         
-    def get_desired_angular_accel(self, state, desired_quat):
+    def get_desired_angular_accel(self, state, desired_quat,t):
         """
         Calculates target angular acceleration (alpha) given current state and desired orientation.
         """
@@ -314,28 +317,33 @@ class INDI:
         
         # 5. Calculate Desired Angular Acceleration
         rate_error = rate_sp - current_rates
+        self.logger.log(t,rate_sp=rate_sp,current_rates=current_rates)
         alpha_sp = self.rate_gains * rate_error
         
         return alpha_sp
     
     def setup(self,rls):
         self.B1k=np.hstack([rls.B1,rls.B2[:4,:]]).T
+        # self.B1k[-1,:]=0
         self.B2=np.hstack([np.zeros((4,3)),rls.B2[4:,:]]).T
         a=rls.motor_params[0,:]
         b=rls.motor_params[0,:]
         self.omega_max = a+b
         self.kappa=a/self.omega_max
         self.tau=rls.motor_params[-1,:]
-        
+        # self.tau=np.full(4, .025)
         
     def calculate_control_inputs(self,t,v_ref,v0,omega_0,omega_dot0):
         lhs = v_ref-v0+self.B2@omega_dot0
         rhs = self.B1k*self.omega_max**2 + self.B2*self.omega_max**2/(2*omega_0*self.tau)
         delta_u= np.linalg.pinv(rhs)@lhs
-        u_cmd = self.u_old+delta_u
+        
+        self.u_est=self.u_est+self.dt/self.tau*(self.u_old-self.u_est)
+        
+        u_cmd = self.u_est+delta_u
         u_cmd=np.clip(u_cmd, 0, 1)
         self.u_old=u_cmd
-        
+        self.logger.log(t,delta_u=delta_u,v_ref=v_ref,v0=v0,u_est=self.u_est)
         return np.array([solve_for_delta(u, k) for u,k in zip(u_cmd,self.kappa)])
         
 def solve_for_delta(u, k):
@@ -376,7 +384,15 @@ def solve_for_delta(u, k):
 if __name__ == "__main__":
     # Initialize Framework
 
-    
+    def log2vis(log,name):
+        time=log[:,0]*1e6
+        data=log[:,1:]
+        shape=np.tile([1,data.shape[1]],[data.shape[0],1])
+        out=np.hstack([time[:,np.newaxis],shape,data])
+        os.makedirs('log',exist_ok=True)
+        np.savetxt(os.path.join("log",f"{name}.csv"),out,delimiter=',')
+        
+        
     def plot_three(data,label,times=None,components=None,**kwargs):
         if components is None:
             components = 'XYZ'
@@ -402,18 +418,18 @@ if __name__ == "__main__":
     
     plt.close('all')
     
-    plt.figure(figsize=(10, 6))
-    plt.title("Position")
-    plot_three(data['truth_pos'],'Truth',ls='-')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title("Position")
+    # plot_three(data['truth_pos'],'Truth',ls='-')
+    # plt.legend()
+    # plt.grid()
 
     
-    plt.figure(figsize=(10, 6))
-    plt.title("Velocity Estimation")
-    plot_three(data['truth_vel'],'Truth',ls='-')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title("Velocity Estimation")
+    # plot_three(data['truth_vel'],'Truth',ls='-')
+    # plt.legend()
+    # plt.grid()
     
     plt.figure(figsize=(10, 6))
     plt.title("orientation")
@@ -425,49 +441,88 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 6))
     plt.title("Control Inputs")
     plt.plot(data['control'][:,0],data['control'][:,1:],ls='-')
+    plt.plot(data['u_est'][:,0],data['u_est'][:,1:],ls='-')
     plt.twinx()
     plt.plot(data['omega'][:,0],data['omega'][:,1:],ls='--')
     plt.legend()
     plt.grid()
     
-    fig,axes=plt.subplots(2,2)
-    mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
-    titles=['a','b','omega_idle','tau']
-    for i in range(4):
-        ax=axes[i//2,i%2]
-        ax.set_title(titles[i])
-        ax.plot(data['motor_estimates'][:,0],mot[:,i,:])
-        ax.grid()
-        
-    fig,axes=plt.subplots(2,2)
-    plt.suptitle("F2omegadomega")
-    mot=data['b1'][:,1:].reshape((-1,4,3))
-    for i in range(4):
-        ax=axes[i//2,i%2]
-        ax.set_title(f"motor {i}")
-        ax.plot(data['b1'][:,0],mot[:,i,:])
-        ax.grid()
-        
-    fig,axes=plt.subplots(2,2)
-    plt.suptitle("pqr2omegadomega")
-    mot=data['b2'][:,1:].reshape((-1,8,3))
-    for i in range(4):
-        ax=axes[i//2,i%2]
-        ax.set_title(f"motor {i}")
-        ax.plot(data['b2'][:,0],mot[:,i,:])
-        ax.grid()
-        
-    fig,axes=plt.subplots(2,2)
-    plt.suptitle("pqrdomegad")
-    mot=data['b2'][:,1:].reshape((-1,8,3))
-    for i in range(4):
-        ax=axes[i//2,i%2]
-        ax.set_title(f"motor {i}")
-        ax.plot(data['b2'][:,0],mot[:,4+i,:])
-        ax.grid()
     plt.figure(figsize=(10, 6))
-    plot_three(data['imu_acc'][:,1:],'IMU',times=data['imu_acc'][:,0],ls='--')
+    plt.title("Control Increments")
+    plt.plot(data['delta_u'][:,0],data['delta_u'][:,1:],ls='-')
+    plt.legend()
+    plt.grid()
     
-    pls=2*data['omega_diff'][:,1:]*data['omega'][7:,1:]
-    pls3=data['b1'][:,1:].reshape((-1,4,3))[:,:,2]
-    pls4=data['imu_diff'][:,:4]
+    # fig,axes=plt.subplots(2,2)
+    # mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
+    # titles=['a','b','omega_idle','tau']
+    # for i in range(4):
+    #     ax=axes[i//2,i%2]
+    #     ax.set_title(titles[i])
+    #     ax.plot(data['motor_estimates'][:,0],mot[:,i,:])
+    #     ax.grid()
+        
+    # fig,axes=plt.subplots(2,2)
+    # plt.suptitle("F2omegadomega")
+    # mot=data['b1'][:,1:].reshape((-1,4,3))
+    # for i in range(4):
+    #     ax=axes[i//2,i%2]
+    #     ax.set_title(f"motor {i}")
+    #     ax.plot(data['b1'][:,0],mot[:,i,:])
+    #     ax.grid()
+        
+    # fig,axes=plt.subplots(2,2)
+    # plt.suptitle("pqr2omegadomega")
+    # mot=data['b2'][:,1:].reshape((-1,8,3))
+    # for i in range(4):
+    #     ax=axes[i//2,i%2]
+    #     ax.set_title(f"motor {i}")
+    #     ax.plot(data['b2'][:,0],mot[:,i,:])
+    #     ax.grid()
+        
+    # fig,axes=plt.subplots(2,2)
+    # plt.suptitle("pqrdomegad")
+    # mot=data['b2'][:,1:].reshape((-1,8,3))
+    # for i in range(4):
+    #     ax=axes[i//2,i%2]
+    #     ax.set_title(f"motor {i}")
+    #     ax.plot(data['b2'][:,0],mot[:,4+i,:])
+    #     ax.grid()
+        
+    # plt.figure(figsize=(10, 6))
+    # plot_three(data['imu_acc'][:,1:],'IMU',times=data['imu_acc'][:,0],ls='--')
+    
+    
+    plt.figure(figsize=(10, 6))
+    plt.title('Body Rates')
+    plot_three(data['current_rates'][:,1:],'current_rates',times=data['current_rates'][:,0])
+    plot_three(data['rate_sp'][:,1:],'rate_sp',times=data['rate_sp'][:,0],ls='--')
+    # plot_three(data['stuff'][:,4:],'stuff',times=data['stuff'][:,0],ls='-.')
+    # plt.ylim(-100,100)
+    plt.grid()
+    plt.legend()
+    
+    plt.figure(figsize=(10, 6))
+    plt.title('Acc Command')
+    plot_three(data['v0'][:,4:],'v0',times=data['v0'][:,0],ls='-')
+    plot_three(data['v_ref'][:,4:],'vref',times=data['v_ref'][:,0],ls='--')
+    plt.legend()
+    plt.grid()
+    
+    ned_quat=np.vstack([data['truth_quat'][:,0],data['truth_quat'][:,3],data['truth_quat'][:,2],-data['truth_quat'][:,4],data['truth_quat'][:,1]]).T
+    log2vis(ned_quat,'Quat')
+    ned=np.vstack([data['truth_pos'][:,0],data['truth_pos'][:,2],data['truth_pos'][:,1],-data['truth_pos'][:,3]]).T
+    
+    log2vis(ned,'Pos')
+    
+    log2vis(data['control'],'Control')
+    
+    imu=data['imu_acc'][:,[0,2,1,3]]
+    imu[:,-1]*=-1
+    log2vis(imu,'IMU')
+    
+    gyr=data['imu_gyr'][:,[0,2,1,3]]
+    gyr[:,-1]*=-1
+    log2vis(gyr,'Gyro')
+    
+    

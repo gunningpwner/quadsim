@@ -83,6 +83,7 @@
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 border border-white" style="border-color: lime"></span> <span>Gyro Y (Pitch Rate)</span></div>
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 border border-white" style="border-color: cyan"></span> <span>Gyro Z (Yaw Rate)</span></div>
             <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-cyan-400 rounded-full"></span> <span>Mag Ref (World)</span></div>
+            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-blue-600 rounded-full"></span> <span>Motor Cmd</span></div>
             <div class="mt-2 text-gray-400 italic">Left Click: Rotate | Scroll: Zoom</div>
         </div>
 
@@ -138,7 +139,8 @@
             ACCEL_MEASURED: 'IMU.csv',
             ACCEL_BIAS:     'AccBias.csv',
             POS_ENU:        'Pos.csv',
-            GYRO:           'Gyro.csv'
+            GYRO:           'Gyro.csv',
+            CONTROL:        'Control.csv'
         };
 
         // --- Global Variables ---
@@ -149,6 +151,7 @@
         
         // Gyro Container Groups (These hold the dynamic meshes)
         let gyroGroupX, gyroGroupY, gyroGroupZ; 
+        let motorArrows = [];
         
         // Data Store
         let flightData = [];
@@ -156,6 +159,7 @@
         let accData = [];
         let posData = [];
         let gyroData = [];
+        let controlData = [];
         
         let tempAccMeas = [];
         let tempAccBias = [];
@@ -166,6 +170,11 @@
         let lastFrameTime = 0;
         let playbackSpeed = 1.0;
         let cameraFollowsDrone = true;
+
+        // Mapping: Physical Motor Index -> CSV Data Index
+        // Physical Indices: 0: FR, 1: FL, 2: BR, 3: BL (Based on creation order)
+        // CSV Indices: 0, 1, 2, 3 (corresponding to columns 3, 4, 5, 6)
+        const MOTOR_MAPPING = [3, 0, 2, 1]; 
 
         // UI
         const fileInput = document.getElementById('folder-input');
@@ -233,6 +242,22 @@
             addProp(d, -d, frontMat); addProp(-d, -d, frontMat);
             addProp(d, d, backMat); addProp(-d, d, backMat);
             
+            // Motor Arrows
+            const arrowDir = new THREE.Vector3(0, 1, 0);
+            const arrowCol = 0x0000ff; // Blue
+            motorArrows = [];
+            const motorPositions = [
+                {x: d, z: -d},  // 0: FR
+                {x: -d, z: -d}, // 1: FL
+                {x: d, z: d},   // 2: BR
+                {x: -d, z: d}   // 3: BL
+            ];
+            motorPositions.forEach(pos => {
+                const arrow = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(pos.x, 0.05, pos.z), 0, arrowCol);
+                quadModel.add(arrow);
+                motorArrows.push(arrow);
+            });
+
             vehicleGroup.scale.set(.1,.1,.1);
             // Standard Vectors
             quadModel.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1.5, 0xffff00));
@@ -316,6 +341,24 @@
             return data;
         }
 
+        function parseControlCSV(text) {
+            const lines = text.trim().split(/\r?\n/);
+            if (lines.length < 1) return [];
+            let startRow = /[a-zA-Z]/.test(lines[0]) ? 1 : 0;
+            
+            const data = [];
+            for(let i=startRow; i<lines.length; i++) {
+                const cols = lines[i].split(',').map(Number);
+                // Time(0), Shape(1,2), Data(3,4,5,6)
+                if(cols.length < 7 || isNaN(cols[3])) continue;
+                data.push({
+                    t: normalizeTime(cols[0]),
+                    m: [cols[3], cols[4], cols[5], cols[6]]
+                });
+            }
+            return data;
+        }
+
         fileInput.addEventListener('change', async (e) => {
             const files = e.target.files;
             if (!files.length) return;
@@ -324,7 +367,7 @@
             loadingStatus.textContent = "Scanning files...";
 
             // Reset Data
-            flightData = []; magData = []; tempAccMeas = []; tempAccBias = []; accData = []; posData = []; gyroData = [];
+            flightData = []; magData = []; tempAccMeas = []; tempAccBias = []; accData = []; posData = []; gyroData = []; controlData = [];
 
             let promises = [];
 
@@ -347,6 +390,9 @@
                 if (file.name === FILE_NAMES.GYRO) {
                     promises.push(readFile(file).then(text => { gyroData = parseVectorCSV(text); })); 
                 }
+                if (file.name === FILE_NAMES.CONTROL) {
+                    promises.push(readFile(file).then(text => { controlData = parseControlCSV(text); })); 
+                }
             }
 
             await Promise.all(promises);
@@ -354,7 +400,7 @@
             
             loadingOverlay.classList.add('hidden');
             if (flightData.length > 0) {
-                statusMsg.textContent = `Loaded. Frames: ${flightData.length}. Gyro: ${gyroData.length}`;
+                statusMsg.textContent = `Loaded. Frames: ${flightData.length}. Gyro: ${gyroData.length}. Ctrl: ${controlData.length}`;
                 initPlayback();
             } else {
                 statusMsg.textContent = "Error: No valid Attitude data found.";
@@ -487,6 +533,9 @@
             
             // 4. Gyro Visualization (Dynamic Arcs)
             updateGyro(gyroData, data.t);
+            
+            // 5. Motor Control Arrows
+            updateMotorArrows(controlData, data.t);
         }
 
         function updateVector(dataSource, currentTime, arrowObj, textObj) {
@@ -600,6 +649,27 @@
                 
                 // Update Z (Yaw) -> Cyan
                 updateDynamicArc(gyroGroupZ, match.z, 0x00ffff);
+            }
+        }
+
+        function updateMotorArrows(dataSource, currentTime) {
+            if (!dataSource.length) {
+                motorArrows.forEach(a => a.visible = false);
+                return;
+            }
+            const match = findClosest(dataSource, currentTime);
+            if (match) {
+                motorArrows.forEach((arrow, i) => {
+                    const dataIndex = MOTOR_MAPPING[i];
+                    const val = match.m[dataIndex];
+                    // Scale arrow. Max length e.g. 1.5 for value 1.0
+                    if (val > 0.01) {
+                        arrow.visible = true;
+                        arrow.setLength(val * 1.5, 0.3, 0.15); 
+                    } else {
+                        arrow.visible = false;
+                    }
+                });
             }
         }
 
