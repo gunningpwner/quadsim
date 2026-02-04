@@ -164,3 +164,33 @@ def quaternion_product(p, q):
     z = pw * qz + px * qy - py * qx + pz * qw
     
     return np.array([w, x, y, z])
+
+def quaternion_from_axis_angle(axis, angle):
+    """
+    Creates a unit quaternion from a rotation axis and angle.
+    Args:
+        axis: np.array of shape (3,) (should be normalized)
+        angle: float (radians)
+    Returns:
+        np.array: [w, x, y, z]
+    """
+    half_angle = angle * 0.5
+    sin_half = np.sin(half_angle)
+    return np.array([
+        np.cos(half_angle),
+        axis[0] * sin_half,
+        axis[1] * sin_half,
+        axis[2] * sin_half
+    ])
+
+def quaternion_get_z_axis(q):
+    """
+    Extracts the Z-axis (3rd column) of the rotation matrix represented by q.
+    Equivalent to rotating the vector [0, 0, 1] by the quaternion.
+    """
+    w, x, y, z = q
+    return np.array([
+        2.0 * (x*z + w*y),
+        2.0 * (y*z - w*x),
+        1.0 - 2.0 * (x*x + y*y)
+    ])
