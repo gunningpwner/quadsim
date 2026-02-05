@@ -336,6 +336,7 @@ class INDI:
     def calculate_control_inputs(self,t,v_ref,v0,omega_0,omega_dot0):
         lhs = v_ref-v0+self.B2@omega_dot0
         rhs = self.B1k*self.omega_max**2 + self.B2*self.omega_max**2/(2*omega_0*self.tau)
+        # replace with precalc and curve fit method. 
         delta_u= np.linalg.pinv(rhs)@lhs
         
         self.u_est=self.u_est+self.dt/self.tau*(self.u_old-self.u_est)
@@ -525,4 +526,21 @@ if __name__ == "__main__":
     gyr[:,-1]*=-1
     log2vis(gyr,'Gyro')
     
-    
+    def calc_inv(omega):
+        omega_max=sim.controller.omega_max
+        rhs = sim.controller.B1k*sim.controller.omega_max**2 + sim.controller.B2*sim.controller.omega_max**2/(2*omega*sim.controller.tau)
+        return np.linalg.pinv(rhs)
+
+
+    vals=[]
+    test_vals=np.arange(100,15000,100)
+    for i in test_vals:
+        vals.append(calc_inv(i).flatten())
+        
+    vals=np.array(vals)
+
+
+    plt.figure(figsize=(10, 6))
+    plt.title("Elements of pinv(rhs) vs omega_0")
+    plt.plot(test_vals,vals)
+    plt.xlabel("Omega")
