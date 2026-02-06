@@ -5,6 +5,9 @@ model(model) {};
 
 void Estimator::update_motor_estimate(){
     // O =4x1, Y=1x1,X=4x1 P=4x4
+    for (int i=0; i<4; i++){
+        
+    }
 };
 
 void Estimator::update_control_estimate() {
