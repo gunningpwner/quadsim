@@ -327,7 +327,7 @@ class INDI:
         # self.B1k[-1,:]=0
         self.B2=np.hstack([np.zeros((4,3)),rls.B2[4:,:]]).T
         a=rls.motor_params[0,:]
-        b=rls.motor_params[0,:]
+        b=rls.motor_params[1,:]
         self.omega_max = a+b
         self.kappa=a/self.omega_max
         self.tau=rls.motor_params[-1,:]
