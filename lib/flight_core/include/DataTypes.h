@@ -31,6 +31,19 @@ struct SensorData
     } data;
 };
 
+struct FastIMUData
+{
+    uint64_t timestamp;
+    std::array<float, 6> data;
+};
+
+struct FastRPMData
+{
+    uint64_t timestamp;
+    std::array<float, 4> rpm;
+};
+
+
 struct StateEstimate{
     uint64_t timestamp;
     std::array<float, 3> position_enu;

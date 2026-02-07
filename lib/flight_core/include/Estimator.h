@@ -24,8 +24,6 @@ private:
 
     
     QuadcopterModel& model;
-    FilteredSignal& omega_sig;
-    FilteredSignal& imu_sig;
-    FilteredSignal& control_sig;
+    
     float base_lambda;
 };

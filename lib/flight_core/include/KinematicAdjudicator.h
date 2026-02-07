@@ -7,7 +7,7 @@ class KinematicAdjuticator
 public:
     KinematicAdjuticator();
     void update();
-
+    
 private:
     Estimator m_estimator;
     INDIController m_indicator;

@@ -70,7 +70,9 @@ private:
 struct QuadcopterModel {
     Matrix4f rls_motor_covariances[4];
     Vector4f rls_motor_estimates[4];
-    
+    FilteredSignal omega_sig;
+    FilteredSignal imu_sig;
+    FilteredSignal control_sig;
 
     
 };
