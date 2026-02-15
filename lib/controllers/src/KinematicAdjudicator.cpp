@@ -1,4 +1,5 @@
 #include "KinematicAdjudicator.h"
+#include "Logger.h"
 
 KinematicAdjudicator::KinematicAdjudicator() : 
     current_mode(FlightMode::LEARNING),
@@ -28,6 +29,7 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
     // Update the QuadModel state
     // NOTE: Estimator should NO LONGER call .update() internally!
     model.omega_sig.update(raw_omega, timestamp_us);
+    Logger::getInstance().log("omega_filt", model.omega_sig.val, timestamp_us);
     model.imu_sig.update(imu_vec, timestamp_us);
     
     // We update control_sig later, after we decide what the control is.

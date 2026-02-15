@@ -2,7 +2,7 @@
 template<typename T>
 class BiquadFilter{
 public:
-    void init(float b0, float b1, float b2, float a1, float a2) {
+    BiquadFilter(float b0, float b1, float b2, float a1, float a2) {
         this->b0 = b0; this->b1 = b1; this->b2 = b2;
         this->a1 = a1; this->a2 = a2;
 

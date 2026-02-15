@@ -2,6 +2,7 @@
 #include <array>
 #include <Eigen/Dense>
 #include <cstdint>
+#include <cmath>
 #include "BasicFilters.h"
 
 using Vector4f = Eigen::Vector4f;
@@ -22,14 +23,12 @@ public:
 
     BiquadFilter<T> filter; 
     
-    FilteredSignal() {
-        reset();
-    }
+    FilteredSignal() : filter(computeDefaultFilter()) {}
 
     void update(const T& new_raw, uint64_t timestamp_us) {
         raw = new_raw;
         T new_filtered = filter.apply(raw);
-
+        
         if (sample_count == 0){
             val = new_filtered;
             prev_val = val;
@@ -68,6 +67,22 @@ public:
 private:
     uint64_t last_timestamp_us;
     int sample_count = 0;
+
+    static BiquadFilter<T> computeDefaultFilter() {
+        float cutoff_hz = 20.0f;
+        float sample_rate_hz = 2000.0f;
+        float K = std::tan(M_PI * cutoff_hz / sample_rate_hz);
+        float K2 = K * K;
+        float norm = 1.0f / (1.0f + std::sqrt(2.0f) * K + K2);
+
+        float b0 = K2 * norm;
+        float b1 = 2.0f * b0;
+        float b2 = b0;
+        float a1 = 2.0f * (K2 - 1.0f) * norm;
+        float a2 = (1.0f - std::sqrt(2.0f) * K + K2) * norm;
+        // return BiquadFilter<T>(b0, b1, b2, a1, a2);
+        return BiquadFilter<T>(1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    }
 
     void setZero(T& v) {
         if constexpr (std::is_class<T>::value) v.setZero();

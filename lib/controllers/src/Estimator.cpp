@@ -1,6 +1,8 @@
 #include "Estimator.h"
 #include <cmath>
-
+#ifdef SIM
+#include "Logger.h"
+#endif
 Estimator::Estimator(QuadcopterModel& model) 
     : model(model), 
       last_timestamp_us(0),
@@ -9,19 +11,19 @@ Estimator::Estimator(QuadcopterModel& model)
 {
     // Initialize Covariances
     for(int i=0; i<4; i++){
-        model.rls_motor_covariances[i].setIdentity();
-        model.rls_motor_covariances[i] *= RLS_COV_INIT;
-        model.rls_motor_estimates[i].setZero();
+        rls_motor_covariances[i].setIdentity();
+        rls_motor_covariances[i] *= RLS_COV_INIT;
+        rls_motor_estimates[i].setZero();
     }
 
-    P_B1.setIdentity();
-    P_B1 *= RLS_COV_INIT;
-    
-    P_B2.setIdentity();
-    P_B2 *= RLS_COV_INIT;
+    rls_spf_covariance.setIdentity();
+    rls_spf_covariance *= RLS_COV_INIT;
+    rls_spf_estimate.setZero();
 
-    model.B1.setZero();
-    model.B2.setZero();
+
+    rls_ratedot_covariance.setIdentity();
+    rls_ratedot_covariance *= RLS_COV_INIT;
+    rls_ratedot_estimate.setZero();
 }
 
 void Estimator::run(uint64_t timestamp_us, const Vector4f& control_u, const Vector4f& omega, const Eigen::Matrix<float, 6, 1>& imu_data)
@@ -59,8 +61,6 @@ void Estimator::update_motor_estimate()
     Vector4f omega_dot = model.omega_sig.dot;
     Vector4f u = model.control_sig.val;
 
-    // If we don't have a valid omega derivative yet, skip
-    if (omega_dot.isZero(1e-5f)) return;
 
     for(int i = 0; i < 4; i++) {
         // Construct Regressor
@@ -73,9 +73,18 @@ void Estimator::update_motor_estimate()
              -omega_dot(i);
 
         float Y = omega(i);
+        #ifdef SIM
+        if (i == 0){
+        Logger::getInstance().log("Motor1Est", rls_motor_estimates[i], last_timestamp_us);
+        Logger::getInstance().log("Motor1Cov", rls_motor_covariances[i], last_timestamp_us);
+        Logger::getInstance().log("Motor1X", X, last_timestamp_us);
+        Logger::getInstance().log("Motor1Y", Y, last_timestamp_us);
 
-        apply_miso_rls<4>(X, Y, model.rls_motor_estimates[i], model.rls_motor_covariances[i]);
+        }
+        #endif
+        apply_miso_rls<4>(X, Y, rls_motor_estimates[i], rls_motor_covariances[i]);
     }
+
 }
 
 void Estimator::update_control_estimate()
@@ -97,7 +106,7 @@ void Estimator::update_control_estimate()
     // Y_B1 = Delta Specific Force
     Eigen::Vector3f Y_B1 = model.imu_sig.diff.head<3>();
 
-    apply_mimo_rls<4, 3>(X_B1, Y_B1, model.B1, P_B1);
+    apply_mimo_rls<4, 3>(X_B1, Y_B1, rls_spf_estimate, rls_spf_covariance);
 
 
     // B2: Maps Motor Acceleration to Body Angular Acceleration
@@ -115,5 +124,5 @@ void Estimator::update_control_estimate()
     // dot_diff of imu_sig is [jerk_lin, alpha_diff]. We want tail(3).
     Eigen::Vector3f Y_B2 = model.imu_sig.dot_diff.tail<3>();
 
-    apply_mimo_rls<8, 3>(X_B2, Y_B2, model.B2, P_B2);
+    apply_mimo_rls<8, 3>(X_B2, Y_B2, rls_ratedot_estimate, rls_ratedot_covariance);
 }

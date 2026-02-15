@@ -11,10 +11,14 @@ public:
 
 private:
     QuadcopterModel& model;
+    Matrix4f rls_motor_covariances[4];
+    Vector4f rls_motor_estimates[4];
 
     // Covariances for Control Effectiveness (kept internal to estimator)
-    Eigen::Matrix<float, 4, 4> P_B1; // Covariance for B1
-    Eigen::Matrix<float, 8, 8> P_B2; // Covariance for B2
+    Eigen::Matrix<float, 4, 3> rls_spf_estimate;
+    Eigen::Matrix<float, 8, 3> rls_ratedot_estimate;
+    Eigen::Matrix<float, 4, 4> rls_spf_covariance; // Covariance for B1
+    Eigen::Matrix<float, 8, 8> rls_ratedot_covariance; // Covariance for B2
 
     // Internal State
     uint64_t last_timestamp_us;

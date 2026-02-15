@@ -195,7 +195,8 @@ class RLSEstimator:
             par_out,P_out=self.singularRLS(self.motor_params[:,i], omega[i], X, self.motor_p[:,:,i])
             self.motor_params[:,i]=par_out
             self.motor_p[:,:,i]=P_out
-
+            if i==0:
+                self.logger.log(t,motor1X=X,motor1Cov=self.motor_p[:,:,i])
 
             
         self.logger.log(t,motor_estimates=self.motor_params)
@@ -432,12 +433,12 @@ if __name__ == "__main__":
     # plt.legend()
     # plt.grid()
     
-    plt.figure(figsize=(10, 6))
-    plt.title("orientation")
-    truth_ori = np.rad2deg(utils.quaternion_to_euler(data['truth_quat'][:,1:5]))
-    plot_three(truth_ori,'Truth',times=data['truth_quat'][:,0],ls='-')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title("orientation")
+    # truth_ori = np.rad2deg(utils.quaternion_to_euler(data['truth_quat'][:,1:5]))
+    # plot_three(truth_ori,'Truth',times=data['truth_quat'][:,0],ls='-')
+    # plt.legend()
+    # plt.grid()
     
     plt.figure(figsize=(10, 6))
     plt.title("Control Inputs")
@@ -449,10 +450,18 @@ if __name__ == "__main__":
     plt.grid()
     
     plt.figure(figsize=(10, 6))
-    plt.title("Control Increments")
-    plt.plot(data['delta_u'][:,0],data['delta_u'][:,1:],ls='-')
-    plt.legend()
-    plt.grid()
+    plt.plot(data['motor1X'][:,0],data['motor1X'][:,1:])
+    # plt.figure(figsize=(10, 6))
+    # plt.title("Control Increments")
+    # plt.plot(data['delta_u'][:,0],data['delta_u'][:,1:],ls='-')
+    # plt.legend()
+    # plt.grid()
+    plt.figure(figsize=(10, 6))
+    mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
+    plt.plot(data['motor_estimates'][:,0],mot[:,:,0])
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(data['motor1Cov'][:,0],data['motor1Cov'][:,1:])
     
     # fig,axes=plt.subplots(2,2)
     # mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
@@ -494,53 +503,53 @@ if __name__ == "__main__":
     # plot_three(data['imu_acc'][:,1:],'IMU',times=data['imu_acc'][:,0],ls='--')
     
     
-    plt.figure(figsize=(10, 6))
-    plt.title('Body Rates')
-    plot_three(data['current_rates'][:,1:],'current_rates',times=data['current_rates'][:,0])
-    plot_three(data['rate_sp'][:,1:],'rate_sp',times=data['rate_sp'][:,0],ls='--')
-    # plot_three(data['stuff'][:,4:],'stuff',times=data['stuff'][:,0],ls='-.')
-    # plt.ylim(-100,100)
-    plt.grid()
-    plt.legend()
+    # plt.figure(figsize=(10, 6))
+    # plt.title('Body Rates')
+    # plot_three(data['current_rates'][:,1:],'current_rates',times=data['current_rates'][:,0])
+    # plot_three(data['rate_sp'][:,1:],'rate_sp',times=data['rate_sp'][:,0],ls='--')
+    # # plot_three(data['stuff'][:,4:],'stuff',times=data['stuff'][:,0],ls='-.')
+    # # plt.ylim(-100,100)
+    # plt.grid()
+    # plt.legend()
     
-    plt.figure(figsize=(10, 6))
-    plt.title('Acc Command')
-    plot_three(data['v0'][:,4:],'v0',times=data['v0'][:,0],ls='-')
-    plot_three(data['v_ref'][:,4:],'vref',times=data['v_ref'][:,0],ls='--')
-    plt.legend()
-    plt.grid()
+    # plt.figure(figsize=(10, 6))
+    # plt.title('Acc Command')
+    # plot_three(data['v0'][:,4:],'v0',times=data['v0'][:,0],ls='-')
+    # plot_three(data['v_ref'][:,4:],'vref',times=data['v_ref'][:,0],ls='--')
+    # plt.legend()
+    # plt.grid()
     
-    ned_quat=np.vstack([data['truth_quat'][:,0],data['truth_quat'][:,3],data['truth_quat'][:,2],-data['truth_quat'][:,4],data['truth_quat'][:,1]]).T
-    log2vis(ned_quat,'Quat')
-    ned=np.vstack([data['truth_pos'][:,0],data['truth_pos'][:,2],data['truth_pos'][:,1],-data['truth_pos'][:,3]]).T
+    # ned_quat=np.vstack([data['truth_quat'][:,0],data['truth_quat'][:,3],data['truth_quat'][:,2],-data['truth_quat'][:,4],data['truth_quat'][:,1]]).T
+    # log2vis(ned_quat,'Quat')
+    # ned=np.vstack([data['truth_pos'][:,0],data['truth_pos'][:,2],data['truth_pos'][:,1],-data['truth_pos'][:,3]]).T
     
-    log2vis(ned,'Pos')
+    # log2vis(ned,'Pos')
     
-    log2vis(data['control'],'Control')
+    # log2vis(data['control'],'Control')
     
-    imu=data['imu_acc'][:,[0,2,1,3]]
-    imu[:,-1]*=-1
-    log2vis(imu,'IMU')
+    # imu=data['imu_acc'][:,[0,2,1,3]]
+    # imu[:,-1]*=-1
+    # log2vis(imu,'IMU')
     
-    gyr=data['imu_gyr'][:,[0,2,1,3]]
-    gyr[:,-1]*=-1
-    log2vis(gyr,'Gyro')
+    # gyr=data['imu_gyr'][:,[0,2,1,3]]
+    # gyr[:,-1]*=-1
+    # log2vis(gyr,'Gyro')
     
-    def calc_inv(omega):
-        omega_max=sim.controller.omega_max
-        rhs = sim.controller.B1k*sim.controller.omega_max**2 + sim.controller.B2*sim.controller.omega_max**2/(2*omega*sim.controller.tau)
-        return np.linalg.pinv(rhs)
+    # def calc_inv(omega):
+    #     omega_max=sim.controller.omega_max
+    #     rhs = sim.controller.B1k*sim.controller.omega_max**2 + sim.controller.B2*sim.controller.omega_max**2/(2*omega*sim.controller.tau)
+    #     return np.linalg.pinv(rhs)
 
 
-    vals=[]
-    test_vals=np.arange(100,15000,100)
-    for i in test_vals:
-        vals.append(calc_inv(i).flatten())
+    # vals=[]
+    # test_vals=np.arange(100,15000,100)
+    # for i in test_vals:
+    #     vals.append(calc_inv(i).flatten())
         
-    vals=np.array(vals)
+    # vals=np.array(vals)
 
 
-    plt.figure(figsize=(10, 6))
-    plt.title("Elements of pinv(rhs) vs omega_0")
-    plt.plot(test_vals,vals)
-    plt.xlabel("Omega")
+    # plt.figure(figsize=(10, 6))
+    # plt.title("Elements of pinv(rhs) vs omega_0")
+    # plt.plot(test_vals,vals)
+    # plt.xlabel("Omega")
