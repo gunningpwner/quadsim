@@ -1,13 +1,13 @@
 #pragma once
 #include "QuadModel.h"
-
+#include "timing.h"
 class Estimator
 {
 public:
     Estimator(QuadcopterModel& model);
     
     // Main update loop
-    void run(uint64_t timestamp_us, const Vector4f& control_u, const Vector4f& omega, const Eigen::Matrix<float, 6, 1>& imu_data);
+    void run();
 
 private:
     QuadcopterModel& model;
@@ -48,14 +48,7 @@ private:
                         Eigen::Matrix<float, N, 1> &theta,
                         Eigen::Matrix<float, N, N> &P)
     {
-        // Calculate dynamic forgetting factor
-        float lambda = std::exp(current_dt / -lambda_tau); // lambda = exp(-dt/tau) approx exp(dt/0.2) logic inverted for decay
-        // Note: Python code uses lambda = exp(dt/0.2) which is > 1. 
-        // Standard RLS lambda is usually < 1 (forgetting). 
-        // However, Python implementation uses lambda in the denominator of P update: P = (...) / lambda.
-        // If lambda > 1, P decays. 
-        // We will match the Python logic: lambda = exp(dt / 0.2f);
-        lambda = std::exp(current_dt / 0.2f);
+        float lambda = std::exp(current_dt / 0.2f);
 
         // Covariance Reset check
         if (P.diagonal().maxCoeff() > RLS_COV_MAX) {

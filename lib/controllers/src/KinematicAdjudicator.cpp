@@ -7,7 +7,7 @@ KinematicAdjudicator::KinematicAdjudicator() :
     m_indicator(model),
     last_timestamp_us(0)
 {
-    // Initialize model if needed (reset filters, etc)
+    m_exciter.startTimer();
 }
 
 Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us, 
@@ -42,8 +42,9 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
 
     switch (current_mode) {
         case FlightMode::LEARNING: {
+            m_estimator.run();
             // A. Get Excitation Command
-            motor_command = m_exciter.getCommand(dt, raw_gyro);
+            motor_command = m_exciter.getCommand( raw_gyro);
 
             // B. Update Control Signal in Model 
             // (RLS needs to know what we *just* commanded vs the *previous* reaction)
@@ -51,7 +52,7 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
 
             // C. Run Estimator
             // The Estimator reads from model.omega_sig, model.imu_sig, model.control_sig
-            m_estimator.run(timestamp_us, motor_command, raw_omega, imu_vec);
+            
 
             // D. Check for Completion
             if (m_exciter.isComplete()) {

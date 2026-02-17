@@ -26,27 +26,12 @@ Estimator::Estimator(QuadcopterModel& model)
     rls_ratedot_estimate.setZero();
 }
 
-void Estimator::run(uint64_t timestamp_us, const Vector4f& control_u, const Vector4f& omega, const Eigen::Matrix<float, 6, 1>& imu_data)
+void Estimator::run()
 {
-    if (last_timestamp_us != 0) {
-        current_dt = (timestamp_us - last_timestamp_us) * 1e-6f;
-        if (current_dt < 1e-6f) current_dt = 1e-6f; // Prevent div by zero
-    }
-    last_timestamp_us = timestamp_us;
 
-    // 1. Update Signals (computes filtered values, diffs, and derivatives)
-    model.control_sig.update(control_u, timestamp_us);
-    model.omega_sig.update(omega, timestamp_us);
-    model.imu_sig.update(imu_data, timestamp_us);
-
-    // 2. Run Estimates
-    // We need valid derivatives (requires at least 2 samples for diff, 3 for dot_diff)
-    // The FilteredSignal handles startup gracefully, but RLS might need to wait 
-    // for non-zero derivatives to be stable.
-    if (last_timestamp_us > 0) {
         update_motor_estimate();
         update_control_estimate();
-    }
+    
 }
 
 void Estimator::update_motor_estimate()
@@ -75,11 +60,12 @@ void Estimator::update_motor_estimate()
         float Y = omega(i);
         #ifdef SIM
         if (i == 0){
-        Logger::getInstance().log("Motor1Est", rls_motor_estimates[i], last_timestamp_us);
-        Logger::getInstance().log("Motor1Cov", rls_motor_covariances[i], last_timestamp_us);
-        Logger::getInstance().log("Motor1X", X, last_timestamp_us);
-        Logger::getInstance().log("Motor1Y", Y, last_timestamp_us);
-
+        Logger::getInstance().log("Motor1Est", rls_motor_estimates[i], getCurrentTimeUs());
+        Logger::getInstance().log("Motor1Cov", rls_motor_covariances[i],  getCurrentTimeUs());
+        Logger::getInstance().log("Motor1X", X,  getCurrentTimeUs());
+        Logger::getInstance().log("Motor1Y", Y,  getCurrentTimeUs());
+        Logger::getInstance().log("omega", omega,  getCurrentTimeUs());
+        Logger::getInstance().log("control", u,  getCurrentTimeUs());
         }
         #endif
         apply_miso_rls<4>(X, Y, rls_motor_estimates[i], rls_motor_covariances[i]);

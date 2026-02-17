@@ -1,24 +1,21 @@
 #include "ExcitationGenerator.h"
 
-void ExcitationGenerator::reset() {
-        current_motor = 0;
-        state_timer = 0.0f;
-        is_complete = false;
-        // Constants from Python/Paper
-        zero_dur = 0.030f;
-        step_dur = 0.050f;
-        ramp_dur = 0.150f;
-        wait_dur = 0.100f;
-    }
+void ExcitationGenerator::startTimer()
+{
+    timer_start_timestamp = getCurrentTimeUs();
+    motor_start_timestamp = getCurrentTimeUs();
+}
 
 
-Eigen::Vector4f ExcitationGenerator::getCommand(float dt, const Eigen::Vector3f &gyro_meas)
+Eigen::Vector4f ExcitationGenerator::getCommand(const Eigen::Vector3f &gyro_meas)
 {
     if (is_complete)
         return Eigen::Vector4f::Zero();
 
-    state_timer += dt;
+    state_timer= (getCurrentTimeUs() - motor_start_timestamp) * 1e-6f;
+
     Eigen::Vector4f cmd = Eigen::Vector4f::Zero();
+    
 
     // 1. Safety Check (Paper Sec II.B.d):
     // Abort this motor if gyro exceeds safety margin
@@ -42,7 +39,7 @@ Eigen::Vector4f ExcitationGenerator::getCommand(float dt, const Eigen::Vector3f 
     {
         val = 0.4f; // Step level from Python
     }
-    else if (state_timer < (zero_dur + step_dur + ramp_dur))
+    else if (state_timer <= (zero_dur + step_dur + ramp_dur))
     {
         // Ramp down logic
         float ramp_progress = state_timer - (zero_dur + step_dur);
@@ -65,7 +62,7 @@ Eigen::Vector4f ExcitationGenerator::getCommand(float dt, const Eigen::Vector3f 
 void ExcitationGenerator::advanceMotor()
 {
     current_motor++;
-    state_timer = 0.0f;
+    motor_start_timestamp = getCurrentTimeUs();
     if (current_motor >= 4)
     {
         is_complete = true;

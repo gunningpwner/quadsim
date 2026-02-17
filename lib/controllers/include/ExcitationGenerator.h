@@ -1,28 +1,36 @@
 #pragma once
 #include <Eigen/Dense>
 #include <cmath>
-
-class ExcitationGenerator {
+#include "timing.h"
+class ExcitationGenerator
+{
 public:
-    ExcitationGenerator() {
-        reset();
-    }
+    ExcitationGenerator() : current_motor(0),
+                            state_timer(0.0f),
+                            is_complete(false), 
+                            zero_dur(0.030f), 
+                            step_dur(0.050f), 
+                            ramp_dur(0.150f), 
+                            wait_dur(0.100f) {}
 
-    void reset();
+    void startTimer();
 
     // Returns true if excitation is finished
     bool isComplete() const { return is_complete; }
 
     // Generates the motor command for the current timestep
-    Eigen::Vector4f getCommand(float dt, const Eigen::Vector3f& gyro_meas);
+    Eigen::Vector4f getCommand(const Eigen::Vector3f &gyro_meas);
 
 private:
-    void advanceMotor(); 
+    void advanceMotor();
 
     int current_motor;
     float state_timer;
     bool is_complete;
-    
+
     // Timing parameters
     float zero_dur, step_dur, ramp_dur, wait_dur;
+    uint64_t timer_start_timestamp;
+    uint64_t motor_start_timestamp;
+
 };
