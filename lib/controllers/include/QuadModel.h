@@ -23,7 +23,7 @@ public:
 
     BiquadFilter<T> filter; 
     
-    FilteredSignal() : filter(computeDefaultFilter()) {}
+    FilteredSignal() : filter(computeDefaultFilter()) {reset();}
 
     void update(const T& new_raw, uint64_t timestamp_us) {
         raw = new_raw;
