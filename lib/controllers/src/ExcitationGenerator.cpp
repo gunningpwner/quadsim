@@ -4,6 +4,8 @@ void ExcitationGenerator::startTimer()
 {
     timer_start_timestamp = getCurrentTimeUs();
     motor_start_timestamp = getCurrentTimeUs();
+    current_motor = 0;
+    is_complete = false;
 }
 
 

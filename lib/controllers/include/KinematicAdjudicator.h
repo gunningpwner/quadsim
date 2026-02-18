@@ -7,11 +7,7 @@
 class KinematicAdjudicator
 {
 public:
-    enum class FlightMode {
-        LEARNING,
-        RECOVERY, // Optional: Transition phase
-        FLIGHT
-    };
+
 
     KinematicAdjudicator();
 
@@ -22,7 +18,6 @@ public:
                            const Eigen::Vector3f& raw_gyro);
 
 private:
-    FlightMode current_mode;
     
     // Shared Data Store
     QuadcopterModel model;

@@ -45,9 +45,9 @@ void Estimator::update_motor_estimate()
     Vector4f omega = model.omega_sig.val;
     Vector4f omega_dot = model.omega_sig.dot;
     Vector4f u = model.control_sig.val;
-
-
-    for(int i = 0; i < 4; i++) {
+    // for(int i = 0; i < 4; i++) {
+    if (model.current_mode == FlightMode::LEARNING) {
+        int i = model.current_motor;
         // Construct Regressor
         Eigen::Matrix<float, 4, 1> X;
         float sqrt_u = (u(i) > 0) ? std::sqrt(u(i)) : 0.0f;
@@ -59,14 +59,10 @@ void Estimator::update_motor_estimate()
 
         float Y = omega(i);
         #ifdef SIM
-        if (i == 0){
-        Logger::getInstance().log("Motor1Est", rls_motor_estimates[i], getCurrentTimeUs());
-        Logger::getInstance().log("Motor1Cov", rls_motor_covariances[i],  getCurrentTimeUs());
-        Logger::getInstance().log("Motor1X", X,  getCurrentTimeUs());
-        Logger::getInstance().log("Motor1Y", Y,  getCurrentTimeUs());
-        Logger::getInstance().log("omega", omega,  getCurrentTimeUs());
-        Logger::getInstance().log("control", u,  getCurrentTimeUs());
-        }
+        Logger::getInstance().log("Motor" + std::to_string(i+1) + "Est", rls_motor_estimates[i], getCurrentTimeUs());
+        Logger::getInstance().log("Motor" + std::to_string(i+1) + "Cov", rls_motor_covariances[i],  getCurrentTimeUs());
+        // Logger::getInstance().log("Motor1X", X,  getCurrentTimeUs());
+        // Logger::getInstance().log("Motor1Y", Y,  getCurrentTimeUs());
         #endif
         apply_miso_rls<4>(X, Y, rls_motor_estimates[i], rls_motor_covariances[i]);
     }

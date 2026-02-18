@@ -91,6 +91,11 @@ private:
 };
 
 struct QuadcopterModel {
+    enum class FlightMode {
+        LEARNING,
+        RECOVERY, // Optional: Transition phase
+        FLIGHT
+    };
 
     Matrix4f rls_motor_covariances[4];
     Vector4f rls_motor_estimates[4]; 
@@ -104,4 +109,8 @@ struct QuadcopterModel {
     FilteredSignal<Eigen::Matrix<float, 6, 1>> imu_sig;
 
     FilteredSignal<Vector4f> control_sig;
+    FlightMode current_mode;
+    int8_t current_motor;
 };
+
+using FlightMode = QuadcopterModel::FlightMode;

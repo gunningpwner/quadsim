@@ -2,11 +2,14 @@
 #include "Logger.h"
 
 KinematicAdjudicator::KinematicAdjudicator() : 
-    current_mode(FlightMode::LEARNING),
+
     m_estimator(model),
     m_indicator(model),
     last_timestamp_us(0)
 {
+    model.current_mode = FlightMode::LEARNING;
+    model.current_motor = 0;
+
     m_exciter.startTimer();
 }
 
@@ -31,7 +34,7 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
     model.omega_sig.update(raw_omega, timestamp_us);
     Logger::getInstance().log("omega_filt", model.omega_sig.val, timestamp_us);
     model.imu_sig.update(imu_vec, timestamp_us);
-    
+    Logger::getInstance().log("command_filt", model.control_sig.val, timestamp_us);
     // We update control_sig later, after we decide what the control is.
 
     Eigen::Vector4f motor_command = Eigen::Vector4f::Zero();
@@ -40,11 +43,12 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
     // 2. STATE MACHINE ADJUDICATION
     // ---------------------------------------------------------
 
-    switch (current_mode) {
+    switch (model.current_mode) {
         case FlightMode::LEARNING: {
             m_estimator.run();
             // A. Get Excitation Command
             motor_command = m_exciter.getCommand( raw_gyro);
+            model.current_motor = m_exciter.getCurrentMotor();
 
             // B. Update Control Signal in Model 
             // (RLS needs to know what we *just* commanded vs the *previous* reaction)
@@ -59,7 +63,7 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
                 // Learning finished. 
                 // Initialize INDI Controller with learned parameters
                 // m_indicator.initialize(model.B1, model.B2, ...); 
-                current_mode = FlightMode::FLIGHT;
+                model.current_mode = FlightMode::FLIGHT;
             }
             break;
         }
