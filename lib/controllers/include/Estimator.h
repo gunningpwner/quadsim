@@ -8,7 +8,7 @@ public:
     
     // Main update loop
     void run();
-
+    void estimates_to_model();
 private:
     QuadcopterModel& model;
     Matrix4f rls_motor_covariances[4];

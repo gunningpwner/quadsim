@@ -97,12 +97,11 @@ struct QuadcopterModel {
         FLIGHT
     };
 
-    Matrix4f rls_motor_covariances[4];
-    Vector4f rls_motor_estimates[4]; 
+    Vector4f motor_parameters[3]; // omega_max, kappa, and tau estimates for motors
 
-    Eigen::Matrix<float, 4, 3> B1;
+    Eigen::Matrix<float, 6,4> B1;
 
-    Eigen::Matrix<float, 8, 3> B2;
+    Eigen::Matrix<float, 6,4> B2;
 
     FilteredSignal<Vector4f> omega_sig;
     

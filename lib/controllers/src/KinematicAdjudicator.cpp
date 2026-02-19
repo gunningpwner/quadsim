@@ -46,10 +46,17 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
     switch (model.current_mode) {
         case FlightMode::LEARNING: {
             m_estimator.run();
-            // A. Get Excitation Command
-            motor_command = m_exciter.getCommand( raw_gyro);
+                // 1. Safety Check (Paper Sec II.B.d):
+                // Abort this motor if gyro exceeds safety margin
+                // Simple check: if any axis > 1500 deg/s (approx 26 rad/s)
+                // float max_rate = gyro_meas.cwiseAbs().maxCoeff();
+                // if (max_rate > 26.0f)
+                // {
+                //     advanceMotor();
+                //     return Eigen::Vector4f::Zero();
+                // }
+            motor_command = m_exciter.getCommand();
             model.current_motor = m_exciter.getCurrentMotor();
-
             // B. Update Control Signal in Model 
             // (RLS needs to know what we *just* commanded vs the *previous* reaction)
             model.control_sig.update(motor_command, timestamp_us);
@@ -64,6 +71,13 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
                 // Initialize INDI Controller with learned parameters
                 // m_indicator.initialize(model.B1, model.B2, ...); 
                 model.current_mode = FlightMode::FLIGHT;
+                model.current_motor=-1;
+                m_estimator.estimates_to_model();
+                Logger::getInstance().log("omega_max", model.motor_parameters[0], timestamp_us);
+                Logger::getInstance().log("kappa", model.motor_parameters[1], timestamp_us);
+                Logger::getInstance().log("tau", model.motor_parameters[2], timestamp_us);
+                Logger::getInstance().log("B1", model.B1, timestamp_us);
+                Logger::getInstance().log("B2", model.B2, timestamp_us);
             }
             break;
         }

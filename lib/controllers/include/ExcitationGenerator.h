@@ -18,12 +18,12 @@ public:
     // Returns true if excitation is finished
     bool isComplete() const { return is_complete; }
     int getCurrentMotor() const { return current_motor; }
-
+    void advanceMotor();
     // Generates the motor command for the current timestep
-    Eigen::Vector4f getCommand(const Eigen::Vector3f &gyro_meas);
+    Eigen::Vector4f getCommand();
 
 private:
-    void advanceMotor();
+    
 
     int current_motor;
     float state_timer;

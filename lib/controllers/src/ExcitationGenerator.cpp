@@ -9,7 +9,7 @@ void ExcitationGenerator::startTimer()
 }
 
 
-Eigen::Vector4f ExcitationGenerator::getCommand(const Eigen::Vector3f &gyro_meas)
+Eigen::Vector4f ExcitationGenerator::getCommand()
 {
     if (is_complete)
         return Eigen::Vector4f::Zero();
@@ -19,15 +19,7 @@ Eigen::Vector4f ExcitationGenerator::getCommand(const Eigen::Vector3f &gyro_meas
     Eigen::Vector4f cmd = Eigen::Vector4f::Zero();
     
 
-    // 1. Safety Check (Paper Sec II.B.d):
-    // Abort this motor if gyro exceeds safety margin
-    // Simple check: if any axis > 1500 deg/s (approx 26 rad/s)
-    float max_rate = gyro_meas.cwiseAbs().maxCoeff();
-    if (max_rate > 26.0f)
-    {
-        advanceMotor();
-        return Eigen::Vector4f::Zero();
-    }
+
 
     // 2. Generate Waveform
     float val = 0.0f;
@@ -55,6 +47,8 @@ Eigen::Vector4f ExcitationGenerator::getCommand(const Eigen::Vector3f &gyro_meas
     else
     {
         advanceMotor();
+        // check if that was the last motor
+        if (is_complete) return Eigen::Vector4f::Zero();
     }
 
     cmd[current_motor] = val;
