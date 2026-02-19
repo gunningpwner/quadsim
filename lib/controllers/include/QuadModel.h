@@ -97,7 +97,10 @@ struct QuadcopterModel {
         FLIGHT
     };
 
-    Vector4f motor_parameters[3]; // omega_max, kappa, and tau estimates for motors
+    
+    Vector4f motor_omega_max;
+    Vector4f motor_kappa;
+    Vector4f motor_tau;
 
     Eigen::Matrix<float, 6,4> B1;
 

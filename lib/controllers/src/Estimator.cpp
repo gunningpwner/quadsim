@@ -107,8 +107,11 @@ void Estimator::update_control_estimate()
 
     apply_mimo_rls<8, 3>(X_B2, Y_B2, rls_ratedot_estimate, rls_ratedot_covariance);
     #ifdef SIM
+        Logger::getInstance().log("ratedot_cov", rls_ratedot_covariance, getCurrentTimeUs());
         Logger::getInstance().log("ratedot", rls_ratedot_estimate, getCurrentTimeUs());
         Logger::getInstance().log("spf", rls_spf_estimate, getCurrentTimeUs());
+        Logger::getInstance().log("spf_cov", rls_spf_covariance, getCurrentTimeUs());
+        Logger::getInstance().log("spf_cov", rls_spf_covariance, getCurrentTimeUs());
     #endif
 }
 
@@ -123,9 +126,9 @@ void Estimator::estimates_to_model()
         float b = rls_motor_estimates[i][1];
         float tau = rls_motor_estimates[i][3];
         float omega_max = a + b;
-        model.motor_parameters[0][i] = omega_max;                                    
-        model.motor_parameters[1][i] = (omega_max > 1e-4f) ? (a / omega_max) : 0.0f; 
-        model.motor_parameters[2][i] = tau;                                          
+        model.motor_omega_max[i] = omega_max;                                    
+        model.motor_kappa[i] = (omega_max > 1e-4f) ? (a / omega_max) : 0.0f; 
+        model.motor_tau[i] = tau;                                          
     }
 
     // B1k matrix is made by stacking rls_spf_estimate on top of first 4 rows of rls_ratedot_estimate
