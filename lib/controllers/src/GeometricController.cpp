@@ -1,4 +1,6 @@
 #include "GeometricController.h"
+#include "Logger.h"
+#include "timing.h"
 
 using Vec3Map = Eigen::Map<const Eigen::Vector3f>;
 using QuatMap = Eigen::Map<const Eigen::Quaternionf>;
@@ -41,18 +43,35 @@ void axis_deriv(Vector3f &v_in, Vector3f &vd_in, Vector3f &vdd_in, Vector3f &v_o
 GeometricController::GeometricController(DataManager::StateConsumer m_state_consumer)
     : m_state_consumer(m_state_consumer),
       kx(1.0f),
-      kv(1.0f)
+      kv(1.0f),
+      komega(1.0f),
+      kr(20.0f)
 {
+    pos_desired.setZero();
+    vel_desired.setZero();
+    acc_desired.setZero();
+    jerk_desired.setZero();
+    snap_desired.setZero();
+
+    rot_desired.setIdentity();
+    ang_vel_desired.setZero();
+    ang_acc_desired.setZero();
+    front_dir_desired<< 0.0f,1.0f,0.0f;
+    mass = 1.0f;
+
 }
 void GeometricController::run()
 {
     state_data = m_state_consumer.readLatest();
+    // updatePositionControl();
+    updateRotationControl();
 }
 
 void GeometricController::updatePositionControl()
 {
 
     Matrix3f rot_mat = QuatMap(state_data->orientation.data()).toRotationMatrix();
+    
     Vector3f axis_down = rot_mat * Vector3f::UnitZ();
     Vector3f axis_ddown = rot_mat * skew(Vec3Map(state_data->angular_vel.data())) * Vector3f::UnitZ();
 
@@ -81,7 +100,9 @@ void GeometricController::updatePositionControl()
     // I'm just gonna assume front_dir_desired does not change
     Vector3f C_dot = b1d.cross(b3c_dot);
     Vector3f C_ddot = b1d.cross(b3c_ddot);
-
+    Logger::getInstance().log("C", C, getCurrentTimeUs());
+    Logger::getInstance().log("C_dot", C_dot, getCurrentTimeUs());
+    Logger::getInstance().log("C_ddot", C_ddot, getCurrentTimeUs());
     Vector3f b2c, b2c_dot, b2c_ddot;
     axis_deriv(C, C_dot, C_ddot, b2c, b2c_dot, b2c_ddot);
 
@@ -101,6 +122,27 @@ void GeometricController::updatePositionControl()
     rot_desired = rot_cmd;
     ang_vel_desired = omega_cmd;
     ang_acc_desired = omegad_cmd;
+    Logger::getInstance().log("rot_desired", rot_desired, getCurrentTimeUs());
+    Logger::getInstance().log("ang_vel_desired", ang_vel_desired, getCurrentTimeUs());
+    Logger::getInstance().log("ang_acc_desired", ang_acc_desired, getCurrentTimeUs());
+    Logger::getInstance().log("rot_mat", rot_mat, getCurrentTimeUs());
+    Logger::getInstance().log("omega_hat", omega_hat, getCurrentTimeUs());
+    Logger::getInstance().log("acc_err", acc_err, getCurrentTimeUs());
+    Logger::getInstance().log("thrust_dot", thrust_dot, getCurrentTimeUs());
+    Logger::getInstance().log("thrust", thrust, getCurrentTimeUs());
+    Logger::getInstance().log("pos_err", pos_err, getCurrentTimeUs());
+    Logger::getInstance().log("vel_err", vel_err, getCurrentTimeUs());
+
+    Logger::getInstance().log("rot_cmd", rot_cmd, getCurrentTimeUs());
+    Logger::getInstance().log("b2c", b2c, getCurrentTimeUs());
+
+
+
+    
+
+
+
+
 }
 
 void GeometricController::updateRotationControl()
@@ -110,5 +152,7 @@ void GeometricController::updateRotationControl()
     Vector3f rot_err = skewnt(rot_desired.transpose() * rot_mat - rot_mat.transpose() * rot_desired) / 2.0f;
     Vector3f omega_err = omega - rot_mat.transpose() * rot_desired * ang_vel_desired;
     // Vector3f moment = -kr * rot_err - komega * omega_err + omega.cross(inertia_mat * omega) - inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
-    Vector3f ang_acc_cmd = -kr * rot_err - komega * omega_err +  inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
+    ang_acc_cmd = -kr * rot_err - komega * omega_err;// +  inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
+    Logger::getInstance().log("rot_err", rot_err, getCurrentTimeUs());
+    Logger::getInstance().log("omega_err", omega_err, getCurrentTimeUs());
 }

@@ -16,6 +16,7 @@ void INDIController::setCommand(Vector3f lin_acc_in, Vector3f ang_acc_in)
     ref_command.tail<3>() = ang_acc_in;
 }
 
+
 Vector4f INDIController::run()
 {
     // time for some fucky math :D
@@ -38,6 +39,7 @@ Vector4f INDIController::run()
     Vector4f u_cmd = u_est+delta_u;
     // Clip between 0 and 1
     u_cmd = u_cmd.cwiseMax(0.0f).cwiseMin(1.0f);
+    last_u = u_cmd;
     Vector4f pwm_cmd;
 
     for (int i = 0; i < 4; i++)
@@ -55,7 +57,9 @@ Vector4f INDIController::run()
     //     Logger::getInstance().log("omegadot", model.omega_sig.dot, getCurrentTimeUs());
     //     Logger::getInstance().log("omega", model.omega_sig.val, getCurrentTimeUs());
     //     Logger::getInstance().log("pinv", pinv, getCurrentTimeUs());
-    //     Logger::getInstance().log("delta_u", delta_u, getCurrentTimeUs());
+        Logger::getInstance().log("delta_u", delta_u, getCurrentTimeUs());
+        Logger::getInstance().log("u_est", u_est, getCurrentTimeUs());
+
     #endif
     return pwm_cmd;
 }

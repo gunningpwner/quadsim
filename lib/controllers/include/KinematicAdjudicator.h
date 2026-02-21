@@ -16,7 +16,7 @@ public:
                            const Eigen::Vector4f& raw_omega, 
                            const Eigen::Vector3f& raw_acc, 
                            const Eigen::Vector3f& raw_gyro);
-
+    void setCommand(Eigen::Vector3f cmd){m_indicator.setCommand(Eigen::Vector3f::Zero(), cmd);}
 private:
     
     // Shared Data Store

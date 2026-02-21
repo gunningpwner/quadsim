@@ -14,8 +14,9 @@ public:
     void run();
     void updatePositionControl();
     void updateRotationControl();
-
-
+    Vector3f ang_acc_desired;
+    Matrix3f rot_desired;
+    Vector3f ang_acc_cmd;
 private:
     DataManager::StateConsumer m_state_consumer;
     StateEstimate* state_data;
@@ -26,9 +27,9 @@ private:
     Vector3f jerk_desired;
     Vector3f snap_desired;
 
-    Matrix3f rot_desired;
+    
     Vector3f ang_vel_desired;
-    Vector3f ang_acc_desired;
+    
 
     Vector3f front_dir_desired; // b1d, vector to align the front axis to. essentially just defines yaw
 

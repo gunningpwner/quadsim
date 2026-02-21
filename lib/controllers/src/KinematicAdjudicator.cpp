@@ -7,7 +7,7 @@ KinematicAdjudicator::KinematicAdjudicator() :
     m_indicator(model),
     last_timestamp_us(0)
 {
-    model.current_mode = FlightMode::FLIGHT;
+    model.current_mode = FlightMode::LEARNING;
     model.current_motor = 0;
     model.B1 <<0,0,0,0,0,0,0,0,0,0,0,0,-2.03083e-07,2.06884e-07,2.10073e-07,-2.53886e-08,-1.90439e-07,-2.11691e-07,2.518e-07,-1.44087e-06,5e-08,4.99999e-08,4.99993e-08,4.84542e-08;
     model.B2 <<0,0,0,0,0,0,0,0,0,0,0,0,-1.94739e-07,-7.23204e-07,2.18145e-06,0.000510169,1.78738e-07,-6.4241e-07,-1.41923e-06,-0.00265609,-2.27419e-11,8.82825e-11,-1.58726e-09,-2.64969e-06;
