@@ -20,7 +20,8 @@ public:
     T dot;      // diff / dt
     T prev_dot;
     T dot_diff; // dot - prev_dot
-
+    bool is_dot_valid;
+    bool is_dot_diff_valid;
     BiquadFilter<T> filter; 
     
     FilteredSignal() : filter(computeDefaultFilter()) {reset();}
@@ -34,6 +35,7 @@ public:
             prev_val = val;
             last_timestamp_us = timestamp_us;
             sample_count++;
+            is_dot_valid=true;
             return;
         }
         
@@ -51,6 +53,7 @@ public:
         
         if (sample_count > 1){
             dot_diff = dot - prev_dot;
+            is_dot_diff_valid = true;
         }
         
         last_timestamp_us = timestamp_us;
@@ -62,6 +65,8 @@ public:
         filter.reset(); 
         setZero(raw); setZero(val); setZero(diff); 
         setZero(dot); setZero(dot_diff); setZero(prev_val); setZero(prev_dot);
+        is_dot_valid=false;
+        is_dot_diff_valid=false;
     }
 
 private:

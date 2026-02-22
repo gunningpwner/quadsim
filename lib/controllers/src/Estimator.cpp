@@ -74,7 +74,9 @@ void Estimator::update_control_estimate()
     // Model: v_dot_lin ~ B1 * (omega^2 - omega_prev^2)
     // Target Y: Delta Specific Force (imu_sig.diff.head(3))
     // Regressor X: Delta Omega Squared (InputDim 4)
-
+    if (!model.omega_sig.is_dot_diff_valid) {
+        return;
+    }
     Vector4f omega_curr = model.omega_sig.val;
     Vector4f omega_prev = model.omega_sig.prev_val;
 
@@ -111,7 +113,10 @@ void Estimator::update_control_estimate()
         Logger::getInstance().log("ratedot", rls_ratedot_estimate, getCurrentTimeUs());
         Logger::getInstance().log("spf", rls_spf_estimate, getCurrentTimeUs());
         Logger::getInstance().log("spf_cov", rls_spf_covariance, getCurrentTimeUs());
-        Logger::getInstance().log("spf_cov", rls_spf_covariance, getCurrentTimeUs());
+        Logger::getInstance().log("x_b1", X_B1, getCurrentTimeUs());
+        Logger::getInstance().log("x_b2", X_B2, getCurrentTimeUs());
+        Logger::getInstance().log("y_B1", Y_B1, getCurrentTimeUs());
+        Logger::getInstance().log("y_B2", Y_B2, getCurrentTimeUs());
     #endif
 }
 
