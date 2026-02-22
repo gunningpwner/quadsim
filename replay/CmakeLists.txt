@@ -19,3 +19,18 @@ target_include_directories(replay_harness
         ../lib/buffers/include
         ../lib/filters/include
 )
+
+add_executable(kin_replay
+    src/rls_replay.cpp
+    ../lib/controllers/src/Estimator.cpp)
+
+target_compile_definitions(kin_replay PRIVATE SIM)
+
+target_include_directories(kin_replay
+    PRIVATE
+        ${EIGEN3_INCLUDE_DIR}
+        src
+        ../lib/flight_core/include
+        ../lib/filters/include
+        ../lib/controllers/include
+)
