@@ -46,8 +46,8 @@ struct FastRPMData
 
 struct StateEstimate{
     uint64_t timestamp;
-    std::array<float, 3> position_enu;
-    std::array<float, 3> velocity_enu;
+    std::array<float, 3> position_ned;
+    std::array<float, 3> velocity_ned;
     std::array<float, 4> orientation;
     std::array<float, 3> ref_lla;
     std::array<float, 3> angular_vel;
