@@ -10,7 +10,7 @@ class INDIController
 public:
     INDIController(QuadcopterModel &model);
     Vector4f run();
-    void setCommand(Vector3f lin_acc_in, Vector3f ang_acc_in);
+    void setCommand( Vector3f ang_acc_in, float lin_acc_in);
     void temporary(Quaternionf orientation, Vector3f body_rates);
 private:
     float solveForDelta(float u_cmd, float kappa);

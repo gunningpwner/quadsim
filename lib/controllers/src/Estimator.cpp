@@ -59,10 +59,10 @@ void Estimator::update_motor_estimate()
 
         float Y = omega(i);
 #ifdef SIM
-        Logger::getInstance().log("Motor" + std::to_string(i + 1) + "Est", rls_motor_estimates[i], getCurrentTimeUs());
-        Logger::getInstance().log("Motor" + std::to_string(i + 1) + "Cov", rls_motor_covariances[i], getCurrentTimeUs());
-// Logger::getInstance().log("Motor1X", X,  getCurrentTimeUs());
-// Logger::getInstance().log("Motor1Y", Y,  getCurrentTimeUs());
+        // Logger::getInstance().log("Motor" + std::to_string(i + 1) + "Est", rls_motor_estimates[i], getCurrentTimeUs());
+        // Logger::getInstance().log("Motor" + std::to_string(i + 1) + "Cov", rls_motor_covariances[i], getCurrentTimeUs());
+        // Logger::getInstance().log("Motor1X", X,  getCurrentTimeUs());
+        // Logger::getInstance().log("Motor1Y", Y,  getCurrentTimeUs());
 #endif
         apply_miso_rls<4>(X, Y, rls_motor_estimates[i], rls_motor_covariances[i]);
     }
@@ -109,14 +109,14 @@ void Estimator::update_control_estimate()
 
     apply_mimo_rls<8, 3>(X_B2, Y_B2, rls_ratedot_estimate, rls_ratedot_covariance);
     #ifdef SIM
-        Logger::getInstance().log("ratedot_cov", rls_ratedot_covariance, getCurrentTimeUs());
-        Logger::getInstance().log("ratedot", rls_ratedot_estimate, getCurrentTimeUs());
-        Logger::getInstance().log("spf", rls_spf_estimate, getCurrentTimeUs());
-        Logger::getInstance().log("spf_cov", rls_spf_covariance, getCurrentTimeUs());
-        Logger::getInstance().log("x_b1", X_B1, getCurrentTimeUs());
-        Logger::getInstance().log("x_b2", X_B2, getCurrentTimeUs());
-        Logger::getInstance().log("y_B1", Y_B1, getCurrentTimeUs());
-        Logger::getInstance().log("y_B2", Y_B2, getCurrentTimeUs());
+        // Logger::getInstance().log("ratedot_cov", rls_ratedot_covariance, getCurrentTimeUs());
+        // Logger::getInstance().log("ratedot", rls_ratedot_estimate, getCurrentTimeUs());
+        // Logger::getInstance().log("spf", rls_spf_estimate, getCurrentTimeUs());
+        // Logger::getInstance().log("spf_cov", rls_spf_covariance, getCurrentTimeUs());
+        // Logger::getInstance().log("x_b1", X_B1, getCurrentTimeUs());
+        // Logger::getInstance().log("x_b2", X_B2, getCurrentTimeUs());
+        // Logger::getInstance().log("y_B1", Y_B1, getCurrentTimeUs());
+        // Logger::getInstance().log("y_B2", Y_B2, getCurrentTimeUs());
     #endif
 }
 

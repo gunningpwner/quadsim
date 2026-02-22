@@ -39,11 +39,11 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
     // Update the QuadModel state
     // NOTE: Estimator should NO LONGER call .update() internally!
     model.omega_sig.update(raw_omega, timestamp_us);
-    Logger::getInstance().log("omega_filt", model.omega_sig.val, timestamp_us);
+    // Logger::getInstance().log("omega_filt", model.omega_sig.val, timestamp_us);
     model.imu_sig.update(imu_vec, timestamp_us);
-    Logger::getInstance().log("imu_filt", model.imu_sig.val, timestamp_us);
-    Logger::getInstance().log("imu_diff", model.imu_sig.diff, timestamp_us);
-    Logger::getInstance().log("command_filt", model.control_sig.val, timestamp_us);
+    // Logger::getInstance().log("imu_filt", model.imu_sig.val, timestamp_us);
+    // Logger::getInstance().log("imu_diff", model.imu_sig.diff, timestamp_us);
+    // Logger::getInstance().log("command_filt", model.control_sig.val, timestamp_us);
     // We update control_sig later, after we decide what the control is.
 
     Eigen::Vector4f motor_command = Eigen::Vector4f::Zero();
@@ -82,11 +82,11 @@ Eigen::Vector4f KinematicAdjudicator::update(uint64_t timestamp_us,
                 model.current_mode = FlightMode::FLIGHT;
                 model.current_motor=-1;
                 m_estimator.estimates_to_model();
-                Logger::getInstance().log("omega_max", model.motor_omega_max, timestamp_us);
-                Logger::getInstance().log("kappa", model.motor_kappa, timestamp_us);
-                Logger::getInstance().log("tau", model.motor_tau, timestamp_us);
-                Logger::getInstance().log("B1", model.B1, timestamp_us);
-                Logger::getInstance().log("B2", model.B2, timestamp_us);
+                // Logger::getInstance().log("omega_max", model.motor_omega_max, timestamp_us);
+                // Logger::getInstance().log("kappa", model.motor_kappa, timestamp_us);
+                // Logger::getInstance().log("tau", model.motor_tau, timestamp_us);
+                // Logger::getInstance().log("B1", model.B1, timestamp_us);
+                // Logger::getInstance().log("B2", model.B2, timestamp_us);
             }
             break;
         }

@@ -14,15 +14,10 @@ Eigen::Matrix3f skew(const Eigen::MatrixBase<Derived> &v)
         -v(1), v(0), 0;
     return m;
 }
+
 template <typename Derived>
 Eigen::Vector3f skewnt(const Eigen::MatrixBase<Derived> &m)
 {
-    // Extracts the vector components from the skew-symmetric matrix
-    // consistent with the provided skew() function.
-    // v(0) corresponds to m(2, 1)
-    // v(1) corresponds to m(0, 2)
-    // v(2) corresponds to m(1, 0)
-
     return Eigen::Vector3f(m(2, 1), m(0, 2), m(1, 0));
 }
 
@@ -44,8 +39,8 @@ GeometricController::GeometricController(DataManager::StateConsumer m_state_cons
     : m_state_consumer(m_state_consumer),
       kx(1.0f),
       kv(1.0f),
-      komega(1.0f),
-      kr(20.0f)
+      komega(5.0f),
+      kr(10.0f)
 {
     pos_desired.setZero();
     vel_desired.setZero();
@@ -53,56 +48,84 @@ GeometricController::GeometricController(DataManager::StateConsumer m_state_cons
     jerk_desired.setZero();
     snap_desired.setZero();
 
+    vel_cmd.setZero();
+    acc_cmd.setZero();
+    jerk_cmd.setZero();
+    snap_cmd.setZero();
+
     rot_desired.setIdentity();
     ang_vel_desired.setZero();
     ang_acc_desired.setZero();
-    front_dir_desired<< 0.0f,1.0f,0.0f;
-    mass = 1.0f;
-
+    front_dir_desired << 1.0f, 0.0f, 0.0f; // Adjusted for FRD (Forward is X)
+    linear_z_accel_cmd = 0.0f;
 }
+
 void GeometricController::run()
 {
     state_data = m_state_consumer.readLatest();
-    // updatePositionControl();
+    updatePositionControl();
+    updateVelocityControl();
     updateRotationControl();
 }
 
 void GeometricController::updatePositionControl()
 {
+    // Note: Assuming state_data has been updated to use NED arrays.
+    Vector3f pos_err = Vec3Map(state_data->position_ned.data()) - pos_desired;
+    
+    // Position control outputs a commanded velocity for the velocity loop
+    vel_cmd = vel_desired - kx * pos_err;
+
+    // Feedforward derivatives pass through
+    acc_cmd = acc_desired;
+    jerk_cmd = jerk_desired;
+    snap_cmd = snap_desired;
+}
+
+void GeometricController::updateVelocityControl()
+{
+    Vector3f vel_err = Vec3Map(state_data->velocity_ned.data()) - vel_cmd;
+
+    // A is the desired kinematic acceleration of the drone
+    Vector3f A = acc_cmd - kv * vel_err;
+    
+    // In NED, gravity acts in +Z. The drone produces thrust acceleration 'c' in the -b3 direction.
+    // Equations of motion: a = g * UnitZ - c * b3
+    // We want to track a = A, therefore: c * b3 = g * UnitZ - A
+    Vector3f gravity = 9.81f * Vector3f::UnitZ();
+    Vector3f v_in = A - gravity;
 
     Matrix3f rot_mat = QuatMap(state_data->orientation.data()).toRotationMatrix();
+    Vector3f b3 = rot_mat * Vector3f::UnitZ();
+    Vector3f b3_dot = rot_mat * skew(Vec3Map(state_data->angular_vel.data())) * Vector3f::UnitZ();
+
+    // Thrust acceleration magnitude needed from INDI (c)
+    linear_z_accel_cmd = v_in.dot(b3);
+    if (linear_z_accel_cmd>0.0f) linear_z_accel_cmd = 0.0f;
+
+    // Differentiate actual acceleration to find velocity tracking error derivatives
+    Vector3f current_accel = gravity - linear_z_accel_cmd * b3;
+    Vector3f vel_err_dot = current_accel - acc_cmd; 
     
-    Vector3f axis_down = rot_mat * Vector3f::UnitZ();
-    Vector3f axis_ddown = rot_mat * skew(Vec3Map(state_data->angular_vel.data())) * Vector3f::UnitZ();
+    Vector3f A_dot = jerk_cmd - kv * vel_err_dot;
+    Vector3f vd_in = A_dot; // gravity is constant, so derivative of v_in is A_dot
 
-    Vector3f pos_err = Vec3Map(state_data->position_enu.data()) - pos_desired;
-    Vector3f vel_err = Vec3Map(state_data->velocity_enu.data()) - vel_desired;
+    float c_dot = -vd_in.dot(b3) - v_in.dot(b3_dot);
+    Vector3f current_jerk = -c_dot * b3 - linear_z_accel_cmd * b3_dot;
+    Vector3f vel_err_ddot = current_jerk - jerk_cmd;
 
-    Vector3f A = -kx * pos_err - kv * vel_err - mass * 9.81f * Vector3f::UnitZ() + mass * acc_desired;
+    Vector3f A_ddot = snap_cmd - kv * vel_err_ddot;
+    Vector3f vdd_in = A_ddot;
 
-    float thrust = -A.dot(axis_down);
-
-    Vector3f acc_err = 9.81f * Vector3f::UnitZ() - thrust / mass * axis_down - acc_desired;
-    Vector3f A_dot = -kx * vel_err - kv * acc_err + mass * jerk_desired;
-
-    float thrust_dot = -A_dot.dot(axis_down) - A_dot.dot(axis_ddown);
-    Vector3f jerk_err = -thrust_dot / mass * axis_down - thrust / mass * axis_ddown - jerk_desired;
-    Vector3f A_ddot = -kx * acc_err - kv * jerk_err + mass * snap_desired;
-
-    // Can probably make this way more efficient by initializing the rot_cmd matrices here and
-    // then just using .row to do stuff in place
-
+    // Compute desired geometric axes
     Vector3f b3c, b3c_dot, b3c_ddot;
-    axis_deriv(A, A_dot, A_ddot, b3c, b3c_dot, b3c_ddot);
+    axis_deriv(v_in, vd_in, vdd_in, b3c, b3c_dot, b3c_ddot);
 
     Vector3f &b1d = front_dir_desired;
     Vector3f C = b1d.cross(b3c);
-    // I'm just gonna assume front_dir_desired does not change
     Vector3f C_dot = b1d.cross(b3c_dot);
     Vector3f C_ddot = b1d.cross(b3c_ddot);
-    Logger::getInstance().log("C", C, getCurrentTimeUs());
-    Logger::getInstance().log("C_dot", C_dot, getCurrentTimeUs());
-    Logger::getInstance().log("C_ddot", C_ddot, getCurrentTimeUs());
+    
     Vector3f b2c, b2c_dot, b2c_ddot;
     axis_deriv(C, C_dot, C_ddot, b2c, b2c_dot, b2c_ddot);
 
@@ -122,27 +145,19 @@ void GeometricController::updatePositionControl()
     rot_desired = rot_cmd;
     ang_vel_desired = omega_cmd;
     ang_acc_desired = omegad_cmd;
-    Logger::getInstance().log("rot_desired", rot_desired, getCurrentTimeUs());
-    Logger::getInstance().log("ang_vel_desired", ang_vel_desired, getCurrentTimeUs());
-    Logger::getInstance().log("ang_acc_desired", ang_acc_desired, getCurrentTimeUs());
-    Logger::getInstance().log("rot_mat", rot_mat, getCurrentTimeUs());
-    Logger::getInstance().log("omega_hat", omega_hat, getCurrentTimeUs());
-    Logger::getInstance().log("acc_err", acc_err, getCurrentTimeUs());
-    Logger::getInstance().log("thrust_dot", thrust_dot, getCurrentTimeUs());
-    Logger::getInstance().log("thrust", thrust, getCurrentTimeUs());
-    Logger::getInstance().log("pos_err", pos_err, getCurrentTimeUs());
+
+    // Logger::getInstance().log("rot_desired", rot_desired, getCurrentTimeUs());
+    // Logger::getInstance().log("ang_vel_desired", ang_vel_desired, getCurrentTimeUs());
+    // Logger::getInstance().log("ang_acc_desired", ang_acc_desired, getCurrentTimeUs());
+    // Logger::getInstance().log("rot_mat", rot_mat, getCurrentTimeUs());
+    // Logger::getInstance().log("omega_hat", omega_hat, getCurrentTimeUs());
+    // Logger::getInstance().log("linear_z_accel_cmd", linear_z_accel_cmd, getCurrentTimeUs());
     Logger::getInstance().log("vel_err", vel_err, getCurrentTimeUs());
+    Logger::getInstance().log("A", A, getCurrentTimeUs());
+    Logger::getInstance().log("b3", b3, getCurrentTimeUs());
 
-    Logger::getInstance().log("rot_cmd", rot_cmd, getCurrentTimeUs());
-    Logger::getInstance().log("b2c", b2c, getCurrentTimeUs());
-
-
-
-    
-
-
-
-
+    // Logger::getInstance().log("rot_cmd", rot_cmd, getCurrentTimeUs());
+    // Logger::getInstance().log("b2c", b2c, getCurrentTimeUs());
 }
 
 void GeometricController::updateRotationControl()
@@ -151,8 +166,12 @@ void GeometricController::updateRotationControl()
     Matrix3f rot_mat = QuatMap(state_data->orientation.data()).toRotationMatrix();
     Vector3f rot_err = skewnt(rot_desired.transpose() * rot_mat - rot_mat.transpose() * rot_desired) / 2.0f;
     Vector3f omega_err = omega - rot_mat.transpose() * rot_desired * ang_vel_desired;
-    // Vector3f moment = -kr * rot_err - komega * omega_err + omega.cross(inertia_mat * omega) - inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
-    ang_acc_cmd = -kr * rot_err - komega * omega_err;// +  inertia_mat * (skew(omega) * rot_mat.transpose() * rot_desired * ang_vel_desired - rot_mat.transpose() * rot_desired * ang_acc_desired);
+    
+    // Output angular acceleration directly for the INDI controller
+    ang_acc_cmd = -kr * rot_err - komega * omega_err + ang_acc_desired;
+    
     Logger::getInstance().log("rot_err", rot_err, getCurrentTimeUs());
     Logger::getInstance().log("omega_err", omega_err, getCurrentTimeUs());
+    // Logger::getInstance().log("rot_mat", rot_mat, getCurrentTimeUs());
+    // Logger::getInstance().log("rot_desired", rot_desired, getCurrentTimeUs());
 }

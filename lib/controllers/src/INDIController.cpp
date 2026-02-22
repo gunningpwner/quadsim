@@ -9,10 +9,10 @@ model(model) {
     last_u.setZero();
 };
 
-void INDIController::setCommand(Vector3f lin_acc_in, Vector3f ang_acc_in)
+void INDIController::setCommand( Vector3f ang_acc_in, float lin_acc_in)
 {
     // Quadcopter can only produce acceleration in body z, so we just ignore any other command
-    ref_command[2] = lin_acc_in[2];
+    ref_command[2] = lin_acc_in;
     ref_command.tail<3>() = ang_acc_in;
 }
 
@@ -23,7 +23,7 @@ Vector4f INDIController::run()
     Vector6f v_meas;
     // v_meas needs to be lin_acc and ang_acc
     // so we need first 3 states of imu_sig val and last 3 states of imu_sig dot ..... i think
-    v_meas << 0,0,0, model.imu_sig.dot.tail<3>();
+    v_meas << model.imu_sig.val.head<3>(), model.imu_sig.dot.tail<3>();
     Vector6f lhs = (ref_command-v_meas)+model.B2*model.omega_sig.dot;
 
     // most of this doesn't change so i can probably just cache them and update whenever the estimate changes.
@@ -50,15 +50,15 @@ Vector4f INDIController::run()
     #ifdef SIM
     //     Logger::getInstance().log("B2", model.B2, getCurrentTimeUs());
     //     Logger::getInstance().log("B1", model.B1, getCurrentTimeUs());
-        Logger::getInstance().log("v_meas", v_meas, getCurrentTimeUs());
+        // Logger::getInstance().log("v_meas", v_meas, getCurrentTimeUs());
     //     Logger::getInstance().log("lhs", lhs, getCurrentTimeUs());
     //     Logger::getInstance().log("rhs", rhs, getCurrentTimeUs());
     //     Logger::getInstance().log("ref", ref_command, getCurrentTimeUs());
     //     Logger::getInstance().log("omegadot", model.omega_sig.dot, getCurrentTimeUs());
     //     Logger::getInstance().log("omega", model.omega_sig.val, getCurrentTimeUs());
     //     Logger::getInstance().log("pinv", pinv, getCurrentTimeUs());
-        Logger::getInstance().log("delta_u", delta_u, getCurrentTimeUs());
-        Logger::getInstance().log("u_est", u_est, getCurrentTimeUs());
+        // Logger::getInstance().log("delta_u", delta_u, getCurrentTimeUs());
+        // Logger::getInstance().log("u_est", u_est, getCurrentTimeUs());
 
     #endif
     return pwm_cmd;
