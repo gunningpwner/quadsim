@@ -138,7 +138,7 @@ class RLSEstimator:
         self._last_omega=np.zeros(4)
         self._last_omega_d=np.zeros(4)
         self._last_imu=np.zeros(6)
-        
+        self._last_imu_dot = np.zeros(6)
         self._dt=dt
         self.logger=logger
         self.base_lambda=np.exp(dt/.2)
@@ -146,24 +146,36 @@ class RLSEstimator:
         self.RLS_COV_MIN = 1e-6
     
     def run(self,t,control_input,omega,imu_data):
-        
-        
-        self.update_motors(t, control_input, omega)
-        if imu_data is not None:
-            self.update_control_eff(t, omega, imu_data)
-            self._last_imu_dot = (imu_data-self._last_imu)/self._dt
-            self._last_imu=imu_data
+        # Store variables to the instance so update functions don't need arguments
+        self.t = t
+        self.control_input = control_input
+        self.omega = omega
+        self.imu_data = imu_data
+
+        # Calculate diffs and derivatives before calling the update functions
+        self.omega_diff = (self.omega - self._last_omega)
+        self.omega_d = self.omega_diff / self._dt
+
+        if self.imu_data is not None:
+            self.imu_diff = self.imu_data - self._last_imu
+            self.imu_dot_diff = self.imu_diff / self._dt - self._last_imu_dot
+            self.omega_d_diff = self.omega_d - self._last_omega_d
+
+        self.update_motors()
+        if self.imu_data is not None:
+            self.update_control_eff()
+            self._last_imu_dot = (self.imu_data - self._last_imu) / self._dt
+            self._last_imu = self.imu_data
             
-        omega_d=(omega-self._last_omega)/self._dt
-        self._last_omega_d=omega_d
-        self._last_omega=omega.copy()
+        self._last_omega_d = self.omega_d
+        self._last_omega = self.omega.copy()
         
         
     def singularRLS(self,parameters, Y,X,P):
         X=X[:,np.newaxis]
         current_lambda = self.base_lambda
-        if any(np.diag(P)>self.RLS_COV_MAX):
-            current_lambda = 1.0 + 0.1 * (1.0 - self.base_lambda) 
+        # if any(np.diag(P)>self.RLS_COV_MAX):
+        #     current_lambda = 1.0 + 0.1 * (1.0 - self.base_lambda) 
             
         K=P@X/(current_lambda+X.T@P@X)
 
@@ -185,45 +197,40 @@ class RLSEstimator:
         parameters = parameters+K@e
         return parameters,P
         
-    def update_motors(self,t,control_input,omega):
+    def update_motors(self):
         if not self._last_omega.any():
             return
-        omega_d=(omega-self._last_omega)/self._dt
         
         for i in range(4):
-            X=np.array([control_input[i],np.sqrt(control_input[i]),1,-omega_d[i]])
-            par_out,P_out=self.singularRLS(self.motor_params[:,i], omega[i], X, self.motor_p[:,:,i])
+            X=np.array([self.control_input[i],np.sqrt(self.control_input[i]),1,-self.omega_d[i]])
+            par_out,P_out=self.singularRLS(self.motor_params[:,i], self.omega[i], X, self.motor_p[:,:,i])
             self.motor_params[:,i]=par_out
             self.motor_p[:,:,i]=P_out
             if i==0:
-                self.logger.log(t,motor1X=X,motor1Cov=self.motor_p[:,:,i])
+                self.logger.log(self.t,motor1X=X,motor1Cov=self.motor_p[:,:,i])
 
             
-        self.logger.log(t,motor_estimates=self.motor_params)
+        self.logger.log(self.t,motor_estimates=self.motor_params)
     
-    def update_control_eff(self,t,omega,imu_data):
-        if not self._last_omega.any():
+    def update_control_eff(self):
+        # if not self._last_omega.any():
+        #     return
+        # if not self._last_omega_d.any():
+        #     return
+        # if not self._last_imu.any():
+        #     return
+        if self.t<.03:
             return
-        if not self._last_omega_d.any():
-            return
-        if not self._last_imu.any():
-            return
-        omega_diff=(omega-self._last_omega)
-        omega_d=omega_diff/self._dt
-        
-        
-        imu_diff=imu_data-self._last_imu
-        
         # X=2*omega*omega_diff
-        X=omega**2-self._last_omega**2
-        self.B1, self.spf_P = self.parallelRLS(self.B1, imu_diff[:3], X, self.spf_P)
-        imu_dot_diff = imu_diff/self._dt-self._last_imu_dot
-        omega_d_diff=omega_d-self._last_omega_d
-        X=np.hstack([X,omega_d_diff])
+        X=self.omega**2-self._last_omega**2
+        self.B1, self.spf_P = self.parallelRLS(self.B1, self.imu_diff[:3], X, self.spf_P)
+        self.logger.log(self.t,x_b1=X)
 
-        self.B2,self.rot_P = self.parallelRLS(self.B2, imu_dot_diff[3:], X, self.rot_P)
+        X=np.hstack([X,self.omega_d_diff])
+
+        self.B2,self.rot_P = self.parallelRLS(self.B2, self.imu_dot_diff[3:], X, self.rot_P)
         
-        self.logger.log(t,b1=self.B1,b2=self.B2,X=X,imu_diff=imu_diff,imu_dot_diff=imu_dot_diff[3:],)
+        self.logger.log(self.t,b1=self.B1,b2=self.B2,x_b2=X,y_b1=self.imu_diff[:3],y_b2=self.imu_dot_diff[3:],ratedot_cov=self.rot_P,spf_cov=self.spf_P)
 
 class INDI:
     def __init__(self,dt,logger):
@@ -413,55 +420,62 @@ if __name__ == "__main__":
     
     
     # Run Simulation
-    sim.run(duration_sec=4)
+    sim.run(duration_sec=5)
     
     # Plotting Results
     data = sim.logger.get_arrays()
     
     plt.close('all')
     
-    # plt.figure(figsize=(10, 6))
-    # plt.title("Position")
-    # plot_three(data['truth_pos'],'Truth',ls='-')
-    # plt.legend()
-    # plt.grid()
+    plt.figure(figsize=(10, 6))
+    plt.title("Position")
+    plot_three(data['truth_pos'],'Truth',ls='-')
+    plt.legend()
+    plt.grid()
 
     
-    # plt.figure(figsize=(10, 6))
-    # plt.title("Velocity Estimation")
-    # plot_three(data['truth_vel'],'Truth',ls='-')
-    # plt.legend()
-    # plt.grid()
-    
-    # plt.figure(figsize=(10, 6))
-    # plt.title("orientation")
-    # truth_ori = np.rad2deg(utils.quaternion_to_euler(data['truth_quat'][:,1:5]))
-    # plot_three(truth_ori,'Truth',times=data['truth_quat'][:,0],ls='-')
-    # plt.legend()
-    # plt.grid()
-    
     plt.figure(figsize=(10, 6))
-    plt.title("Control Inputs")
-    plt.plot(data['control'][:,0],data['control'][:,1:],ls='-')
-    plt.plot(data['u_est'][:,0],data['u_est'][:,1:],ls='-')
-    plt.twinx()
-    plt.plot(data['omega'][:,0],data['omega'][:,1:],ls='--')
+    plt.title("Velocity Estimation")
+    plot_three(data['truth_vel'],'Truth',ls='-')
     plt.legend()
     plt.grid()
     
     plt.figure(figsize=(10, 6))
-    plt.plot(data['motor1X'][:,0],data['motor1X'][:,1:])
+    plt.title("orientation")
+    truth_ori = np.rad2deg(utils.quaternion_to_euler(data['truth_quat'][:,1:5]))
+    plot_three(truth_ori,'Truth',times=data['truth_quat'][:,0],ls='-')
+    plt.legend()
+    plt.grid()
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(data['ratedot_cov'][:,0],data['ratedot_cov'][:,1:])
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(data['spf_cov'][:,0],data['spf_cov'][:,1:])
+    # plt.figure(figsize=(10, 6))
+    # plt.title("Control Inputs")
+    # plt.plot(data['control'][:,0],data['control'][:,1:],ls='-')
+    # # plt.plot(data['u_est'][:,0],data['u_est'][:,1:],ls='-')
+    # plt.twinx()
+    # plt.plot(data['omega'][:,0],data['omega'][:,1:],ls='--')
+    # plt.legend()
+    # plt.grid()
+    
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(data['motor1X'][:,0],data['motor1X'][:,1:])
     # plt.figure(figsize=(10, 6))
     # plt.title("Control Increments")
     # plt.plot(data['delta_u'][:,0],data['delta_u'][:,1:],ls='-')
     # plt.legend()
     # plt.grid()
-    plt.figure(figsize=(10, 6))
-    mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
-    plt.plot(data['motor_estimates'][:,0],mot[:,:,0])
+    # for i in range(4):
+    #     plt.figure(figsize=(10, 6))
+    #     plt.title(f"Motor {i+1}")
+    #     mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
+    #     plt.plot(data['motor_estimates'][:,1],mot[:,:,i])
     
-    plt.figure(figsize=(10, 6))
-    plt.plot(data['motor1Cov'][:,0],data['motor1Cov'][:,1:])
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(data['motor1Cov'][:,0],data['motor1Cov'][:,1:])
     
     # fig,axes=plt.subplots(2,2)
     # mot=data['motor_estimates'][:,1:].reshape((-1,4,4))
