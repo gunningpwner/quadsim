@@ -21,6 +21,7 @@ BMI270 *g_imu_ptr = nullptr;
 GPS *g_gps_ptr = nullptr;
 QMC5883L *g_compass_ptr = nullptr;
 W25Q128FV *g_flash_ptr = nullptr;
+DShot *g_dshot_ptr = nullptr;
 
 static volatile uint32_t s_overflow_count = 0;
 static volatile uint32_t s_last_dwt_cyccnt = 0;
@@ -393,7 +394,9 @@ int main(void)
     g_compass_ptr = &compass;
     W25Q128FV flash(data_manager.makeSensorConsumer());
     g_flash_ptr = &flash;
-    DShot dshot_driver(data_manager.makeMotorCommandsConsumer());
+
+    DShot dshot_driver;
+    g_dshot_ptr = &dshot_driver;
 
     HAL_Delay(2000); // Wait for USB to enumerate
     printf("\n--- BMI270 Initialization ---\n");
@@ -465,6 +468,13 @@ int main(void)
     volatile uint64_t last_crsf_telemetry_time = 0;
     const uint64_t crsf_telemetry_interval_us = 100000;
 
+    dshot_driver.disarm();
+    HAL_Delay(2000);
+    dshot_driver.arm();
+    float cmd[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    dshot_driver.sendMotorThrottle(cmd);
+    HAL_Delay(100);
+    dshot_driver.disarm();
     while (1)
     {
         flash.run();
@@ -534,6 +544,11 @@ extern "C" void DMA2_Stream3_IRQHandler(void)
     HAL_DMA_IRQHandler(hspi1.hdmatx);
 }
 
+extern "C" void DMA2_Stream4_IRQHandler(void)
+{
+
+    g_dshot_ptr->handleInterrupt();
+}
 extern "C" void DMA1_Stream0_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(hi2c1.hdmarx);

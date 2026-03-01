@@ -13,9 +13,22 @@ extern DMA_HandleTypeDef hdma_tim8_ch3;
 extern DMA_HandleTypeDef hdma_tim8_ch4;
 
 IRQn_Type Get_DMA_Stream_IRQn(DMA_HandleTypeDef *hdma);
+/*
+    4 states are DISARMED, IDLE, TRANSMITTING, RECEIVING
 
-DShot::DShot(DataManager::MotorCommandsConsumer m_motor_commands_consumer) : m_motor_commands_consumer(m_motor_commands_consumer)
-{
+    IDLE:
+        dma and timer are off
+        DMA_SxCR_EN off
+        TIM_CR1_CEN off
+        unknown configuration
+    DISARMED
+        DMA_SxCR_EN on
+        TIM_CR1_CEN on
+        DMA circular buffer
+
+
+*/
+DShot::DShot() {
 }
 
 int DShot::init()
@@ -25,73 +38,6 @@ int DShot::init()
     createMotorTable(2, htim8, TIM_CHANNEL_4, hdma_tim8_ch4);
     createMotorTable(3, htim4, TIM_CHANNEL_2, hdma_tim4_ch2);
     return 0;
-}
-void DShot::arm()
-{
-    if (is_armed > 0)
-        return;
-
-    MotorTable *m = &motor_tables[0];
-
-    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)m->hdma->Instance;
-
-    dmaStreamM1->CR |= DMA_SxCR_TCIE;
-    IRQn_Type irq = Get_DMA_Stream_IRQn(m->hdma);
-    HAL_NVIC_SetPriority(irq, 0, 0);
-    HAL_NVIC_EnableIRQ(irq);
-
-    __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
-    while (dmaStreamM1->CR & DMA_SxCR_EN)
-        asm volatile("nop");
-
-    __HAL_TIM_DISABLE(&htim4);
-    __HAL_TIM_DISABLE(&htim8);
-
-    for (int i = 0; i < 4; ++i)
-    {
-        MotorTable *m = &motor_tables[i];
-        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
-        dmaStream->CR &= ~DMA_SxCR_CIRC;
-    }
-    is_armed = 1;
-}
-
-void DShot::disarm()
-{
-    if (is_armed < 0)
-        return;
-    // Wait until last command has finished sending so we don't corrupt the signal
-    // Idk how the esc would handle that so just play it safe
-    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
-    while (dmaStreamM1->CR & DMA_SxCR_EN)
-        asm volatile("nop");
-
-    // Fill motor tables with zero throttle command and switch DMAs to circular buffer
-    for (int i = 0; i < 4; ++i)
-    {
-        MotorTable *m = &motor_tables[i];
-        fillMotorTableBuffer(m, 0, false);
-        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
-        dmaStream->CR |= DMA_SxCR_CIRC;
-    }
-
-    startCmdXmit();
-    is_armed = -1;
-}
-
-void DShot::update()
-{
-    if (!is_armed)
-        return;
-
-
-
-
-    MotorCommands* latest_commands = m_motor_commands_consumer.readLatest();
-    if (latest_commands == nullptr)
-        return  
-
-    sendMotorCommand(*latest_commands);
 }
 
 void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef &htim, uint32_t channel, DMA_HandleTypeDef &hdma)
@@ -148,6 +94,164 @@ void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef &htim, uint32_t ch
     m->duty_bit_1 = (arr * 3) / 4;
 }
 
+void DShot::arm()
+{
+    if (armedState==ARMED){
+        return;
+    }
+
+    MotorTable *m = &motor_tables[0];
+
+    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)m->hdma->Instance;
+
+    // Turn on transfer complete interrupt 
+    dmaStreamM1->CR |= DMA_SxCR_TCIE;
+    IRQn_Type irq = Get_DMA_Stream_IRQn(m->hdma);
+    HAL_NVIC_SetPriority(irq, 0, 0);
+    HAL_NVIC_EnableIRQ(irq);
+    // Wait for stream to be disabled.
+    // We don't want to interrupt the transfer while the dma is mid transmit
+    // So we turn on interrupt flag, and in the interrupt, disable the stream.
+    // The same interrupt also turned off the interrupt enable.
+    __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
+
+    // while (dmaStreamM1->CR & DMA_SxCR_EN)
+    //     asm volatile("nop");
+
+    while (dmaState!=IDLE){
+        asm volatile("nop");
+    }
+
+    __HAL_TIM_DISABLE(&htim4);
+    __HAL_TIM_DISABLE(&htim8);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR &= ~DMA_SxCR_CIRC;
+    }
+    armedState = ARMED;
+}
+
+void DShot::disarm()
+{
+    if (armedState==DISARMED){
+        return;
+    }
+    
+
+    // Disable interrupts to stop state switch logic.
+    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_TCIE;
+
+    // Wait until last command has finished sending so we don't corrupt the signal
+    // Idk how the esc would handle that so just play it safe
+    
+    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
+    while (dmaStreamM1->CR & DMA_SxCR_EN)
+        asm volatile("nop");
+
+    
+
+    // Fill motor tables with zero throttle command and switch DMAs to circular buffer
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        fillMotorTableBuffer(m, 0, false);
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR |= DMA_SxCR_CIRC;
+    }
+
+    startCmdXmit();
+    armedState = DISARMED;
+}
+
+void DShot::reconfigureForTelemetry()
+{
+    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_EN;
+    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        TIM_TypeDef *tim = m->htim->Instance;
+        DMA_Stream_TypeDef *dma = (DMA_Stream_TypeDef *)m->hdma->Instance;
+
+        // 1. Disable Timer and DMA
+        tim->CR1 &= ~TIM_CR1_CEN; 
+        dma->CR &= ~DMA_SxCR_EN;
+
+        // Wait for DMA to fully disable before changing settings
+        while (dma->CR & DMA_SxCR_EN)
+            asm volatile("nop");
+
+        // Clear the Capture/Compare Enable bit for this channel
+        tim->CCER &= ~(1 << ((m->channel >> 2) * 4));
+
+        // 2. Switch Channel to Input (mapped to TI1/2/3/4)
+        // You need a switch statement here because CCMR1 handles CH1/CH2, CCMR2 handles CH3/CH4
+        switch (m->channel)
+        {
+        case TIM_CHANNEL_1:
+            tim->CCMR1 &= ~TIM_CCMR1_CC1S;       // Clear selection
+            tim->CCMR1 |= TIM_CCMR1_CC1S_0;      // Set to 01 (Input mapped to TI1)
+            tim->CCER |= (TIM_CCER_CC1P | TIM_CCER_CC1NP); // Capture both edges
+            tim->CCER |= TIM_CCER_CC1E;          // Re-enable capture
+            break;
+        case TIM_CHANNEL_2:
+            tim->CCMR1 &= ~TIM_CCMR1_CC2S;
+            tim->CCMR1 |= TIM_CCMR1_CC2S_0;
+            tim->CCER |= (TIM_CCER_CC2P | TIM_CCER_CC2NP);
+            tim->CCER |= TIM_CCER_CC2E;
+            break;
+        case TIM_CHANNEL_3:
+            tim->CCMR2 &= ~TIM_CCMR2_CC3S;
+            tim->CCMR2 |= TIM_CCMR2_CC3S_0;
+            tim->CCER |= (TIM_CCER_CC3P | TIM_CCER_CC3NP);
+            tim->CCER |= TIM_CCER_CC3E;
+            break;
+        case TIM_CHANNEL_4:
+            tim->CCMR2 &= ~TIM_CCMR2_CC4S;
+            tim->CCMR2 |= TIM_CCMR2_CC4S_0;
+            tim->CCER |= (TIM_CCER_CC4P | TIM_CCER_CC4NP);
+            tim->CCER |= TIM_CCER_CC4E;
+            break;
+        }
+
+        // 3. Reconfigure DMA for Peripheral-to-Memory
+        dma->CR &= ~DMA_SxCR_DIR;           // 00 = Peripheral-to-memory
+        dma->NDTR = 22;                     // Bi-DShot frame usually generates 21 or 22 edges
+        dma->M0AR = (uint32_t)m->rx_buffer; // Point to your new RX buffer
+        // dma->PAR remains the same (pointing to the CCR register)
+
+        // Clear DMA flags before re-enabling
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
+
+        // 4. Re-enable DMA and Timer
+        dma->CR |= DMA_SxCR_EN;
+        tim->CR1 |= TIM_CR1_CEN;
+    }
+    dmaState=RECEIVING;
+}
+
+void DShot::handleInterrupt()
+{
+    if (armedState==DISARMED){
+        // Should only get here when arm function enables interrupts
+        for (int i = 0; i < 4; ++i)
+        {
+            MotorTable *m = &motor_tables[i];
+            DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+            dmaStream->CR &= ~DMA_SxCR_EN;
+        }
+        dmaState=IDLE;
+        return;
+    }
+
+}
+
+
+
+
 void DShot::fillMotorTableBuffer(MotorTable *m, uint16_t cmd, bool telemetry)
 {
     cmd = (cmd << 1) | (telemetry ? 1 : 0);
@@ -177,6 +281,20 @@ void DShot::fillMotorTableBuffer(MotorTable *m, uint16_t cmd, bool telemetry)
     // Also stops transient pulses at the end.
     m->cmd_buffer[16] = 0;
     m->cmd_buffer[17] = 0;
+}
+void DShot::sendMotorThrottle(float cmds[4])
+{
+    if (armedState==DISARMED){
+        return;
+    }
+    // Commands come in with range 0-1
+    for (int i = 0; i < 4; ++i)
+    {
+        uint16_t dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
+        dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
+        fillMotorTableBuffer(&motor_tables[i], dshot_val, true);
+    }
+    startCmdXmit();
 }
 
 void DShot::sendMotorCommand(MotorCommands &cmd)
@@ -208,8 +326,9 @@ void DShot::startCmdXmit()
 {
     // Check if motor 1 transfer is finished
     DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
-    if (dmaStreamM1->CR & DMA_SxCR_EN)
+    if (dmaState!=IDLE){
         return;
+    }
 
     __HAL_TIM_DISABLE(&htim4);
     __HAL_TIM_DISABLE(&htim8);
@@ -244,13 +363,8 @@ void DShot::startCmdXmit()
 
     __HAL_TIM_ENABLE(&htim4);
     __HAL_TIM_ENABLE(&htim8);
-}
 
-extern "C" void DMA2_Stream4_IRQHandler(void)
-{
-    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_EN;
-    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
-    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_TCIE;
+    dmaState=TRANSMITTING;
 }
 
 IRQn_Type Get_DMA_Stream_IRQn(DMA_HandleTypeDef *hdma)

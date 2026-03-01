@@ -1,5 +1,4 @@
 #include "DataManager.h"
-#include "Controller.h"
 #include "DataTypes.h"
 #include "ESKF.h"
 
@@ -96,7 +95,6 @@ public:
     DataManager &getDataManager() { return m_data_manager; }
     DShot *getDShotDriver() { return m_dshot; }
     const State *getCurrentState() const { return m_current_state; }
-    Controller *m_auto_level_controller;
 
     uint64_t last_rc_frame_time;
     RCChannelsData last_rc_data;
