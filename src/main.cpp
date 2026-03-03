@@ -361,7 +361,7 @@ void I2C1_ClearBus(void) {
 }
 int main(void)
 {
-    // SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));
+    SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));
     SystemClock_Config_HSE();
     HAL_Init();
 
@@ -377,7 +377,26 @@ int main(void)
     MX_USART3_UART_Init();
     MX_UART4_Init();
     MX_ADC1_Init();
-    MX_USB_DEVICE_Init();
+    // MX_USB_DEVICE_Init();
+
+    // Disables usb so it doesn't fuck things up
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    // PA12 is the USB D+ line. We must force it low to override any physical pull-up resistors.
+    GPIO_InitStruct.Pin = GPIO_PIN_12; 
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Push-Pull Output
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    // Drive it straight to ground. Windows will now see the line as 0V (unplugged).
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET); 
+    // Keep the NVIC interrupt disabled just in case
+    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);   
+    __HAL_DBGMCU_FREEZE_TIM2();  // Pause your 100Hz loop timer
+    __HAL_DBGMCU_FREEZE_TIM4();  // Pause motor 2 & 4 PWM
+    __HAL_DBGMCU_FREEZE_TIM8();  // Pause motor 1 & 3 PWM
+    __HAL_DBGMCU_FREEZE_I2C1_TIMEOUT();
+    
     I2C1_ClearBus();
     MX_I2C1_Init();
 
@@ -469,12 +488,12 @@ int main(void)
     const uint64_t crsf_telemetry_interval_us = 100000;
 
     dshot_driver.disarm();
-    HAL_Delay(2000);
-    dshot_driver.arm();
-    float cmd[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    dshot_driver.sendMotorThrottle(cmd);
-    HAL_Delay(100);
-    dshot_driver.disarm();
+    // HAL_Delay(2000);
+    // dshot_driver.arm();
+    // float cmd[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    // dshot_driver.sendMotorThrottle(cmd);
+    // HAL_Delay(100);
+    // dshot_driver.disarm();
     while (1)
     {
         flash.run();

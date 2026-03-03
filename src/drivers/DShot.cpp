@@ -148,8 +148,13 @@ void DShot::disarm()
     // Idk how the esc would handle that so just play it safe
     
     DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
-    while (dmaStreamM1->CR & DMA_SxCR_EN)
-        asm volatile("nop");
+    if (dmaState==TRANSMITTING){
+        while (dmaStreamM1->CR & DMA_SxCR_EN)
+            asm volatile("nop");
+    }
+    else {
+
+    }
 
     
 
@@ -164,31 +169,46 @@ void DShot::disarm()
 
     startCmdXmit();
     armedState = DISARMED;
+    printf("d\n");
 }
 
 void DShot::reconfigureForTelemetry()
 {
-    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_EN;
-    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
+    if (dmaState!=IDLE){
+        return;
+    }
+
+    __HAL_TIM_DISABLE(&htim4);
+    __HAL_TIM_DISABLE(&htim8);
+
+    __HAL_TIM_SET_COUNTER(&htim4, 0);
+    __HAL_TIM_SET_COUNTER(&htim8, 0);
     for (int i = 0; i < 4; ++i)
     {
         MotorTable *m = &motor_tables[i];
+        if (m->htim == nullptr)
+            continue;
+
+       
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR &= ~DMA_SxCR_EN;
+        // Clears flags
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TE_FLAG_INDEX(m->hdma));
+        // Manually sets transfer target and size
+        
+        dmaStream->NDTR = 22;                     // Bi-DShot frame usually generates 21 or 22 edges
+        dmaStream->M0AR = (uint32_t)m->rx_buffer; // Point to your new RX buffer
+
+        dmaStream->CR &= ~DMA_SxCR_DIR;           // 00 = Peripheral-to-memory
+
+        dmaStream->CR |= DMA_SxCR_EN;
+
         TIM_TypeDef *tim = m->htim->Instance;
-        DMA_Stream_TypeDef *dma = (DMA_Stream_TypeDef *)m->hdma->Instance;
 
-        // 1. Disable Timer and DMA
-        tim->CR1 &= ~TIM_CR1_CEN; 
-        dma->CR &= ~DMA_SxCR_EN;
-
-        // Wait for DMA to fully disable before changing settings
-        while (dma->CR & DMA_SxCR_EN)
-            asm volatile("nop");
-
-        // Clear the Capture/Compare Enable bit for this channel
+        // Disable channel so we can change the settings
         tim->CCER &= ~(1 << ((m->channel >> 2) * 4));
-
-        // 2. Switch Channel to Input (mapped to TI1/2/3/4)
-        // You need a switch statement here because CCMR1 handles CH1/CH2, CCMR2 handles CH3/CH4
         switch (m->channel)
         {
         case TIM_CHANNEL_1:
@@ -217,21 +237,103 @@ void DShot::reconfigureForTelemetry()
             break;
         }
 
-        // 3. Reconfigure DMA for Peripheral-to-Memory
-        dma->CR &= ~DMA_SxCR_DIR;           // 00 = Peripheral-to-memory
-        dma->NDTR = 22;                     // Bi-DShot frame usually generates 21 or 22 edges
-        dma->M0AR = (uint32_t)m->rx_buffer; // Point to your new RX buffer
-        // dma->PAR remains the same (pointing to the CCR register)
-
-        // Clear DMA flags before re-enabling
-        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
-
-        // 4. Re-enable DMA and Timer
-        dma->CR |= DMA_SxCR_EN;
-        tim->CR1 |= TIM_CR1_CEN;
     }
+    __HAL_TIM_MOE_ENABLE(&htim8);
+
+    __HAL_TIM_ENABLE(&htim4);
+    __HAL_TIM_ENABLE(&htim8);
     dmaState=RECEIVING;
 }
+
+void DShot::startCmdXmit()
+{
+    // Check if motor 1 transfer is finished
+
+    if (dmaState!=IDLE){
+        return;
+    }
+
+    __HAL_TIM_DISABLE(&htim4);
+    __HAL_TIM_DISABLE(&htim8);
+
+    __HAL_TIM_SET_COUNTER(&htim4, 0);
+    __HAL_TIM_SET_COUNTER(&htim8, 0);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        if (m->htim == nullptr)
+            continue;
+
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR &= ~DMA_SxCR_EN;
+        // Clears flags
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TE_FLAG_INDEX(m->hdma));
+        // Manually sets transfer target and size
+        dmaStream->NDTR = 18;
+        dmaStream->M0AR = (uint32_t)m->cmd_buffer;
+        dmaStream->PAR = (uint32_t)m->ccr_reg;
+        //  Reconfigure DMA for Memory-to-Peripheral
+        dmaStream->CR &= ~DMA_SxCR_DIR;           // Clear direction bits
+        dmaStream->CR |= DMA_SxCR_DIR_0;          // 01 = Memory-to-peripheral
+
+        dmaStream->CR |= DMA_SxCR_EN;
+
+        TIM_TypeDef *tim = m->htim->Instance;
+
+        tim->DIER |= m->dma_bit;
+
+        // Disable channel so we can change the settings
+        tim->CCER &= ~(1 << ((m->channel >> 2) * 4));
+        switch (m->channel)
+        {
+        case TIM_CHANNEL_1:
+            tim->CCMR1 &= ~TIM_CCMR1_CC1S;       // 00: Output
+            tim->CCMR1 |= (TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2); // PWM mode 1 (110)
+            tim->CCMR1 |= TIM_CCMR1_OC1PE;       // Preload enable
+            tim->CCER &= ~(TIM_CCER_CC1P | TIM_CCER_CC1NP); // Clear polarity (active high)
+            tim->CCER |= TIM_CCER_CC1E;          // Enable output
+            break;
+        case TIM_CHANNEL_2:
+            tim->CCMR1 &= ~TIM_CCMR1_CC2S;
+            tim->CCMR1 |= (TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2M_2);
+            tim->CCMR1 |= TIM_CCMR1_OC2PE;
+            tim->CCER &= ~(TIM_CCER_CC2P | TIM_CCER_CC2NP);
+            tim->CCER |= TIM_CCER_CC2E;
+            break;
+        case TIM_CHANNEL_3:
+            tim->CCMR2 &= ~TIM_CCMR2_CC3S;
+            tim->CCMR2 |= (TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3M_2);
+            tim->CCMR2 |= TIM_CCMR2_OC3PE;
+            tim->CCER &= ~(TIM_CCER_CC3P | TIM_CCER_CC3NP);
+            tim->CCER |= TIM_CCER_CC3E;
+            break;
+        case TIM_CHANNEL_4:
+            tim->CCMR2 &= ~TIM_CCMR2_CC4S;
+            tim->CCMR2 |= (TIM_CCMR2_OC4M_1 | TIM_CCMR2_OC4M_2);
+            tim->CCMR2 |= TIM_CCMR2_OC4PE;
+            tim->CCER &= ~(TIM_CCER_CC4P | TIM_CCER_CC4NP);
+            tim->CCER |= TIM_CCER_CC4E;
+            break;
+        }
+
+        tim->CCER |= (1 << (m->channel >> 2) * 4);
+
+    }
+    // Im just gonna hard code starting the timers for now lol
+    // One day I'll find a smarter way to do this
+    // Surely I won't forget about this and it bites me in the ass
+    __HAL_TIM_MOE_ENABLE(&htim8);
+
+    __HAL_TIM_ENABLE(&htim4);
+    __HAL_TIM_ENABLE(&htim8);
+
+    dmaState=TRANSMITTING;
+}
+
+
 
 void DShot::handleInterrupt()
 {
@@ -242,13 +344,24 @@ void DShot::handleInterrupt()
             MotorTable *m = &motor_tables[i];
             DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
             dmaStream->CR &= ~DMA_SxCR_EN;
+            __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
         }
+        printf("a\n");
         dmaState=IDLE;
         return;
     }
-
+    if (dmaState==TRANSMITTING){
+        dmaState=IDLE;
+        reconfigureForTelemetry();
+        printf("b\n");
+        return;
+    }
+    if (dmaState==RECEIVING){
+        printf("c\n");
+        dmaState=IDLE;
+        return;
+    }
 }
-
 
 
 
@@ -322,50 +435,6 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
     startCmdXmit();
 }
 
-void DShot::startCmdXmit()
-{
-    // Check if motor 1 transfer is finished
-    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
-    if (dmaState!=IDLE){
-        return;
-    }
-
-    __HAL_TIM_DISABLE(&htim4);
-    __HAL_TIM_DISABLE(&htim8);
-
-    __HAL_TIM_SET_COUNTER(&htim4, 0);
-    __HAL_TIM_SET_COUNTER(&htim8, 0);
-
-    for (int i = 0; i < 4; ++i)
-    {
-        MotorTable *m = &motor_tables[i];
-        if (m->htim == nullptr)
-            continue;
-
-        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
-        // Clears flags
-        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
-        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
-        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TE_FLAG_INDEX(m->hdma));
-        // Manually sets transfer target and size
-        dmaStream->NDTR = 18;
-        dmaStream->M0AR = (uint32_t)m->cmd_buffer;
-        dmaStream->PAR = (uint32_t)m->ccr_reg;
-        dmaStream->CR |= DMA_SxCR_EN;
-
-        m->htim->Instance->DIER |= m->dma_bit;
-        m->htim->Instance->CCER |= (1 << (m->channel >> 2) * 4);
-    }
-    // Im just gonna hard code starting the timers for now lol
-    // One day I'll find a smarter way to do this
-    // Surely I won't forget about this and it bites me in the ass
-    __HAL_TIM_MOE_ENABLE(&htim8);
-
-    __HAL_TIM_ENABLE(&htim4);
-    __HAL_TIM_ENABLE(&htim8);
-
-    dmaState=TRANSMITTING;
-}
 
 IRQn_Type Get_DMA_Stream_IRQn(DMA_HandleTypeDef *hdma)
 {
