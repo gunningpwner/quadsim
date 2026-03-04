@@ -44,7 +44,7 @@ private:
     void reconfigureForTelemetry();
     DriverState armedState = UNINITIALIZED;
     DMAState dmaState = IDLE;
-
+    uint64_t receive_start=0;
     MotorTable motor_tables[4];
 
 };

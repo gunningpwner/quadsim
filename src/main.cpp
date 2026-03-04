@@ -488,16 +488,20 @@ int main(void)
     const uint64_t crsf_telemetry_interval_us = 100000;
 
     dshot_driver.disarm();
-    // HAL_Delay(2000);
-    // dshot_driver.arm();
-    // float cmd[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    // dshot_driver.sendMotorThrottle(cmd);
-    // HAL_Delay(100);
-    // dshot_driver.disarm();
+    HAL_Delay(2000);
+    dshot_driver.arm();
+    for (int i = 0; i < 50; ++i)
+    {
+        float cmd[4] = {0.05f, 0.05f, 0.05f, 0.05f};
+        dshot_driver.sendMotorThrottle(cmd);
+        HAL_Delay(1);
+    }
+    HAL_Delay(100);
+    dshot_driver.disarm();
     while (1)
     {
-        flash.run();
-        CheckUsb();
+        // flash.run();
+        // CheckUsb();
         // Run the main flight software logic.
 
         // mce.run();

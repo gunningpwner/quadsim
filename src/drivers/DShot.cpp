@@ -1,8 +1,11 @@
 #include "drivers/DShot.h"
-
+#include "timing.h"
 
 #define DSHOT_RATE 150000 // in kbit/s
 #define DSHOT_MIN_THROTTLE 50
+#define SAFETY_MARGIN_US 10
+
+const uint64_t RX_TIMEOUT_US = ((22 * 1000) / DSHOT_RATE)+ SAFETY_MARGIN_US;
 
 extern TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim8;
@@ -100,38 +103,38 @@ void DShot::arm()
         return;
     }
 
-    MotorTable *m = &motor_tables[0];
-
-    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)m->hdma->Instance;
-
-    // Turn on transfer complete interrupt 
-    dmaStreamM1->CR |= DMA_SxCR_TCIE;
-    IRQn_Type irq = Get_DMA_Stream_IRQn(m->hdma);
-    HAL_NVIC_SetPriority(irq, 0, 0);
-    HAL_NVIC_EnableIRQ(irq);
-    // Wait for stream to be disabled.
-    // We don't want to interrupt the transfer while the dma is mid transmit
-    // So we turn on interrupt flag, and in the interrupt, disable the stream.
-    // The same interrupt also turned off the interrupt enable.
-    __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
-
-    // while (dmaStreamM1->CR & DMA_SxCR_EN)
-    //     asm volatile("nop");
-
-    while (dmaState!=IDLE){
-        asm volatile("nop");
-    }
-
-    __HAL_TIM_DISABLE(&htim4);
-    __HAL_TIM_DISABLE(&htim8);
+    // Does nothing if any of the CCER are enabled
+    // __HAL_TIM_DISABLE(&htim4);
+    // __HAL_TIM_DISABLE(&htim8);
 
     for (int i = 0; i < 4; ++i)
     {
         MotorTable *m = &motor_tables[i];
+
+        m->htim->Instance->CR1 &= ~TIM_CR1_CEN;
+
         DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        dmaStream->CR &= ~DMA_SxCR_EN;
+        while (dmaStream->CR & DMA_SxCR_EN)
+            asm volatile("nop");
+
         dmaStream->CR &= ~DMA_SxCR_CIRC;
     }
+
+    // Turn on transfer complete interrupt 
+    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
+    hdma_tim8_ch3.Instance->CR |= DMA_SxCR_TCIE;
+    IRQn_Type irq = Get_DMA_Stream_IRQn(&hdma_tim8_ch3);
+    HAL_NVIC_SetPriority(irq, 0, 0);
+    HAL_NVIC_EnableIRQ(irq);
+    
+
+    // while (dmaStreamM1->CR & DMA_SxCR_EN)
+    //     asm volatile("nop");
+
+
     armedState = ARMED;
+    dmaState = IDLE;
 }
 
 void DShot::disarm()
@@ -140,35 +143,29 @@ void DShot::disarm()
         return;
     }
     
+    __HAL_TIM_DISABLE(&htim4);
+    __HAL_TIM_DISABLE(&htim8);
 
-    // Disable interrupts to stop state switch logic.
+    dmaState=IDLE;
+    armedState = DISARMED;
+    // Disable interrupts.
     hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_TCIE;
-
-    // Wait until last command has finished sending so we don't corrupt the signal
-    // Idk how the esc would handle that so just play it safe
-    
-    DMA_Stream_TypeDef *dmaStreamM1 = (DMA_Stream_TypeDef *)motor_tables[0].hdma->Instance;
-    if (dmaState==TRANSMITTING){
-        while (dmaStreamM1->CR & DMA_SxCR_EN)
-            asm volatile("nop");
-    }
-    else {
-
-    }
-
-    
-
+    // Disable dmas
     // Fill motor tables with zero throttle command and switch DMAs to circular buffer
     for (int i = 0; i < 4; ++i)
     {
         MotorTable *m = &motor_tables[i];
-        fillMotorTableBuffer(m, 0, false);
         DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
-        dmaStream->CR |= DMA_SxCR_CIRC;
-    }
+        dmaStream->CR &= ~DMA_SxCR_EN;
+        while (dmaStream->CR & DMA_SxCR_EN)
+            asm volatile("nop");
 
+        dmaStream->CR |= DMA_SxCR_CIRC;
+        fillMotorTableBuffer(m, 0, false);
+    }
+    
     startCmdXmit();
-    armedState = DISARMED;
+
     printf("d\n");
 }
 
@@ -192,6 +189,8 @@ void DShot::reconfigureForTelemetry()
        
         DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
         dmaStream->CR &= ~DMA_SxCR_EN;
+        while (dmaStream->CR & DMA_SxCR_EN)
+            asm volatile("nop");
         // Clears flags
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
@@ -248,10 +247,18 @@ void DShot::reconfigureForTelemetry()
 void DShot::startCmdXmit()
 {
     // Check if motor 1 transfer is finished
-
-    if (dmaState!=IDLE){
+    if (dmaState!=IDLE)
+    {
         return;
     }
+    // choosing to have this in sendMotorThrottle so we don't spend time calculating a command just to time out
+    // if (dmaState==RECEIVING ){
+    //     if (getCurrentTimeUs()-receive_start>RX_TIMEOUT_US){
+    //         dmaState=IDLE;
+    //     } else {
+    //         return;
+    //     }
+    // } 
 
     __HAL_TIM_DISABLE(&htim4);
     __HAL_TIM_DISABLE(&htim8);
@@ -264,9 +271,13 @@ void DShot::startCmdXmit()
         MotorTable *m = &motor_tables[i];
         if (m->htim == nullptr)
             continue;
+        TIM_TypeDef *tim = m->htim->Instance;
+        tim->CR1 &= ~TIM_CR1_CEN;
 
         DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
         dmaStream->CR &= ~DMA_SxCR_EN;
+        while (dmaStream->CR & DMA_SxCR_EN)
+            asm volatile("nop");
         // Clears flags
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
@@ -281,7 +292,7 @@ void DShot::startCmdXmit()
 
         dmaStream->CR |= DMA_SxCR_EN;
 
-        TIM_TypeDef *tim = m->htim->Instance;
+        
 
         tim->DIER |= m->dma_bit;
 
@@ -319,8 +330,6 @@ void DShot::startCmdXmit()
             break;
         }
 
-        tim->CCER |= (1 << (m->channel >> 2) * 4);
-
     }
     // Im just gonna hard code starting the timers for now lol
     // One day I'll find a smarter way to do this
@@ -337,29 +346,21 @@ void DShot::startCmdXmit()
 
 void DShot::handleInterrupt()
 {
-    if (armedState==DISARMED){
-        // Should only get here when arm function enables interrupts
-        for (int i = 0; i < 4; ++i)
-        {
-            MotorTable *m = &motor_tables[i];
-            DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
-            dmaStream->CR &= ~DMA_SxCR_EN;
-            __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
-        }
-        printf("a\n");
-        dmaState=IDLE;
-        return;
-    }
+
     if (dmaState==TRANSMITTING){
         dmaState=IDLE;
         reconfigureForTelemetry();
-        printf("b\n");
+        receive_start=getCurrentTimeUs();
         return;
     }
     if (dmaState==RECEIVING){
-        printf("c\n");
         dmaState=IDLE;
         return;
+    }
+    if (dmaState==IDLE){
+        // This shouldn't be happening but it does and i don't know why
+        // Maybe this will stop it from being stupid
+        __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
     }
 }
 
@@ -400,6 +401,13 @@ void DShot::sendMotorThrottle(float cmds[4])
     if (armedState==DISARMED){
         return;
     }
+    if (dmaState==RECEIVING ){
+        if (getCurrentTimeUs()-receive_start>RX_TIMEOUT_US){
+            dmaState=IDLE;
+        } else {
+            return;
+        }
+    } 
     // Commands come in with range 0-1
     for (int i = 0; i < 4; ++i)
     {
