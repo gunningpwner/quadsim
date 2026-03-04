@@ -11,24 +11,24 @@ int8_t QMC5883L::init()
 {
     uint8_t reset = 0x80;
     // Soft reset
-    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL2, 1, &reset, 1, HAL_MAX_DELAY);
+    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL2, 1, &reset, 1, 100);
     HAL_Delay(350);
 
     uint8_t chip_id = 0;
-    HAL_I2C_Mem_Read(&hi2c1, DEVICE_ADDR, REG_CHIP_ID, 1, &chip_id, 1, HAL_MAX_DELAY);
+    HAL_I2C_Mem_Read(&hi2c1, DEVICE_ADDR, REG_CHIP_ID, 1, &chip_id, 1, 100);
     if (chip_id != EXPECTED_CHIP_ID)
     {
         return -1;
     }
     //idk man. the datasheet said to do it and did not elaborate
     uint8_t reset_period = 0x01;
-    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, 0x0B,1, &reset_period, 1, HAL_MAX_DELAY);
+    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, 0x0B,1, &reset_period, 1, 100);
     // Enables automatic rollover
     uint8_t rollover = 0b01000000;
-    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL2,1, &rollover, 1, HAL_MAX_DELAY);
+    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL2,1, &rollover, 1, 100);
     // Won't let me just use DATA_CONTROL1, so fuck it just use the chip_id
     chip_id = DATA_CONTROL1;
-    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL1, 1, &chip_id, 1, HAL_MAX_DELAY);
+    HAL_I2C_Mem_Write(&hi2c1, DEVICE_ADDR, REG_CONTROL1, 1, &chip_id, 1, 100);
     return 0;
 }
 
