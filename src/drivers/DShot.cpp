@@ -5,7 +5,7 @@
 #define DSHOT_MIN_THROTTLE 50
 #define SAFETY_MARGIN_US 10
 
-const uint64_t RX_TIMEOUT_US = ((22 * 1000) / DSHOT_RATE)+ SAFETY_MARGIN_US;
+const uint64_t RX_TIMEOUT_US = ((22 * 1000000) / DSHOT_RATE)+ SAFETY_MARGIN_US;
 
 extern TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim8;
@@ -304,28 +304,32 @@ void DShot::startCmdXmit()
             tim->CCMR1 &= ~TIM_CCMR1_CC1S;       // 00: Output
             tim->CCMR1 |= (TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2); // PWM mode 1 (110)
             tim->CCMR1 |= TIM_CCMR1_OC1PE;       // Preload enable
-            tim->CCER &= ~(TIM_CCER_CC1P | TIM_CCER_CC1NP); // Clear polarity (active high)
+            tim->CCER &= ~TIM_CCER_CC1NP;        // Clear complementary polarity
+            tim->CCER |= TIM_CCER_CC1P;          // SET polarity (active low)
             tim->CCER |= TIM_CCER_CC1E;          // Enable output
             break;
         case TIM_CHANNEL_2:
             tim->CCMR1 &= ~TIM_CCMR1_CC2S;
             tim->CCMR1 |= (TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2M_2);
             tim->CCMR1 |= TIM_CCMR1_OC2PE;
-            tim->CCER &= ~(TIM_CCER_CC2P | TIM_CCER_CC2NP);
+            tim->CCER &= ~TIM_CCER_CC2NP;
+            tim->CCER |= TIM_CCER_CC2P;
             tim->CCER |= TIM_CCER_CC2E;
             break;
         case TIM_CHANNEL_3:
             tim->CCMR2 &= ~TIM_CCMR2_CC3S;
             tim->CCMR2 |= (TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3M_2);
             tim->CCMR2 |= TIM_CCMR2_OC3PE;
-            tim->CCER &= ~(TIM_CCER_CC3P | TIM_CCER_CC3NP);
+            tim->CCER &= ~TIM_CCER_CC3NP;
+            tim->CCER |= TIM_CCER_CC3P;
             tim->CCER |= TIM_CCER_CC3E;
             break;
         case TIM_CHANNEL_4:
             tim->CCMR2 &= ~TIM_CCMR2_CC4S;
             tim->CCMR2 |= (TIM_CCMR2_OC4M_1 | TIM_CCMR2_OC4M_2);
             tim->CCMR2 |= TIM_CCMR2_OC4PE;
-            tim->CCER &= ~(TIM_CCER_CC4P | TIM_CCER_CC4NP);
+            tim->CCER &= ~TIM_CCER_CC4NP;
+            tim->CCER |= TIM_CCER_CC4P;
             tim->CCER |= TIM_CCER_CC4E;
             break;
         }
@@ -379,6 +383,8 @@ void DShot::fillMotorTableBuffer(MotorTable *m, uint16_t cmd, bool telemetry)
         csum_data >>= 4;
     }
     csum &= 0x0F;
+    
+    csum = (~csum) & 0x0F; // for bidirectional
 
     cmd = (cmd << 4) | csum;
 
@@ -413,7 +419,7 @@ void DShot::sendMotorThrottle(float cmds[4])
     {
         uint16_t dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
         dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
-        fillMotorTableBuffer(&motor_tables[i], dshot_val, true);
+        fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
     }
     startCmdXmit();
 }

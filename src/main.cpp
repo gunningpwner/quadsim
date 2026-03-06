@@ -490,13 +490,12 @@ int main(void)
     dshot_driver.disarm();
     HAL_Delay(2000);
     dshot_driver.arm();
-    for (int i = 0; i < 50; ++i)
+    for (int i = 0; i < 300; ++i)
     {
-        float cmd[4] = {0.05f, 0.05f, 0.05f, 0.05f};
+        float cmd[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         dshot_driver.sendMotorThrottle(cmd);
-        HAL_Delay(1);
     }
-    HAL_Delay(100);
+    HAL_Delay(10);
     dshot_driver.disarm();
     while (1)
     {
