@@ -40,6 +40,7 @@ int DShot::init()
     createMotorTable(1, htim4, TIM_CHANNEL_1, hdma_tim4_ch1);
     createMotorTable(2, htim8, TIM_CHANNEL_4, hdma_tim8_ch4);
     createMotorTable(3, htim4, TIM_CHANNEL_2, hdma_tim4_ch2);
+    disarm();
     return 0;
 }
 
@@ -117,8 +118,6 @@ void DShot::arm()
         dmaStream->CR &= ~DMA_SxCR_EN;
         while (dmaStream->CR & DMA_SxCR_EN)
             asm volatile("nop");
-
-        dmaStream->CR &= ~DMA_SxCR_CIRC;
     }
 
     // Turn on transfer complete interrupt 
@@ -132,9 +131,7 @@ void DShot::arm()
     // while (dmaStreamM1->CR & DMA_SxCR_EN)
     //     asm volatile("nop");
 
-
     armedState = ARMED;
-    dmaState = IDLE;
 }
 
 void DShot::disarm()
@@ -159,14 +156,8 @@ void DShot::disarm()
         dmaStream->CR &= ~DMA_SxCR_EN;
         while (dmaStream->CR & DMA_SxCR_EN)
             asm volatile("nop");
-
-        dmaStream->CR |= DMA_SxCR_CIRC;
-        fillMotorTableBuffer(m, 0, false);
     }
     
-    startCmdXmit();
-
-    printf("d\n");
 }
 
 void DShot::reconfigureForTelemetry()
@@ -247,10 +238,10 @@ void DShot::reconfigureForTelemetry()
 void DShot::startCmdXmit()
 {
     // Check if motor 1 transfer is finished
-    if (dmaState!=IDLE)
-    {
-        return;
-    }
+    // if (dmaState!=IDLE)
+    // {
+    //     return;
+    // }
     // choosing to have this in sendMotorThrottle so we don't spend time calculating a command just to time out
     // if (dmaState==RECEIVING ){
     //     if (getCurrentTimeUs()-receive_start>RX_TIMEOUT_US){
@@ -282,6 +273,7 @@ void DShot::startCmdXmit()
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TE_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_FE_FLAG_INDEX(m->hdma));
         // Manually sets transfer target and size
         dmaStream->NDTR = 18;
         dmaStream->M0AR = (uint32_t)m->cmd_buffer;
@@ -343,6 +335,7 @@ void DShot::startCmdXmit()
     __HAL_TIM_ENABLE(&htim4);
     __HAL_TIM_ENABLE(&htim8);
 
+    __DSB();
     dmaState=TRANSMITTING;
 }
 
@@ -350,6 +343,10 @@ void DShot::startCmdXmit()
 
 void DShot::handleInterrupt()
 {
+    // Get's called twice without the flag being set. idk why, but i'm just gonna do this and move on. 
+    if(!__HAL_DMA_GET_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3))){
+        return;
+    };
 
     if (dmaState==TRANSMITTING){
         dmaState=IDLE;
@@ -404,9 +401,7 @@ void DShot::fillMotorTableBuffer(MotorTable *m, uint16_t cmd, bool telemetry)
 }
 void DShot::sendMotorThrottle(float cmds[4])
 {
-    if (armedState==DISARMED){
-        return;
-    }
+
     if (dmaState==RECEIVING ){
         if (getCurrentTimeUs()-receive_start>RX_TIMEOUT_US){
             dmaState=IDLE;
@@ -419,6 +414,10 @@ void DShot::sendMotorThrottle(float cmds[4])
     {
         uint16_t dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
         dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
+        if (armedState==DISARMED)
+        {
+            dshot_val=0;
+        }
         fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
     }
     startCmdXmit();

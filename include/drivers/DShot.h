@@ -23,7 +23,7 @@ struct MotorTable{
     uint16_t duty_bit_1;
 };
 enum DMAState { IDLE, TRANSMITTING, RECEIVING };
-enum DriverState { DISARMED, UNINITIALIZED, ARMED};
+enum DriverState { DISARMED, ARMED};
 
 class DShot {
 public:
@@ -42,7 +42,7 @@ private:
     void fillMotorTableBuffer(MotorTable* m, uint16_t cmd, bool telemetry);
     void startCmdXmit();
     void reconfigureForTelemetry();
-    DriverState armedState = UNINITIALIZED;
+    DriverState armedState = DISARMED;
     DMAState dmaState = IDLE;
     uint64_t receive_start=0;
     MotorTable motor_tables[4];
