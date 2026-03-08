@@ -148,8 +148,7 @@ void DShot::disarm()
 
     dmaState=IDLE;
     armedState = DISARMED;
-    // Disable interrupts.
-    hdma_tim8_ch3.Instance->CR &= ~DMA_SxCR_TCIE;
+
     // Disable dmas
     // Fill motor tables with zero throttle command and switch DMAs to circular buffer
     for (int i = 0; i < 4; ++i)

@@ -119,7 +119,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
             // uint32_t start=DWT->CYCCNT;
             g_imu_ptr->processRawData();
 
-            float cmd[4] = {0.00f, 0.00f, 0.00f, 0.00f};
+            float cmd[4] = {0.05f, 0.00f, 0.00f, 0.00f};
             g_dshot_ptr->sendMotorThrottle(cmd);
             // printf("imu: %lu\n",DWT->CYCCNT-start);
         }
@@ -490,7 +490,7 @@ int main(void)
     volatile uint64_t last_crsf_telemetry_time = 0;
     const uint64_t crsf_telemetry_interval_us = 100000;
 
-    HAL_Delay(2000);
+    HAL_Delay(5000);
     dshot_driver.arm();
     HAL_Delay(500);
     dshot_driver.disarm();
