@@ -73,7 +73,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         static size_t counter = 0;
         if (g_imu_ptr)
             g_imu_ptr->startReadImu_DMA();
-
+        //reminder that you changed timer 2 rate and counter
         // if (counter % 10 == 0)
         // {
         //     if (g_compass_ptr)
@@ -490,9 +490,13 @@ int main(void)
     volatile uint64_t last_crsf_telemetry_time = 0;
     const uint64_t crsf_telemetry_interval_us = 100000;
 
-    HAL_Delay(4000);
-    dshot_driver.arm();
     HAL_Delay(2000);
+    dshot_driver.arm();
+    HAL_Delay(500);
+    dshot_driver.disarm();
+    HAL_Delay(500);
+    dshot_driver.arm();
+    HAL_Delay(500);
     dshot_driver.disarm();
     while (1)
     {

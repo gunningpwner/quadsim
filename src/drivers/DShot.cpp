@@ -40,6 +40,14 @@ int DShot::init()
     createMotorTable(1, htim4, TIM_CHANNEL_1, hdma_tim4_ch1);
     createMotorTable(2, htim8, TIM_CHANNEL_4, hdma_tim8_ch4);
     createMotorTable(3, htim4, TIM_CHANNEL_2, hdma_tim4_ch2);
+
+    // Turn on transfer complete interrupt 
+    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
+    hdma_tim8_ch3.Instance->CR |= DMA_SxCR_TCIE;
+    IRQn_Type irq = Get_DMA_Stream_IRQn(&hdma_tim8_ch3);
+    HAL_NVIC_SetPriority(irq, 0, 0);
+    HAL_NVIC_EnableIRQ(irq);
+
     disarm();
     return 0;
 }
@@ -120,12 +128,7 @@ void DShot::arm()
             asm volatile("nop");
     }
 
-    // Turn on transfer complete interrupt 
-    __HAL_DMA_CLEAR_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3));
-    hdma_tim8_ch3.Instance->CR |= DMA_SxCR_TCIE;
-    IRQn_Type irq = Get_DMA_Stream_IRQn(&hdma_tim8_ch3);
-    HAL_NVIC_SetPriority(irq, 0, 0);
-    HAL_NVIC_EnableIRQ(irq);
+    
     
 
     // while (dmaStreamM1->CR & DMA_SxCR_EN)
@@ -186,6 +189,7 @@ void DShot::reconfigureForTelemetry()
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TC_FLAG_INDEX(m->hdma));
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_HT_FLAG_INDEX(m->hdma));
         __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_TE_FLAG_INDEX(m->hdma));
+        __HAL_DMA_CLEAR_FLAG(m->hdma, __HAL_DMA_GET_FE_FLAG_INDEX(m->hdma));
         // Manually sets transfer target and size
         
         dmaStream->NDTR = 22;                     // Bi-DShot frame usually generates 21 or 22 edges
@@ -196,30 +200,40 @@ void DShot::reconfigureForTelemetry()
         dmaStream->CR |= DMA_SxCR_EN;
 
         TIM_TypeDef *tim = m->htim->Instance;
-
+        tim->CR1 &= ~TIM_CR1_CEN;
+        tim->CNT = 0;
         // Disable channel so we can change the settings
         tim->CCER &= ~(1 << ((m->channel >> 2) * 4));
         switch (m->channel)
         {
         case TIM_CHANNEL_1:
+            tim->CCER &= ~TIM_CCER_CC1E;  //Disable capture
+            tim->SR &= ~TIM_SR_CC1IF;       // Clear interrupt flag
             tim->CCMR1 &= ~TIM_CCMR1_CC1S;       // Clear selection
             tim->CCMR1 |= TIM_CCMR1_CC1S_0;      // Set to 01 (Input mapped to TI1)
             tim->CCER |= (TIM_CCER_CC1P | TIM_CCER_CC1NP); // Capture both edges
             tim->CCER |= TIM_CCER_CC1E;          // Re-enable capture
+
             break;
         case TIM_CHANNEL_2:
+            tim->CCER &= ~TIM_CCER_CC2E;
+            tim->SR &= ~TIM_SR_CC2IF;       // Clear interrupt flag
             tim->CCMR1 &= ~TIM_CCMR1_CC2S;
             tim->CCMR1 |= TIM_CCMR1_CC2S_0;
             tim->CCER |= (TIM_CCER_CC2P | TIM_CCER_CC2NP);
             tim->CCER |= TIM_CCER_CC2E;
             break;
         case TIM_CHANNEL_3:
+            tim->CCER &= ~TIM_CCER_CC3E;
+            tim->SR &= ~TIM_SR_CC3IF;       // Clear interrupt flag
             tim->CCMR2 &= ~TIM_CCMR2_CC3S;
             tim->CCMR2 |= TIM_CCMR2_CC3S_0;
             tim->CCER |= (TIM_CCER_CC3P | TIM_CCER_CC3NP);
             tim->CCER |= TIM_CCER_CC3E;
             break;
         case TIM_CHANNEL_4:
+            tim->CCER &= ~TIM_CCER_CC4E;
+            tim->SR &= ~TIM_SR_CC4IF;       // Clear interrupt flag
             tim->CCMR2 &= ~TIM_CCMR2_CC4S;
             tim->CCMR2 |= TIM_CCMR2_CC4S_0;
             tim->CCER |= (TIM_CCER_CC4P | TIM_CCER_CC4NP);
@@ -228,10 +242,12 @@ void DShot::reconfigureForTelemetry()
         }
 
     }
-    __HAL_TIM_MOE_ENABLE(&htim8);
+    NVIC_ClearPendingIRQ(DMA2_Stream4_IRQn);
 
-    __HAL_TIM_ENABLE(&htim4);
-    __HAL_TIM_ENABLE(&htim8);
+    // __HAL_TIM_MOE_ENABLE(&htim8);
+
+    // __HAL_TIM_ENABLE(&htim4);
+    // __HAL_TIM_ENABLE(&htim8);
     dmaState=RECEIVING;
 }
 
@@ -327,6 +343,9 @@ void DShot::startCmdXmit()
         }
 
     }
+    // Turning off DMA after reconfigureForTransmit seemingly triggers the interrupt without setting the flag.
+    // 
+    NVIC_ClearPendingIRQ(DMA2_Stream4_IRQn);
     // Im just gonna hard code starting the timers for now lol
     // One day I'll find a smarter way to do this
     // Surely I won't forget about this and it bites me in the ass
@@ -335,7 +354,7 @@ void DShot::startCmdXmit()
     __HAL_TIM_ENABLE(&htim4);
     __HAL_TIM_ENABLE(&htim8);
 
-    __DSB();
+
     dmaState=TRANSMITTING;
 }
 
@@ -343,10 +362,6 @@ void DShot::startCmdXmit()
 
 void DShot::handleInterrupt()
 {
-    // Get's called twice without the flag being set. idk why, but i'm just gonna do this and move on. 
-    if(!__HAL_DMA_GET_FLAG(&hdma_tim8_ch3, __HAL_DMA_GET_TC_FLAG_INDEX(&hdma_tim8_ch3))){
-        return;
-    };
 
     if (dmaState==TRANSMITTING){
         dmaState=IDLE;
