@@ -22,7 +22,6 @@ DMA_HandleTypeDef hdma_tim8_ch4;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
 DMA_HandleTypeDef hdma_spi2_tx;
-DMA_HandleTypeDef hdma_spi2_rx;
 DMA_HandleTypeDef hdma_i2c1_rx;
 DMA_HandleTypeDef hdma_i2c1_tx;
 DMA_HandleTypeDef hdma_uart4_rx;
@@ -372,29 +371,10 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef *spiHandle)
         ;
     }
     __HAL_LINKDMA(spiHandle, hdmatx, hdma_spi2_tx);
-    hdma_spi2_rx.Instance = DMA1_Stream3;
-    hdma_spi2_rx.Init.Channel = DMA_CHANNEL_0;
-    hdma_spi2_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
-    hdma_spi2_rx.Init.PeriphInc = DMA_PINC_DISABLE;
-    hdma_spi2_rx.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_spi2_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-    hdma_spi2_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-    hdma_spi2_rx.Init.Mode = DMA_NORMAL;
-    hdma_spi2_rx.Init.Priority = DMA_PRIORITY_LOW;
-    hdma_spi2_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
 
-    if (HAL_DMA_Init(&hdma_spi2_rx) != HAL_OK)
-    {
-      while (1)
-        ;
-    }
-    __HAL_LINKDMA(spiHandle, hdmarx, hdma_spi2_rx);
 
     HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
-
-    HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
   }
 }
 

@@ -598,11 +598,6 @@ extern "C" void DMA1_Stream2_IRQHandler(void)
     HAL_DMA_IRQHandler(huart4.hdmarx);
 }
 
-extern "C" void DMA1_Stream3_IRQHandler(void)
-{
-    HAL_DMA_IRQHandler(hspi2.hdmarx);
-}
-
 extern "C" void DMA1_Stream4_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(hspi2.hdmatx);
