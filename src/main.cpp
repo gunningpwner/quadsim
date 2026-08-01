@@ -556,6 +556,16 @@ extern "C" void TIM2_IRQHandler(void)
 {
     HAL_TIM_IRQHandler(&htim2);
 }
+extern "C" void TIM4_IRQHandler(void)
+{
+    // Disable update interrupt here so it doesn't keep triggering
+    htim4.Instance->DIER &= ~TIM_DIER_UIE;
+
+    // Should happen when htim4 counter overflows during rcv mode of dshot.
+    HAL_TIM_IRQHandler(&htim4);
+
+    g_dshot_ptr->handleInterrupt();
+}
 
 extern "C" void DMA2_Stream0_IRQHandler(void)
 {
@@ -572,7 +582,7 @@ extern "C" void DMA2_Stream4_IRQHandler(void)
     
     g_dshot_ptr->handleInterrupt();
 }
-extern "C" void DMA1_Stream0_IRQHandler(void)
+extern "C" void DMA1_Stream5_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(hi2c1.hdmarx);
 }

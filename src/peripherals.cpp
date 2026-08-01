@@ -11,7 +11,7 @@ UART_HandleTypeDef huart4;
 I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim4;
+
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim8;
 
@@ -121,7 +121,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim)
   {
     __HAL_RCC_GPIOB_CLK_ENABLE();
     /**TIM4 GPIO Configuration
-    PB6     ------> TIM4_CH1 --> Motor 2
+    PB6     ------> TIM4_CH1 --> Motor 2 *ded well not really. but it don't work with my drivers*
     PB7     ------> TIM4_CH2 --> Motor 4
     */
     GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
@@ -563,6 +563,10 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *tim_baseHandle)
     HAL_DMA_Init(&hdma_tim4_ch2);
 
     __HAL_LINKDMA(tim_baseHandle, hdma[TIM_DMA_ID_CC2], hdma_tim4_ch2);
+
+    HAL_NVIC_SetPriority(TIM4_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM4_IRQn);
+
   }
   else if (tim_baseHandle->Instance == TIM8)
   {
@@ -647,7 +651,7 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef *i2cHandle)
 
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    hdma_i2c1_rx.Instance = DMA1_Stream0;      // <--- Stream 0
+    hdma_i2c1_rx.Instance = DMA1_Stream5;      // <--- Stream 0
     hdma_i2c1_rx.Init.Channel = DMA_CHANNEL_1; // <--- Channel 1
     hdma_i2c1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
     hdma_i2c1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
@@ -673,8 +677,8 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef *i2cHandle)
     HAL_DMA_Init(&hdma_i2c1_tx);
     __HAL_LINKDMA(i2cHandle, hdmatx, hdma_i2c1_tx);
 
-    HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+    HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
 
     HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);

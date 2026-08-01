@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#define NUM_MOTORS 4
 struct MotorTable{
     // Struct to store hardware related info about motor
     // What timer, what dma etc..
@@ -19,6 +20,8 @@ struct MotorTable{
 
     uint32_t cmd_buffer[18] __attribute__((aligned(4)));
     uint32_t rx_buffer[22];
+    uint32_t xmit_arr;
+    uint32_t rcv_arr;
     uint16_t duty_bit_0; 
     uint16_t duty_bit_1;
 };
@@ -41,11 +44,12 @@ private:
     void createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t channel, DMA_HandleTypeDef& hdma);
     void fillMotorTableBuffer(MotorTable* m, uint16_t cmd, bool telemetry);
     void startCmdXmit();
+    void processTelemetry();
     void reconfigureForTelemetry();
     DriverState armedState = DISARMED;
     DMAState dmaState = IDLE;
     uint64_t receive_start=0;
-    MotorTable motor_tables[4];
+    MotorTable motor_tables[NUM_MOTORS];
 
 };
 

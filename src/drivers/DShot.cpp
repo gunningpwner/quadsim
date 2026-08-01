@@ -1,19 +1,19 @@
 #include "drivers/DShot.h"
 #include "timing.h"
-
+#include <cstring>
 #define DSHOT_RATE 150000 // in kbit/s
 #define DSHOT_MIN_THROTTLE 50
 #define SAFETY_MARGIN_US 10
 
 const uint64_t RX_TIMEOUT_US = ((22 * 1000000) / DSHOT_RATE)+ SAFETY_MARGIN_US;
 
-extern TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim8;
 
-extern DMA_HandleTypeDef hdma_tim4_ch1;
-extern DMA_HandleTypeDef hdma_tim4_ch2;
-extern DMA_HandleTypeDef hdma_tim8_ch3;
-extern DMA_HandleTypeDef hdma_tim8_ch4;
+extern DMA_HandleTypeDef hdma_tim4_ch1; // dma 1 stream 0 channel 2
+extern DMA_HandleTypeDef hdma_tim4_ch2; // dma 1 stream 3 channel 2
+extern DMA_HandleTypeDef hdma_tim8_ch3; // dma 2 stream 4 channel 7
+extern DMA_HandleTypeDef hdma_tim8_ch4; // dma 2 stream 7 channel 7
 
 IRQn_Type Get_DMA_Stream_IRQn(DMA_HandleTypeDef *hdma);
 /*
@@ -99,8 +99,15 @@ void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef &htim, uint32_t ch
             tim_clock *= 2;
     }
     uint32_t arr = (tim_clock + (DSHOT_RATE / 2)) / DSHOT_RATE;
+    m->xmit_arr = arr;
+
     __HAL_TIM_SET_AUTORELOAD(m->htim, arr - 1);
     __HAL_TIM_SET_PRESCALER(m->htim, 0);
+
+    m->rcv_arr = 21*(arr*4)/5 + (tim_clock/1000000)*50; // 21 bit transmission time + 50 ms of margin
+
+
+    std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
 
     m->duty_bit_0 = (arr * 3) / 8;
     m->duty_bit_1 = (arr * 3) / 4;
@@ -116,7 +123,7 @@ void DShot::arm()
     // __HAL_TIM_DISABLE(&htim4);
     // __HAL_TIM_DISABLE(&htim8);
 
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
 
@@ -151,7 +158,7 @@ void DShot::disarm()
 
     // Disable dmas
     // Fill motor tables with zero throttle command and switch DMAs to circular buffer
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
         DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
@@ -173,7 +180,7 @@ void DShot::reconfigureForTelemetry()
 
     __HAL_TIM_SET_COUNTER(&htim4, 0);
     __HAL_TIM_SET_COUNTER(&htim8, 0);
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
         if (m->htim == nullptr)
@@ -198,6 +205,7 @@ void DShot::reconfigureForTelemetry()
 
         dmaStream->CR |= DMA_SxCR_EN;
 
+        __HAL_TIM_SET_AUTORELOAD(m->htim, m->rcv_arr - 1);
         TIM_TypeDef *tim = m->htim->Instance;
         tim->CR1 &= ~TIM_CR1_CEN;
         tim->CNT = 0;
@@ -242,11 +250,11 @@ void DShot::reconfigureForTelemetry()
 
     }
     NVIC_ClearPendingIRQ(DMA2_Stream4_IRQn);
+    htim4.Instance->DIER |= TIM_DIER_UIE;
 
-    // __HAL_TIM_MOE_ENABLE(&htim8);
-
-    // __HAL_TIM_ENABLE(&htim4);
-    // __HAL_TIM_ENABLE(&htim8);
+    __HAL_TIM_MOE_ENABLE(&htim8);
+    __HAL_TIM_ENABLE(&htim4);
+    __HAL_TIM_ENABLE(&htim8);
     dmaState=RECEIVING;
 }
 
@@ -266,13 +274,14 @@ void DShot::startCmdXmit()
     //     }
     // } 
 
+
     __HAL_TIM_DISABLE(&htim4);
     __HAL_TIM_DISABLE(&htim8);
 
     __HAL_TIM_SET_COUNTER(&htim4, 0);
     __HAL_TIM_SET_COUNTER(&htim8, 0);
 
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
         if (m->htim == nullptr)
@@ -303,6 +312,7 @@ void DShot::startCmdXmit()
 
         tim->DIER |= m->dma_bit;
 
+        __HAL_TIM_SET_AUTORELOAD(m->htim, m->xmit_arr - 1);
         // Disable channel so we can change the settings
         tim->CCER &= ~(1 << ((m->channel >> 2) * 4));
         switch (m->channel)
@@ -345,6 +355,9 @@ void DShot::startCmdXmit()
     // Turning off DMA after reconfigureForTransmit seemingly triggers the interrupt without setting the flag.
     // 
     NVIC_ClearPendingIRQ(DMA2_Stream4_IRQn);
+
+    htim4.Instance->DIER &= ~TIM_DIER_UIE;
+
     // Im just gonna hard code starting the timers for now lol
     // One day I'll find a smarter way to do this
     // Surely I won't forget about this and it bites me in the ass
@@ -357,6 +370,19 @@ void DShot::startCmdXmit()
     dmaState=TRANSMITTING;
 }
 
+void DShot::processTelemetry()
+{
+    for (int i = 0; i < NUM_MOTORS; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        uint32_t j = m->rx_buffer[1];
+        if(j!=0){
+            printf("%d",j);
+        }
+        // std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+
+    }
+}
 
 
 void DShot::handleInterrupt()
@@ -370,6 +396,9 @@ void DShot::handleInterrupt()
     }
     if (dmaState==RECEIVING){
         dmaState=IDLE;
+        receive_start = getCurrentTimeUs()-receive_start;
+        processTelemetry();
+        
         return;
     }
     if (dmaState==IDLE){
@@ -424,7 +453,7 @@ void DShot::sendMotorThrottle(float cmds[4])
         }
     } 
     // Commands come in with range 0-1
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < NUM_MOTORS; ++i)
     {
         uint16_t dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
         dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
@@ -443,7 +472,7 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
     {
         // Throttle value will come to us in range 0-1999 so we map it to 48-2047.
         // Prolly make this better
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < NUM_MOTORS; ++i)
         {
             uint16_t dshot_val = cmd.throttle[i] + 48 + DSHOT_MIN_THROTTLE;
             dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
@@ -453,7 +482,7 @@ void DShot::sendMotorCommand(MotorCommands &cmd)
     else
     {
         uint16_t command_val = static_cast<uint16_t>(cmd.command);
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < NUM_MOTORS; ++i)
         {
             fillMotorTableBuffer(&motor_tables[i], command_val, false);
         }
