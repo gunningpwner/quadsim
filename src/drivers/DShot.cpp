@@ -105,7 +105,7 @@ void DShot::createMotorTable(uint8_t index, TIM_HandleTypeDef &htim, uint32_t ch
     __HAL_TIM_SET_PRESCALER(m->htim, 0);
 
     m->rcv_arr = 21*(arr*4)/5 + (tim_clock/1000000)*50; // 21 bit transmission time + 50 ms of margin
-
+    m->rcv_arr*=4;
 
     std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
 
@@ -203,7 +203,7 @@ void DShot::reconfigureForTelemetry()
 
         dmaStream->CR &= ~DMA_SxCR_DIR;           // 00 = Peripheral-to-memory
 
-        dmaStream->CR |= DMA_SxCR_EN;
+        
 
         __HAL_TIM_SET_AUTORELOAD(m->htim, m->rcv_arr - 1);
         TIM_TypeDef *tim = m->htim->Instance;
@@ -211,46 +211,54 @@ void DShot::reconfigureForTelemetry()
         tim->CNT = 0;
         // Disable channel so we can change the settings
         tim->CCER &= ~(1 << ((m->channel >> 2) * 4));
+        tim->DIER &= ~m->dma_bit;
         switch (m->channel)
         {
         case TIM_CHANNEL_1:
             tim->CCER &= ~TIM_CCER_CC1E;  //Disable capture
-            tim->SR &= ~TIM_SR_CC1IF;       // Clear interrupt flag
-            tim->CCMR1 &= ~TIM_CCMR1_CC1S;       // Clear selection
+            tim->CCMR1 &= 0xFF00; // Clear entire lower byte for channel 1
+
+            // tim->CCMR1 |= TIM_CCMR1_IC1F_1; // Filter of 4 clock cycles
             tim->CCMR1 |= TIM_CCMR1_CC1S_0;      // Set to 01 (Input mapped to TI1)
             tim->CCER |= (TIM_CCER_CC1P | TIM_CCER_CC1NP); // Capture both edges
             tim->CCER |= TIM_CCER_CC1E;          // Re-enable capture
-
+            tim->SR &= ~(TIM_SR_CC1IF|TIM_SR_CC1OF);
             break;
         case TIM_CHANNEL_2:
             tim->CCER &= ~TIM_CCER_CC2E;
-            tim->SR &= ~TIM_SR_CC2IF;       // Clear interrupt flag
-            tim->CCMR1 &= ~TIM_CCMR1_CC2S;
+            tim->CCMR1 &= 0x00FF; // Clear entire upper byte for channel 2
+
+            // tim->CCMR1 |= TIM_CCMR1_IC2F_1; 
             tim->CCMR1 |= TIM_CCMR1_CC2S_0;
             tim->CCER |= (TIM_CCER_CC2P | TIM_CCER_CC2NP);
             tim->CCER |= TIM_CCER_CC2E;
+            tim->SR &= ~(TIM_SR_CC2IF|TIM_SR_CC2OF);
             break;
         case TIM_CHANNEL_3:
             tim->CCER &= ~TIM_CCER_CC3E;
-            tim->SR &= ~TIM_SR_CC3IF;       // Clear interrupt flag
-            tim->CCMR2 &= ~TIM_CCMR2_CC3S;
+            tim->CCMR2 &= 0xFF00;
             tim->CCMR2 |= TIM_CCMR2_CC3S_0;
+            // tim->CCMR2 |= TIM_CCMR2_IC3F_1; 
             tim->CCER |= (TIM_CCER_CC3P | TIM_CCER_CC3NP);
             tim->CCER |= TIM_CCER_CC3E;
+            tim->SR &= ~(TIM_SR_CC3IF|TIM_SR_CC3OF);
             break;
         case TIM_CHANNEL_4:
             tim->CCER &= ~TIM_CCER_CC4E;
-            tim->SR &= ~TIM_SR_CC4IF;       // Clear interrupt flag
-            tim->CCMR2 &= ~TIM_CCMR2_CC4S;
+            tim->CCMR2 &= 0x00FF;
             tim->CCMR2 |= TIM_CCMR2_CC4S_0;
+            // tim->CCMR2 |= TIM_CCMR2_IC4F_1; 
             tim->CCER |= (TIM_CCER_CC4P | TIM_CCER_CC4NP);
             tim->CCER |= TIM_CCER_CC4E;
+            tim->SR &= ~(TIM_SR_CC4IF|TIM_SR_CC4OF);
             break;
         }
 
+        tim->DIER |= m->dma_bit;
+        dmaStream->CR |= DMA_SxCR_EN;
     }
     NVIC_ClearPendingIRQ(DMA2_Stream4_IRQn);
-    htim4.Instance->DIER |= TIM_DIER_UIE;
+    // htim4.Instance->DIER |= TIM_DIER_UIE;
 
     __HAL_TIM_MOE_ENABLE(&htim8);
     __HAL_TIM_ENABLE(&htim4);
@@ -273,7 +281,7 @@ void DShot::startCmdXmit()
     //         return;
     //     }
     // } 
-
+    processTelemetry();
 
     __HAL_TIM_DISABLE(&htim4);
     __HAL_TIM_DISABLE(&htim8);
@@ -318,7 +326,7 @@ void DShot::startCmdXmit()
         switch (m->channel)
         {
         case TIM_CHANNEL_1:
-            tim->CCMR1 &= ~TIM_CCMR1_CC1S;       // 00: Output
+            tim->CCMR1 &= 0xFF00;
             tim->CCMR1 |= (TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2); // PWM mode 1 (110)
             tim->CCMR1 |= TIM_CCMR1_OC1PE;       // Preload enable
             tim->CCER &= ~TIM_CCER_CC1NP;        // Clear complementary polarity
@@ -326,7 +334,7 @@ void DShot::startCmdXmit()
             tim->CCER |= TIM_CCER_CC1E;          // Enable output
             break;
         case TIM_CHANNEL_2:
-            tim->CCMR1 &= ~TIM_CCMR1_CC2S;
+            tim->CCMR1 &= 0x00FF;
             tim->CCMR1 |= (TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2M_2);
             tim->CCMR1 |= TIM_CCMR1_OC2PE;
             tim->CCER &= ~TIM_CCER_CC2NP;
@@ -334,7 +342,7 @@ void DShot::startCmdXmit()
             tim->CCER |= TIM_CCER_CC2E;
             break;
         case TIM_CHANNEL_3:
-            tim->CCMR2 &= ~TIM_CCMR2_CC3S;
+            tim->CCMR2 &= 0xFF00;
             tim->CCMR2 |= (TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3M_2);
             tim->CCMR2 |= TIM_CCMR2_OC3PE;
             tim->CCER &= ~TIM_CCER_CC3NP;
@@ -342,7 +350,7 @@ void DShot::startCmdXmit()
             tim->CCER |= TIM_CCER_CC3E;
             break;
         case TIM_CHANNEL_4:
-            tim->CCMR2 &= ~TIM_CCMR2_CC4S;
+            tim->CCMR2 &= 0x00FF;
             tim->CCMR2 |= (TIM_CCMR2_OC4M_1 | TIM_CCMR2_OC4M_2);
             tim->CCMR2 |= TIM_CCMR2_OC4PE;
             tim->CCER &= ~TIM_CCER_CC4NP;
@@ -375,11 +383,13 @@ void DShot::processTelemetry()
     for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
-        uint32_t j = m->rx_buffer[1];
-        if(j!=0){
-            printf("%d",j);
+        for (int j = 0; j < 22; ++j)
+        {
+            if(m->rx_buffer[j]!=0){
+                printf("%d",m->rx_buffer[j]);
+            }
         }
-        // std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+        std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
 
     }
 }
