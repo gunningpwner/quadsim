@@ -378,19 +378,120 @@ void DShot::startCmdXmit()
     dmaState=TRANSMITTING;
 }
 
+const int8_t gcr_decode_table[32] = {
+    -1, -1, -1, -1, -1, -1, -1, -1, // 0-7
+    -1,  9, 10, 11, -1, 13, 14, 15, // 8-15
+    -1, -1,  2,  3, -1,  5,  6,  7, // 16-23
+    -1,  0,  4,  8, -1,  1, 12, -1  // 24-31
+};
+
 void DShot::processTelemetry()
 {
+    bool any_valid=false;
+    
     for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
-        for (int j = 0; j < 22; ++j)
-        {
-            if(m->rx_buffer[j]!=0){
-                printf("%d",m->rx_buffer[j]);
-            }
-        }
-        std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
 
+        // 1. Find the actual start and end of the packet (ignoring our leading ghost zeros)
+        int start_idx = 0;
+        while (start_idx < 22 && m->rx_buffer[start_idx] == 0) {
+            start_idx++;
+        }
+        
+        int end_idx = 21;
+        while (end_idx > start_idx && m->rx_buffer[end_idx] == 0) {
+            end_idx--;
+        }
+
+        int num_edges = end_idx - start_idx + 1;
+        if (num_edges < 8) {
+            std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+            continue; // Not enough physical edges to be a valid packet
+        }
+
+        // 2. Calculate dynamic bit period 
+        // Total packet is 21 bits (1 start bit + 20 GCR data bits)
+        uint32_t total_time = m->rx_buffer[end_idx] - m->rx_buffer[start_idx];
+        uint32_t bit_period = total_time / 21; 
+        
+        if (bit_period == 0) {
+            std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+            continue; // Prevent division by zero if something goes horribly wrong
+        }
+
+        // 3. Reconstruct the GCR bitstream directly (NRZI Decode)
+        uint32_t gcr_bitstream = 0;
+
+        for (int j = start_idx + 1; j <= end_idx; ++j)
+        {
+            uint32_t interval = m->rx_buffer[j] - m->rx_buffer[j - 1];
+            
+            // Magic rounding trick: (value + (divisor / 2)) / divisor
+            int bits = (interval + (bit_period / 2)) / bit_period;
+
+            // Betaflight Run-Length Decode: 
+            // An interval of N periods means the state stayed the same for N-1 periods (0s), 
+            // and then transitioned on the final period (1). 
+            for (int k = 0; k < bits - 1; ++k)
+            {
+                gcr_bitstream = (gcr_bitstream << 1) | 0;
+            }
+            gcr_bitstream = (gcr_bitstream << 1) | 1;
+        }
+
+        // We only care about the last 20 bits (stripping off the start bit)
+        gcr_bitstream &= 0xFFFFF;
+
+        // 4. Decode the 5b/4b GCR
+        uint16_t decoded_payload = 0;
+        bool valid_gcr = true;
+
+        // Read the 20 bits in four 5-bit chunks, starting from the highest bits
+        for (int shift = 15; shift >= 0; shift -= 5)
+        {
+            int chunk = (gcr_bitstream >> shift) & 0x1F;
+            int decoded_nibble = gcr_decode_table[chunk];
+            
+            if (decoded_nibble < 0) {
+                valid_gcr = false; // Corrupted chunk, fail out
+                break;
+            }
+            decoded_payload = (decoded_payload << 4) | decoded_nibble;
+        }
+
+        if (!valid_gcr) {
+            std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+            continue;
+        }
+
+        // 5. Validate the CRC
+        uint16_t telemetry_data = decoded_payload >> 4; // Top 12 bits
+        uint16_t expected_crc = decoded_payload & 0x0F; // Bottom 4 bits
+
+        uint16_t calculated_crc = telemetry_data ^ (telemetry_data >> 4) ^ (telemetry_data >> 8);
+        calculated_crc = (~calculated_crc) & 0x0F;
+
+        if (calculated_crc == expected_crc)
+        {
+            // WE HAVE A VALID TELEMETRY PACKET!
+            // The 12-bit telemetry data represents the electrical period.
+            // Standard Betaflight conversion to electrical RPM (eRPM):
+            uint32_t erpm;
+            if (telemetry_data==4095){
+                erpm = 0; // ESC sends max 12 bit value when motor is stopped
+            } else
+            {
+                erpm= (1000000 * 60 / 100 + telemetry_data / 2) / telemetry_data;
+            }
+            
+            // NOTE: Mechanical RPM = eRPM / (MOTOR_POLES / 2)
+            printf("Motor %d eRPM: %lu\n", i, erpm);
+        
+        }
+
+        // Wipe buffer clean for the next DMA transfer
+        std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
     }
 }
 
