@@ -15,6 +15,7 @@ public:
     bool startReadImu_DMA();
     // This function will be called from the SPI/DMA interrupt handler
     bool processRawData();
+    bool processRawDataFAST(FastIMUData* data);
 
 private:
     // Register Map
@@ -60,10 +61,10 @@ private:
     GPIO_TypeDef*      m_cs_port;
     uint16_t           m_cs_pin;
 
-    // Buffers for DMA transfers. We read 12 bytes of data (6 accel + 6 gyro)
-    // plus 2 dummy bytes, for a total of 14 bytes.
-    uint8_t m_spi_tx_buf[24];
-    uint8_t m_spi_rx_buf[24];
+    // Buffers for DMA transfers. We read 24 bytes of data (1 status + 8 aux + 6 accel + 6 gyro + 3 sensortime)
+    // plus 2 dummy bytes, for a total of 26 bytes.
+    uint8_t m_spi_tx_buf[26];
+    uint8_t m_spi_rx_buf[26];
     
 };
 

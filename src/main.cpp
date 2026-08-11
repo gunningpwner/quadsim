@@ -22,6 +22,9 @@ GPS *g_gps_ptr = nullptr;
 QMC5883L *g_compass_ptr = nullptr;
 W25Q128FV *g_flash_ptr = nullptr;
 DShot *g_dshot_ptr = nullptr;
+DataManager::SensorBuffer *g_sensor_buffer_ptr = nullptr;
+
+
 
 static volatile uint32_t s_overflow_count = 0;
 static volatile uint32_t s_last_dwt_cyccnt = 0;
@@ -30,7 +33,6 @@ static uint32_t s_cycles_per_us = 0;
 extern uint8_t RxLastPacket[];
 extern volatile uint32_t RxPacketLen;
 extern volatile uint8_t NewDataFlag;
-
 
 void initTime()
 {
@@ -108,7 +110,43 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
+void handleFastLoop(void){
+    
 
+    static FastIMUData imu_data;
+    
+    static float imu_buffer[6] = {0.0f};
+    static size_t samples = 0;
+    
+    if (g_imu_ptr->processRawDataFAST(&imu_data))
+    {
+        imu_buffer[0]+=imu_data.data[0];
+        imu_buffer[1]+=imu_data.data[1];
+        imu_buffer[2]+=imu_data.data[2];
+        imu_buffer[3]+=imu_data.data[3];
+        imu_buffer[4]+=imu_data.data[4];
+        imu_buffer[5]+=imu_data.data[5];
+        samples++;
+    }
+    // TODO: Have this check if a certain time has passed rather than number of samples
+    if (samples==16){
+        uint64_t timestamp = getCurrentTimeUs();
+        SensorData* dwnsmpled_imu_data=g_sensor_buffer_ptr->claim();
+        dwnsmpled_imu_data->timestamp= timestamp;
+        dwnsmpled_imu_data->sensor= SensorData::Type::IMU;
+        dwnsmpled_imu_data->data.imu.accel[0] = imu_buffer[0]/samples;
+        dwnsmpled_imu_data->data.imu.accel[1] = imu_buffer[1]/samples;
+        dwnsmpled_imu_data->data.imu.accel[2] = imu_buffer[2]/samples;
+        
+        dwnsmpled_imu_data->data.imu.gyro[0] = imu_buffer[3]/samples;
+        dwnsmpled_imu_data->data.imu.gyro[1] = imu_buffer[4]/samples;
+        dwnsmpled_imu_data->data.imu.gyro[2] = imu_buffer[5]/samples;
+        g_sensor_buffer_ptr->commit(dwnsmpled_imu_data);
+        samples=0;
+        std::memset(imu_buffer, 0, sizeof(imu_buffer));
+    }
+
+}
 
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
@@ -119,8 +157,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         // We can now process the raw data that the DMA has moved for us.
         if (g_imu_ptr != nullptr)
         {
-            // uint32_t start=DWT->CYCCNT;
-            g_imu_ptr->processRawData();
+            handleFastLoop();
             
 
 
@@ -412,6 +449,7 @@ int main(void)
 
     MonolithicControlEntity mce;
     DataManager &data_manager = mce.getDataManager();
+    g_sensor_buffer_ptr = &data_manager.getSensorBuffer();
 
     BMI270 imu(data_manager.getSensorBuffer(), &hspi1, GPIOC, GPIO_PIN_4);
     g_imu_ptr = &imu;
@@ -533,6 +571,7 @@ int main(void)
         // }
     }
 }
+
 
 extern "C" void SysTick_Handler(void)
 {

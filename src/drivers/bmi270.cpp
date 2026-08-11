@@ -227,3 +227,41 @@ bool BMI270::processRawData()
 
   return true;
 }
+
+
+bool BMI270::processRawDataFAST(FastIMUData* data)
+{
+
+  HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
+  // TODO: Use new sensor time
+  // --- Timestamp the data as close to its arrival as possible ---
+  uint64_t timestamp = getCurrentTimeUs();
+
+  
+  // Data starts at index 2. Status is first byte, Aux data (empty) is next 8 bytes, then Accel (6 bytes), then Gyro (6 bytes) and finally sensortime (3 bytes).
+  uint8_t status= m_spi_rx_buf[2];
+  if ((status & 0b11000000) != 0b11000000) {
+      return false;
+  }
+
+  const uint8_t *data_ptr = &m_spi_rx_buf[11];
+
+  // These are in the IMU frame. Need to convert to body frame.
+
+  int16_t raw_ax = (int16_t)((data_ptr[1] << 8) | data_ptr[0]);
+  int16_t raw_ay = (int16_t)((data_ptr[3] << 8) | data_ptr[2]);
+  int16_t raw_az = (int16_t)((data_ptr[5] << 8) | data_ptr[4]);
+  int16_t raw_gx = (int16_t)((data_ptr[7] << 8) | data_ptr[6]);
+  int16_t raw_gy = (int16_t)((data_ptr[9] << 8) | data_ptr[8]);
+  int16_t raw_gz = (int16_t)((data_ptr[11] << 8) | data_ptr[10]);
+  
+  data->timestamp= timestamp;
+  data->data[0] = (float)raw_ax/ACCEL_SENSITIVITY*G_TO_MS2;
+  data->data[1] = -(float)raw_ay/ACCEL_SENSITIVITY*G_TO_MS2;
+  data->data[2] = -(float)raw_az/ACCEL_SENSITIVITY*G_TO_MS2;
+
+  data->data[3] = (float)raw_gx/GYRO_SENSITIVITY*DEG_TO_RAD;
+  data->data[4] = -(float)raw_gy/GYRO_SENSITIVITY*DEG_TO_RAD;
+  data->data[5] = -(float)raw_gz/GYRO_SENSITIVITY*DEG_TO_RAD;
+  return true;
+}
