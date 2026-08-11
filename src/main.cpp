@@ -110,15 +110,17 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
-void handleFastLoop(void){
+void runFastLoop(void){
     
 
     static FastIMUData imu_data;
-    
+    static FastRPMData rpm_data;
+
     static float imu_buffer[6] = {0.0f};
     static size_t samples = 0;
     
-    if (g_imu_ptr->processRawDataFAST(&imu_data))
+    bool valid_imu = g_imu_ptr->processRawDataFAST(&imu_data);
+    if (valid_imu)
     {
         imu_buffer[0]+=imu_data.data[0];
         imu_buffer[1]+=imu_data.data[1];
@@ -145,6 +147,10 @@ void handleFastLoop(void){
         samples=0;
         std::memset(imu_buffer, 0, sizeof(imu_buffer));
     }
+    uint8_t valid_rpm=g_dshot_ptr->processTelemetry(&rpm_data);
+    if (valid_rpm==4&&valid_imu){
+        // Call the boy
+    }
 
 }
 
@@ -157,7 +163,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         // We can now process the raw data that the DMA has moved for us.
         if (g_imu_ptr != nullptr)
         {
-            handleFastLoop();
+            runFastLoop();
             
 
 
@@ -602,16 +608,17 @@ extern "C" void TIM2_IRQHandler(void)
 {
     HAL_TIM_IRQHandler(&htim2);
 }
-extern "C" void TIM4_IRQHandler(void)
-{
-    // Disable update interrupt here so it doesn't keep triggering
-    htim4.Instance->DIER &= ~TIM_DIER_UIE;
+// Shouldn't be needed anymore. We just check if anything was received at the next fast loop.
+// extern "C" void TIM4_IRQHandler(void)
+// {
+//     // Disable update interrupt here so it doesn't keep triggering
+//     htim4.Instance->DIER &= ~TIM_DIER_UIE;
 
-    // Should happen when htim4 counter overflows during rcv mode of dshot.
-    HAL_TIM_IRQHandler(&htim4);
+//     // Should happen when htim4 counter overflows during rcv mode of dshot.
+//     HAL_TIM_IRQHandler(&htim4);
 
-    g_dshot_ptr->handleInterrupt();
-}
+//     g_dshot_ptr->handleInterrupt();
+// }
 
 extern "C" void DMA2_Stream0_IRQHandler(void)
 {

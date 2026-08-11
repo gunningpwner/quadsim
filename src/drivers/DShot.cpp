@@ -281,7 +281,6 @@ void DShot::startCmdXmit()
     //         return;
     //     }
     // } 
-    processTelemetry();
 
     __HAL_TIM_DISABLE(&htim4);
     __HAL_TIM_DISABLE(&htim8);
@@ -385,10 +384,12 @@ const int8_t gcr_decode_table[32] = {
     -1,  0,  4,  8, -1,  1, 12, -1  // 24-31
 };
 
-void DShot::processTelemetry()
+// Returns number of motors that valid eRPM frame was received from
+uint8_t DShot::processTelemetry(FastRPMData* data)
 {
-    bool any_valid=false;
-    
+
+    uint8_t num_valid=0;
+    uint64_t timestamp = getCurrentTimeUs();
     for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
@@ -484,10 +485,8 @@ void DShot::processTelemetry()
             {
                 erpm= (1000000 * 60 / 100 + telemetry_data / 2) / telemetry_data;
             }
-            
-            // NOTE: Mechanical RPM = eRPM / (MOTOR_POLES / 2)
-            printf("Motor %d eRPM: %lu\n", i, erpm);
-        
+            data->rpm[i] = erpm;
+            num_valid++;
         }
 
         // Wipe buffer clean for the next DMA transfer
@@ -506,9 +505,9 @@ void DShot::handleInterrupt()
         return;
     }
     if (dmaState==RECEIVING){
-        dmaState=IDLE;
-        receive_start = getCurrentTimeUs()-receive_start;
-        processTelemetry();
+        // dmaState=IDLE;
+        // receive_start = getCurrentTimeUs()-receive_start;
+        // processTelemetry();
         
         return;
     }

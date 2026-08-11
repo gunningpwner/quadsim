@@ -39,12 +39,13 @@ public:
     void sendMotorCommand(MotorCommands& cmd);
     void sendMotorThrottle(float cmds[4]);
     void handleInterrupt();
+    uint8_t processTelemetry(FastRPMData* data);
     
 private:
     void createMotorTable(uint8_t index, TIM_HandleTypeDef& htim, uint32_t channel, DMA_HandleTypeDef& hdma);
     void fillMotorTableBuffer(MotorTable* m, uint16_t cmd, bool telemetry);
     void startCmdXmit();
-    void processTelemetry();
+    
     void reconfigureForTelemetry();
     DriverState armedState = DISARMED;
     DMAState dmaState = IDLE;
