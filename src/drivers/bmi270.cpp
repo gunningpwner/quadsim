@@ -90,11 +90,15 @@ int8_t BMI270::init(void)
   // Set the sensor range
   spi_write(REG_ACC_RANGE, (const uint8_t[]){ACCEL_RANGE}, 1);
   spi_write(REG_GYRO_RANGE, (const uint8_t[]){GYRO_RANGE}, 1);
+  
+  // Increase sample rate of gyro and accelerometer
+  spi_write(REG_ACC_CONF,(const uint8_t[]){0b10101100},1); // 1600Hz, normal filter and high performance
+  spi_write(REG_GYRO_CONF,(const uint8_t[]){0b10101100},1); // 1600Hz, normal filter and high performance
 
   // Pre-configure the DMA transmit buffer since it never changes.
   // This saves a few cycles in the timer interrupt.
   memset(m_spi_tx_buf, 0, sizeof(m_spi_tx_buf));
-  m_spi_tx_buf[0] = REG_ACC_DATA | 0x80;
+  m_spi_tx_buf[0] = REG_DATA_STATUS | 0x80;
 
   // Turn on the sensors
   // Enable accelerometer and gyroscope
@@ -174,7 +178,7 @@ bool BMI270::startReadImu_DMA()
 
   // Start a non-blocking SPI transfer with DMA.
   // We transfer 14 bytes: 2 dummy bytes + 12 data bytes (accel + gyro).
-  if (HAL_SPI_TransmitReceive_DMA(m_spi_handle, m_spi_tx_buf, m_spi_rx_buf, 14) != HAL_OK)
+  if (HAL_SPI_TransmitReceive_DMA(m_spi_handle, m_spi_tx_buf, m_spi_rx_buf, 24) != HAL_OK)
   {
     // If the DMA fails to start, de-assert CS and return failure.
     HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
@@ -184,7 +188,7 @@ bool BMI270::startReadImu_DMA()
   return true; // The transfer has started successfully.
 }
 
-void BMI270::processRawData()
+bool BMI270::processRawData()
 {
 
   HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
@@ -192,8 +196,14 @@ void BMI270::processRawData()
   // --- Timestamp the data as close to its arrival as possible ---
   uint64_t timestamp = getCurrentTimeUs();
 
-  // Data starts at index 2. Accel is first (6 bytes), then Gyro (6 bytes).
-  const uint8_t *data_ptr = &m_spi_rx_buf[2];
+  
+  // Data starts at index 2. Status is first byte, Aux data (empty) is next 6 bytes, then Accel (6 bytes), then Gyro (6 bytes) and finally sensortime (3 bytes).
+  uint8_t status= m_spi_rx_buf[2];
+  if ((status & 0b11000000) != 0b11000000) {
+      return false;
+  }
+
+  const uint8_t *data_ptr = &m_spi_rx_buf[9];
 
   // These are in the IMU frame. Need to convert to body frame.
 
@@ -214,4 +224,6 @@ void BMI270::processRawData()
   imu_data->data.imu.gyro[1] = -(float)raw_gy/GYRO_SENSITIVITY*DEG_TO_RAD;
   imu_data->data.imu.gyro[2] = -(float)raw_gz/GYRO_SENSITIVITY*DEG_TO_RAD;
   m_sensor_buffer.commit(imu_data);
+
+  return true;
 }

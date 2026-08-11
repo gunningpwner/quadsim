@@ -14,22 +14,24 @@ public:
     // Non-blocking DMA read functions
     bool startReadImu_DMA();
     // This function will be called from the SPI/DMA interrupt handler
-    void processRawData();
+    bool processRawData();
 
 private:
     // Register Map
     static constexpr uint8_t REG_CHIP_ID         = 0x00;
     static constexpr uint8_t REG_INTERNAL_STATUS = 0x21;
     static constexpr uint8_t REG_ACC_DATA        = 0x0C;
-    static constexpr uint8_t REG_ACC_RANGE       = 0x41; 
+    static constexpr uint8_t REG_ACC_CONF        = 0x40;
+    static constexpr uint8_t REG_ACC_RANGE       = 0x41;
     static constexpr uint8_t REG_GYRO_DATA       = 0x12;
+    static constexpr uint8_t REG_GYRO_CONF       = 0x42;
     static constexpr uint8_t REG_GYRO_RANGE      = 0x43;
     static constexpr uint8_t REG_INIT_CTRL       = 0x59;
     static constexpr uint8_t REG_INIT_DATA       = 0x5E;
     static constexpr uint8_t REG_PWR_CONF        = 0x7C;
     static constexpr uint8_t REG_PWR_CTRL        = 0x7D;
     static constexpr uint8_t REG_AXES_MAP        = 0x34;
-
+    static constexpr uint8_t REG_DATA_STATUS     = 0x03;
     // Constants
     static constexpr uint8_t EXPECTED_CHIP_ID = 0x24;
 
@@ -60,8 +62,8 @@ private:
 
     // Buffers for DMA transfers. We read 12 bytes of data (6 accel + 6 gyro)
     // plus 2 dummy bytes, for a total of 14 bytes.
-    uint8_t m_spi_tx_buf[14];
-    uint8_t m_spi_rx_buf[14];
+    uint8_t m_spi_tx_buf[24];
+    uint8_t m_spi_rx_buf[24];
     
 };
 

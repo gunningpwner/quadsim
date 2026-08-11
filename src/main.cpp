@@ -69,19 +69,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
-        // Timer 2 set to run at 100Hz. Use counter to trigger other functions at lower rates
+        // Timer 2 set to run at 1600Hz. Use counter to trigger other functions at lower rates
         static size_t counter = 0;
         if (g_imu_ptr)
             g_imu_ptr->startReadImu_DMA();
         //reminder that you changed timer 2 rate and counter
-        // if (counter % 10 == 0)
-        // {
-        //     if (g_compass_ptr)
-        //     {
-        //         g_compass_ptr->startReadCompass_DMA();
-        //     }
-        // }
-        // counter++;
+        if (counter % 160 == 0)
+        {
+            if (g_compass_ptr)
+            {
+                g_compass_ptr->startReadCompass_DMA();
+            }
+        }
+        counter++;
     }
 }
 
@@ -108,6 +108,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
+
+
+
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
     if (hspi->Instance == SPI1)
@@ -118,6 +121,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
         {
             // uint32_t start=DWT->CYCCNT;
             g_imu_ptr->processRawData();
+            
+
+
 
             float cmd[4] = {0.05f, 0.00f, 0.00f, 0.00f};
             g_dshot_ptr->sendMotorThrottle(cmd);
@@ -380,21 +386,22 @@ int main(void)
     MX_USART3_UART_Init();
     MX_UART4_Init();
     MX_ADC1_Init();
-    // MX_USB_DEVICE_Init();
+    MX_USB_DEVICE_Init();
 
-    // Disables usb so it doesn't fuck things up
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    // PA12 is the USB D+ line. We must force it low to override any physical pull-up resistors.
-    GPIO_InitStruct.Pin = GPIO_PIN_12; 
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Push-Pull Output
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-    // Drive it straight to ground. Windows will now see the line as 0V (unplugged).
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET); 
-    // Keep the NVIC interrupt disabled just in case
-    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);   
+    // // Disables usb so it doesn't fuck things up
+    // __HAL_RCC_GPIOA_CLK_ENABLE();
+    // GPIO_InitTypeDef GPIO_InitStruct = {0};
+    // // PA12 is the USB D+ line. We must force it low to override any physical pull-up resistors.
+    // GPIO_InitStruct.Pin = GPIO_PIN_12; 
+    // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Push-Pull Output
+    // GPIO_InitStruct.Pull = GPIO_NOPULL;
+    // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    // HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    // // Drive it straight to ground. Windows will now see the line as 0V (unplugged).
+    // HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET); 
+    // // Keep the NVIC interrupt disabled just in case
+    // HAL_NVIC_DisableIRQ(OTG_FS_IRQn);   
+
     __HAL_DBGMCU_FREEZE_TIM2();  // Pause your 100Hz loop timer
     __HAL_DBGMCU_FREEZE_TIM4();  // Pause motor 2 & 4 PWM
     __HAL_DBGMCU_FREEZE_TIM8();  // Pause motor 1 & 3 PWM
@@ -500,8 +507,8 @@ int main(void)
     dshot_driver.disarm();
     while (1)
     {
-        // flash.run();
-        // CheckUsb();
+        flash.run();
+        CheckUsb();
         // Run the main flight software logic.
 
         // mce.run();
