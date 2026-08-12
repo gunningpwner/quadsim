@@ -313,7 +313,7 @@ void DShot::startCmdXmit()
         dmaStream->CR &= ~DMA_SxCR_DIR;           // Clear direction bits
         dmaStream->CR |= DMA_SxCR_DIR_0;          // 01 = Memory-to-peripheral
 
-        dmaStream->CR |= DMA_SxCR_EN;
+        
 
         
 
@@ -330,7 +330,7 @@ void DShot::startCmdXmit()
             tim->CCMR1 |= TIM_CCMR1_OC1PE;       // Preload enable
             tim->CCER &= ~TIM_CCER_CC1NP;        // Clear complementary polarity
             tim->CCER |= TIM_CCER_CC1P;          // SET polarity (active low)
-            tim->CCER |= TIM_CCER_CC1E;          // Enable output
+            tim->CCR1 = 0;
             break;
         case TIM_CHANNEL_2:
             tim->CCMR1 &= 0x00FF;
@@ -338,7 +338,7 @@ void DShot::startCmdXmit()
             tim->CCMR1 |= TIM_CCMR1_OC2PE;
             tim->CCER &= ~TIM_CCER_CC2NP;
             tim->CCER |= TIM_CCER_CC2P;
-            tim->CCER |= TIM_CCER_CC2E;
+            tim->CCR2 = 0;
             break;
         case TIM_CHANNEL_3:
             tim->CCMR2 &= 0xFF00;
@@ -346,7 +346,7 @@ void DShot::startCmdXmit()
             tim->CCMR2 |= TIM_CCMR2_OC3PE;
             tim->CCER &= ~TIM_CCER_CC3NP;
             tim->CCER |= TIM_CCER_CC3P;
-            tim->CCER |= TIM_CCER_CC3E;
+            tim->CCR3 = 0;
             break;
         case TIM_CHANNEL_4:
             tim->CCMR2 &= 0x00FF;
@@ -354,13 +354,43 @@ void DShot::startCmdXmit()
             tim->CCMR2 |= TIM_CCMR2_OC4PE;
             tim->CCER &= ~TIM_CCER_CC4NP;
             tim->CCER |= TIM_CCER_CC4P;
+            tim->CCR4 = 0;
+            break;
+        }
+        
+    }
+
+    // CCRx = 0 clears whatever is in the current capture compare register. 
+    // Will be non zero if we received something.
+    // Have to do this EGR_UG thing to then have the timers move that 0 value into their shadow register.
+    // If we don't, the signal will immediately drive low as it's still looking at whatever is in the shadow register.
+    // Only after all this can we then enable CCER
+    htim4.Instance->EGR = TIM_EGR_UG;
+    htim8.Instance->EGR = TIM_EGR_UG;
+
+    for (int i = 0; i < NUM_MOTORS; ++i)
+    {
+        MotorTable *m = &motor_tables[i];
+        TIM_TypeDef *tim = m->htim->Instance;
+        DMA_Stream_TypeDef *dmaStream = (DMA_Stream_TypeDef *)m->hdma->Instance;
+        switch (m->channel)
+        {
+        case TIM_CHANNEL_1:
+            tim->CCER |= TIM_CCER_CC1E;          // Enable output
+            break;
+        case TIM_CHANNEL_2:
+            tim->CCER |= TIM_CCER_CC2E;
+            break;
+        case TIM_CHANNEL_3:
+            tim->CCER |= TIM_CCER_CC3E;
+            break;
+        case TIM_CHANNEL_4:
             tim->CCER |= TIM_CCER_CC4E;
             break;
         }
-
+        dmaStream->CR |= DMA_SxCR_EN;
     }
-    // Turning off DMA after reconfigureForTransmit seemingly triggers the interrupt without setting the flag.
-    // 
+    
     NVIC_ClearPendingIRQ(DMA2_Stream4_IRQn);
 
     htim4.Instance->DIER &= ~TIM_DIER_UIE;
@@ -389,7 +419,7 @@ uint8_t DShot::processTelemetry(FastRPMData* data)
 {
 
     uint8_t num_valid=0;
-    uint64_t timestamp = getCurrentTimeUs();
+    data->timestamp = getCurrentTimeUs();
     for (int i = 0; i < NUM_MOTORS; ++i)
     {
         MotorTable *m = &motor_tables[i];
@@ -492,6 +522,7 @@ uint8_t DShot::processTelemetry(FastRPMData* data)
         // Wipe buffer clean for the next DMA transfer
         std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
     }
+    return num_valid;
 }
 
 

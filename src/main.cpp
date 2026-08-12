@@ -115,7 +115,7 @@ void runFastLoop(void){
 
     static FastIMUData imu_data;
     static FastRPMData rpm_data;
-
+    static float motor_cmd[4] = {0.00f, 0.00f, 0.00f, 0.00f};
     static float imu_buffer[6] = {0.0f};
     static size_t samples = 0;
     
@@ -149,9 +149,11 @@ void runFastLoop(void){
     }
     uint8_t valid_rpm=g_dshot_ptr->processTelemetry(&rpm_data);
     if (valid_rpm==4&&valid_imu){
-        // Call the boy
+        
+    } else {
+        // Send last command
+            g_dshot_ptr->sendMotorThrottle(motor_cmd);
     }
-
 }
 
 
@@ -168,8 +170,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 
 
 
-            float cmd[4] = {0.05f, 0.00f, 0.00f, 0.00f};
-            g_dshot_ptr->sendMotorThrottle(cmd);
+
             // printf("imu: %lu\n",DWT->CYCCNT-start);
         }
     }
