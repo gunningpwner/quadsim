@@ -1,10 +1,26 @@
 #include "MCE.h"
 #include <stdio.h>
 #include "timing.h"
-void MonolithicControlEntity::initialize(DShot *dshot_driver)
+#include "drivers/bmi270.h"
+
+extern DShot *g_dshot_ptr;
+extern BMI270 *g_imu_ptr;
+extern DataManager *g_data_manager_ptr;
+
+MonolithicControlEntity::MonolithicControlEntity()
+    : last_rc_frame_time(0),
+      last_rc_data{},
+      m_filter(nullptr),
+    m_current_state(nullptr),
+    m_rc_consumer(g_data_manager_ptr->makeRCChannelsConsumer()),
+    m_sensor_buffer(g_data_manager_ptr->getSensorBuffer())
 {
-    m_dshot = dshot_driver;
-    m_filter = new ESKF(m_data_manager.makeSensorConsumer(), m_data_manager.getStateBuffer());
+
+}
+void MonolithicControlEntity::init()
+{
+
+    m_filter = new ESKF(g_data_manager_ptr->makeSensorConsumer(), g_data_manager_ptr->getStateBuffer());
     // m_auto_level_controller = new AutoLevelController(m_data_manager);
     transition_to(UnitializedState::instance());
 }
@@ -34,6 +50,56 @@ void MonolithicControlEntity::run()
 
     if (next_state != m_current_state)
         transition_to(next_state);
+}
+
+void MonolithicControlEntity::runFastLoop()
+{
+
+    static FastIMUData imu_data;
+    static FastRPMData rpm_data;
+    static float motor_cmd[4] = {0.00f, 0.00f, 0.00f, 0.00f};
+    static float imu_buffer[6] = {0.0f};
+    static size_t samples = 0;
+
+    bool valid_imu = g_imu_ptr->processRawDataFAST(&imu_data);
+    if (valid_imu)
+    {
+        imu_buffer[0] += imu_data.data[0];
+        imu_buffer[1] += imu_data.data[1];
+        imu_buffer[2] += imu_data.data[2];
+        imu_buffer[3] += imu_data.data[3];
+        imu_buffer[4] += imu_data.data[4];
+        imu_buffer[5] += imu_data.data[5];
+        samples++;
+    }
+    // TODO: Have this check if a certain time has passed rather than number of samples
+    if (samples == 16)
+    {
+        uint64_t timestamp = getCurrentTimeUs();
+        SensorData *dwnsmpled_imu_data = m_sensor_buffer.claim();
+        dwnsmpled_imu_data->timestamp = timestamp;
+        dwnsmpled_imu_data->sensor = SensorData::Type::IMU;
+        dwnsmpled_imu_data->data.imu.accel[0] = imu_buffer[0] / samples;
+        dwnsmpled_imu_data->data.imu.accel[1] = imu_buffer[1] / samples;
+        dwnsmpled_imu_data->data.imu.accel[2] = imu_buffer[2] / samples;
+
+        dwnsmpled_imu_data->data.imu.gyro[0] = imu_buffer[3] / samples;
+        dwnsmpled_imu_data->data.imu.gyro[1] = imu_buffer[4] / samples;
+        dwnsmpled_imu_data->data.imu.gyro[2] = imu_buffer[5] / samples;
+        m_sensor_buffer.commit(dwnsmpled_imu_data);
+        samples = 0;
+        std::memset(imu_buffer, 0, sizeof(imu_buffer));
+    }
+    // TODO: This is eRPM. I need RPM
+    uint8_t valid_rpm = g_dshot_ptr->processTelemetry(&rpm_data);
+    if (valid_rpm == 4 && valid_imu)
+    {
+    }
+    else
+    {
+        // Send last command
+        g_dshot_ptr->sendMotorThrottle(motor_cmd);
+    }
 }
 
 void MonolithicControlEntity::transition_to(State *new_state)
@@ -75,7 +141,7 @@ State *DisarmedState::instance()
 
 void DisarmedState::on_enter(MonolithicControlEntity *mce)
 {
-    mce->getDShotDriver()->disarm();
+    g_dshot_ptr->disarm();
 }
 
 State *DisarmedState::on_run(MonolithicControlEntity *mce)
@@ -97,7 +163,7 @@ State *FailsafeState::instance()
 void FailsafeState::on_enter(MonolithicControlEntity *mce)
 {
 
-    mce->getDShotDriver()->disarm();
+    g_dshot_ptr->disarm();
 }
 
 State *FailsafeState::on_run(MonolithicControlEntity *mce)
@@ -116,7 +182,7 @@ State *ArmedLevelState::instance()
 }
 void ArmedLevelState::on_enter(MonolithicControlEntity *mce)
 {
-    mce->getDShotDriver()->arm();
+    g_dshot_ptr->arm();
 }
 State *ArmedLevelState::on_run(MonolithicControlEntity *mce)
 {

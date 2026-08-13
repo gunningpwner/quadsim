@@ -8,6 +8,7 @@
 #include "drivers/DShot.h"
 #include "drivers/GPS.h"
 #include "MCE.h"
+#include "KinematicAdjudicator.h"
 
 #include "peripherals.h"
 #include <string.h>
@@ -16,6 +17,8 @@
 #define MAVLINK_SYSTEM_ID 1
 #define MAVLINK_COMPONENT_ID 1
 
+DataManager *g_data_manager_ptr = nullptr;
+MonolithicControlEntity *g_mce_ptr = nullptr;
 Crsf *g_crsf_ptr = nullptr;
 BMI270 *g_imu_ptr = nullptr;
 GPS *g_gps_ptr = nullptr;
@@ -110,69 +113,15 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
-void runFastLoop(void){
-    
 
-    static FastIMUData imu_data;
-    static FastRPMData rpm_data;
-    static float motor_cmd[4] = {0.00f, 0.00f, 0.00f, 0.00f};
-    static float imu_buffer[6] = {0.0f};
-    static size_t samples = 0;
-    
-    bool valid_imu = g_imu_ptr->processRawDataFAST(&imu_data);
-    if (valid_imu)
-    {
-        imu_buffer[0]+=imu_data.data[0];
-        imu_buffer[1]+=imu_data.data[1];
-        imu_buffer[2]+=imu_data.data[2];
-        imu_buffer[3]+=imu_data.data[3];
-        imu_buffer[4]+=imu_data.data[4];
-        imu_buffer[5]+=imu_data.data[5];
-        samples++;
-    }
-    // TODO: Have this check if a certain time has passed rather than number of samples
-    if (samples==16){
-        uint64_t timestamp = getCurrentTimeUs();
-        SensorData* dwnsmpled_imu_data=g_sensor_buffer_ptr->claim();
-        dwnsmpled_imu_data->timestamp= timestamp;
-        dwnsmpled_imu_data->sensor= SensorData::Type::IMU;
-        dwnsmpled_imu_data->data.imu.accel[0] = imu_buffer[0]/samples;
-        dwnsmpled_imu_data->data.imu.accel[1] = imu_buffer[1]/samples;
-        dwnsmpled_imu_data->data.imu.accel[2] = imu_buffer[2]/samples;
-        
-        dwnsmpled_imu_data->data.imu.gyro[0] = imu_buffer[3]/samples;
-        dwnsmpled_imu_data->data.imu.gyro[1] = imu_buffer[4]/samples;
-        dwnsmpled_imu_data->data.imu.gyro[2] = imu_buffer[5]/samples;
-        g_sensor_buffer_ptr->commit(dwnsmpled_imu_data);
-        samples=0;
-        std::memset(imu_buffer, 0, sizeof(imu_buffer));
-    }
-    uint8_t valid_rpm=g_dshot_ptr->processTelemetry(&rpm_data);
-    if (valid_rpm==4&&valid_imu){
-        
-    } else {
-        // Send last command
-            g_dshot_ptr->sendMotorThrottle(motor_cmd);
-    }
-}
 
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
     if (hspi->Instance == SPI1)
     {
-        // This function is called when the SPI DMA transfer is complete.
-        // We can now process the raw data that the DMA has moved for us.
-        if (g_imu_ptr != nullptr)
-        {
-            runFastLoop();
-            
 
-
-
-
-            // printf("imu: %lu\n",DWT->CYCCNT-start);
-        }
+        g_mce_ptr->runFastLoop();
     }
 }
 
@@ -454,9 +403,12 @@ int main(void)
     I2C1_ClearBus();
     MX_I2C1_Init();
 
+
+    DataManager data_manager;
+    g_data_manager_ptr = &data_manager;
+
     MonolithicControlEntity mce;
-    DataManager &data_manager = mce.getDataManager();
-    g_sensor_buffer_ptr = &data_manager.getSensorBuffer();
+    g_mce_ptr = &mce;
 
     BMI270 imu(data_manager.getSensorBuffer(), &hspi1, GPIOC, GPIO_PIN_4);
     g_imu_ptr = &imu;
@@ -526,7 +478,7 @@ int main(void)
     }
 
     //
-    mce.initialize(&dshot_driver);
+    mce.init();
 
     // Start CRSF receiver using DMA and IDLE line detection
     HAL_UARTEx_ReceiveToIdle_DMA(&huart3, crsf_receiver.getRxBuffer(), 64);

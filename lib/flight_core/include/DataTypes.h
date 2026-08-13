@@ -40,7 +40,7 @@ struct FastIMUData
 struct FastRPMData
 {
     uint64_t timestamp;
-    std::array<uint32_t, 4> rpm;
+    std::array<float, 4> rpm;
 };
 
 
