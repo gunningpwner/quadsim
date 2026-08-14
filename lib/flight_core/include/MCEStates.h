@@ -22,15 +22,6 @@ public:
     virtual const char *getName() const = 0;
 };
 
-class UnitializedState : public State
-{
-    // First state on startup, remain in this state until we receive positive control confirmation (aka our first crsf message)
-    // Then transition into Disarmed
-public:
-    static State *instance();
-    virtual State *on_run(MonolithicControlEntity *mce) override;
-    virtual const char *getName() const override { return "UNINITIALIZED"; }
-};
 
 class DisarmedState : public State
 {
@@ -53,12 +44,12 @@ public:
     virtual const char *getName() const override { return "FAILSAFE"; }
 };
 
-class ArmedLevelState : public State
+class ArmedState : public State
 {
     // Runs the auto level controller
 public:
     static State *instance();
     virtual void on_enter(MonolithicControlEntity *mce) override;
     virtual State *on_run(MonolithicControlEntity *mce) override;
-    virtual const char *getName() const override { return "ARMED_LEVEL"; }
+    virtual const char *getName() const override { return "ARMED"; }
 };

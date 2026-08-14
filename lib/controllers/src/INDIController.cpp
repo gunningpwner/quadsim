@@ -1,6 +1,6 @@
 #include "INDIController.h"
 #include <Eigen/QR>
-#include "Logger.h"
+
 #include "timing.h"
 INDIController::INDIController(QuadcopterModel &model) : 
 model(model) {

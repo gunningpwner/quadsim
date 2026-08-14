@@ -1,7 +1,7 @@
 #include "WMMData.h"
 
 using namespace wmm;
-void calcIncAndDec(const float lat_deg, const float lon_deg, float& inc_rad, float& dec_rad){
+inline void calcIncAndDec(const float lat_deg, const float lon_deg, float& inc_rad, float& dec_rad){
     // You give me lat and lon, i give you dec and inc ok??
     // idk what to do in the event that the input is outside the bounds of the table
     if (lat_deg<MIN_LAT || lat_deg>MAX_LAT || lon_deg<MIN_LON || lon_deg>MAX_LON){

@@ -596,11 +596,10 @@ void DShot::sendMotorThrottle(float cmds[4])
     // Commands come in with range 0-1
     for (int i = 0; i < NUM_MOTORS; ++i)
     {
-        uint16_t dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
-        dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
-        if (armedState==DISARMED)
-        {
-            dshot_val=0;
+        uint16_t dshot_val = 0;
+        if (armedState==ARMED){
+            dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
+            dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
         }
         fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
     }

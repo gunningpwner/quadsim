@@ -1,5 +1,4 @@
 #include "GeometricController.h"
-#include "Logger.h"
 #include "timing.h"
 
 using Vec3Map = Eigen::Map<const Eigen::Vector3f>;
@@ -146,18 +145,6 @@ void GeometricController::updateVelocityControl()
     ang_vel_desired = omega_cmd;
     ang_acc_desired = omegad_cmd;
 
-    // Logger::getInstance().log("rot_desired", rot_desired, getCurrentTimeUs());
-    // Logger::getInstance().log("ang_vel_desired", ang_vel_desired, getCurrentTimeUs());
-    // Logger::getInstance().log("ang_acc_desired", ang_acc_desired, getCurrentTimeUs());
-    // Logger::getInstance().log("rot_mat", rot_mat, getCurrentTimeUs());
-    // Logger::getInstance().log("omega_hat", omega_hat, getCurrentTimeUs());
-    // Logger::getInstance().log("linear_z_accel_cmd", linear_z_accel_cmd, getCurrentTimeUs());
-    Logger::getInstance().log("vel_err", vel_err, getCurrentTimeUs());
-    Logger::getInstance().log("A", A, getCurrentTimeUs());
-    Logger::getInstance().log("b3", b3, getCurrentTimeUs());
-
-    // Logger::getInstance().log("rot_cmd", rot_cmd, getCurrentTimeUs());
-    // Logger::getInstance().log("b2c", b2c, getCurrentTimeUs());
 }
 
 void GeometricController::updateRotationControl()
@@ -170,8 +157,5 @@ void GeometricController::updateRotationControl()
     // Output angular acceleration directly for the INDI controller
     ang_acc_cmd = -kr * rot_err - komega * omega_err + ang_acc_desired;
     
-    Logger::getInstance().log("rot_err", rot_err, getCurrentTimeUs());
-    Logger::getInstance().log("omega_err", omega_err, getCurrentTimeUs());
-    // Logger::getInstance().log("rot_mat", rot_mat, getCurrentTimeUs());
-    // Logger::getInstance().log("rot_desired", rot_desired, getCurrentTimeUs());
+
 }

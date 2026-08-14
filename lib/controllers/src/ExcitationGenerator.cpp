@@ -11,14 +11,13 @@ void ExcitationGenerator::startTimer()
 
 Eigen::Vector4f ExcitationGenerator::getCommand()
 {
-    if (is_complete)
-        return Eigen::Vector4f::Zero();
-
-    state_timer= (getCurrentTimeUs() - motor_start_timestamp) * 1e-6f;
 
     Eigen::Vector4f cmd = Eigen::Vector4f::Zero();
-    
 
+    if (is_complete)
+        return cmd;
+
+    state_timer= (getCurrentTimeUs() - motor_start_timestamp) * 1e-6f;
 
 
     // 2. Generate Waveform
@@ -48,7 +47,7 @@ Eigen::Vector4f ExcitationGenerator::getCommand()
     {
         advanceMotor();
         // check if that was the last motor
-        if (is_complete) return Eigen::Vector4f::Zero();
+        if (is_complete) return cmd;
     }
 
     cmd[current_motor] = val;

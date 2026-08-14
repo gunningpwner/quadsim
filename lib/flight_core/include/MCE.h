@@ -2,15 +2,15 @@
 #include "DataTypes.h"
 #include "ESKF.h"
 #include "MCEStates.h"
+#include "KinematicAdjudicator.h"
 
 
-#ifndef SIM
-    #include "drivers/DShot.h"
-#else
-    #include "MotorInterface.h"
-#endif
-
-
+struct UserCommands{
+    bool armSwitch=false;
+    bool excitationTriggered=false;
+    float throttle=0.0f;
+    
+};
 
 class MonolithicControlEntity
 {
@@ -25,14 +25,20 @@ public:
     void run();
     void runFastLoop();
     const State *getCurrentState() const { return m_current_state; }
-
+    DataManager::StateConsumer &getStateConsumer() { return m_state_consumer; }
+    KinematicAdjudicator *getKinematicAdjudicator() { return &m_adjudicator; }
     uint64_t last_rc_frame_time;
-    RCChannelsData last_rc_data;
+    UserCommands last_user_commands;
     const uint64_t rc_timeout_us = 500000;
+    
 
 private:
     ESKF *m_filter;
     State *m_current_state;
     DataManager::RCChannelsConsumer m_rc_consumer;
     DataManager::SensorBuffer &m_sensor_buffer;
+    DataManager::StateConsumer m_state_consumer;
+    KinematicAdjudicator m_adjudicator;
 };
+
+

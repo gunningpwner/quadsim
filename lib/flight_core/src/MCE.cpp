@@ -1,19 +1,39 @@
 #include "MCE.h"
 #include <stdio.h>
+#include <algorithm>
 #include "timing.h"
-#include "drivers/bmi270.h"
+#include <math.h>
+#ifdef SIM
+    #include "driver_emulators/DShot.h"
+    #include "driver_emulators/bmi270.h"
+#else
+    #include "drivers/DShot.h"
+    #include "drivers/bmi270.h"
+#endif
 
 extern DShot *g_dshot_ptr;
 extern BMI270 *g_imu_ptr;
 extern DataManager *g_data_manager_ptr;
 
+UserCommands interpretRCData(const RCChannelsData &rc_data){
+    UserCommands user_commands;
+    user_commands.armSwitch = rc_data.channels.chan4 >= CRSF_CHANNEL_MAX;
+    user_commands.throttle = (std::clamp(rc_data.channels.chan2,CRSF_CHANNEL_MIN,CRSF_CHANNEL_MAX) - CRSF_CHANNEL_MIN) / (float)(CRSF_CHANNEL_MAX - CRSF_CHANNEL_MIN);
+    
+
+    return user_commands;
+}
+
+
 MonolithicControlEntity::MonolithicControlEntity()
     : last_rc_frame_time(0),
-      last_rc_data{},
+      last_user_commands{},
       m_filter(nullptr),
     m_current_state(nullptr),
     m_rc_consumer(g_data_manager_ptr->makeRCChannelsConsumer()),
-    m_sensor_buffer(g_data_manager_ptr->getSensorBuffer())
+    m_sensor_buffer(g_data_manager_ptr->getSensorBuffer()),
+    m_state_consumer(g_data_manager_ptr->makeStateConsumer()),
+    m_adjudicator()
 {
 
 }
@@ -22,7 +42,7 @@ void MonolithicControlEntity::init()
 
     m_filter = new ESKF(g_data_manager_ptr->makeSensorConsumer(), g_data_manager_ptr->getStateBuffer());
     // m_auto_level_controller = new AutoLevelController(m_data_manager);
-    transition_to(UnitializedState::instance());
+    transition_to(DisarmedState::instance());
 }
 
 void MonolithicControlEntity::run()
@@ -34,18 +54,20 @@ void MonolithicControlEntity::run()
     RCChannelsData *rc_data = m_rc_consumer.readLatest();
     if (rc_data != nullptr)
     {
-        last_rc_data = *rc_data;
+        last_user_commands = interpretRCData(*rc_data);
         last_rc_frame_time = rc_data->timestamp;
     }
 
     const uint64_t current_time = getCurrentTimeUs();
 
-    if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && (current_time - last_rc_frame_time > rc_timeout_us))
+    if (m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && (current_time - last_rc_frame_time > rc_timeout_us)){
         transition_to(FailsafeState::instance());
-
-    if (m_current_state != DisarmedState::instance() && m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && last_rc_data.channels.chan4 < CRSF_CHANNEL_MAX)
+        return;
+    }
+    if (m_current_state != DisarmedState::instance() && m_current_state != FailsafeState::instance() && last_rc_frame_time > 0 && !last_user_commands.armSwitch){
         transition_to(DisarmedState::instance());
-
+        return;
+    }
     State *next_state = m_current_state->on_run(this);
 
     if (next_state != m_current_state)
@@ -94,12 +116,11 @@ void MonolithicControlEntity::runFastLoop()
     uint8_t valid_rpm = g_dshot_ptr->processTelemetry(&rpm_data);
     if (valid_rpm == 4 && valid_imu)
     {
+        m_adjudicator.update(&imu_data, &rpm_data, motor_cmd);
     }
-    else
-    {
-        // Send last command
+
         g_dshot_ptr->sendMotorThrottle(motor_cmd);
-    }
+    
 }
 
 void MonolithicControlEntity::transition_to(State *new_state)
@@ -117,22 +138,6 @@ void MonolithicControlEntity::transition_to(State *new_state)
     }
 }
 
-State *UnitializedState::instance()
-{
-    static UnitializedState instance;
-    return &instance;
-}
-
-State *UnitializedState::on_run(MonolithicControlEntity *mce)
-{
-
-    if (mce->last_rc_frame_time > 0)
-    {
-        return DisarmedState::instance();
-    }
-    return this;
-}
-
 State *DisarmedState::instance()
 {
     static DisarmedState instance;
@@ -146,10 +151,10 @@ void DisarmedState::on_enter(MonolithicControlEntity *mce)
 
 State *DisarmedState::on_run(MonolithicControlEntity *mce)
 {
-    RCChannelsData &rc_data = mce->last_rc_data;
-    if (rc_data.channels.chan4 >= CRSF_CHANNEL_MAX && rc_data.channels.chan2 <= CRSF_CHANNEL_MIN)
+    UserCommands &user_commands = mce->last_user_commands;
+    if (user_commands.armSwitch && user_commands.throttle == 0.0f)
     {
-        return ArmedLevelState::instance();
+        return ArmedState::instance();
     }
     return this;
 }
@@ -175,18 +180,35 @@ State *FailsafeState::on_run(MonolithicControlEntity *mce)
     return this;
 }
 
-State *ArmedLevelState::instance()
+State *ArmedState::instance()
 {
-    static ArmedLevelState instance;
+    static ArmedState instance;
     return &instance;
 }
-void ArmedLevelState::on_enter(MonolithicControlEntity *mce)
+void ArmedState::on_enter(MonolithicControlEntity *mce)
 {
     g_dshot_ptr->arm();
 }
-State *ArmedLevelState::on_run(MonolithicControlEntity *mce)
+
+#define MAG3(v) std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+
+State *ArmedState::on_run(MonolithicControlEntity *mce)
 {
-    // mce->m_auto_level_controller->run();
-    // mce->getDShotDriver()->update();
+    UserCommands &user_commands = mce->last_user_commands;
+    StateEstimate *state_data = mce->getStateConsumer().readLatest();
+    if (state_data == nullptr){
+        return this;
+    }
+
+    KinematicAdjudicator *adjudicator = mce->getKinematicAdjudicator();
+    // Not sure if I want this mf to launch itself into the sky first
+    if(user_commands.excitationTriggered && adjudicator->getCurrentMode()==FlightMode::IDLE){
+        // Make sure we're not moving, rotating or upside down ( or at least make sure we dont THINK we are)
+        if ( MAG3(state_data->velocity_ned)<5 && MAG3(state_data->angular_vel)<.03f){
+            adjudicator->launch();
+        }
+    }
+
+
     return this;
 }

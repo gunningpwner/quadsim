@@ -89,5 +89,5 @@ struct RCChannelsData {
     CRSFPackedChannels channels;
 };
 
-#define CRSF_CHANNEL_MIN 191
-#define CRSF_CHANNEL_MAX 1792
+constexpr unsigned int CRSF_CHANNEL_MIN = 191;
+constexpr unsigned int CRSF_CHANNEL_MAX = 1792;

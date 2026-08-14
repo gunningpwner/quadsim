@@ -97,8 +97,8 @@ private:
 
 struct QuadcopterModel {
     enum class FlightMode {
+        IDLE, // we chilling
         LEARNING,
-        RECOVERY, // Optional: Transition phase
         FLIGHT
     };
 

@@ -508,7 +508,7 @@ int main(void)
         CheckUsb();
         // Run the main flight software logic.
 
-        // mce.run();
+        mce.run();
 
         // // Periodically send CRSF telemetry
         // if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {

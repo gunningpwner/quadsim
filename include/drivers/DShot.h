@@ -1,6 +1,5 @@
 #pragma once
 #include "stm32f4xx_hal.h"
-#include "ClaimCommitRingBuffer.h"
 #include "DataTypes.h"
 
 #include <cstdint>
@@ -33,7 +32,6 @@ public:
     DShot();
 
     int init();
-    void update();
     void disarm();
     void arm();
     void sendMotorCommand(MotorCommands& cmd);

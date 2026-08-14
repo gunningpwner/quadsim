@@ -71,7 +71,7 @@ def main():
     parser.add_argument('--output', type=str, default='flight_log.csv', help='Base Output CSV file')
     
     if len(sys.argv) == 1:
-        my_args = ['COM10', '--baud', '57600'] 
+        my_args = ['COM6', '--baud', '57600'] 
         print(f"No cmdline args found. Using defaults: {my_args}")
         args = parser.parse_args(my_args)
     else:
@@ -140,7 +140,7 @@ def main():
     current_bin_file = None
     
     # Initialize first file set
-    folder='../../data'
+    folder='data'
     current_csv_file, csv_writer, current_bin_file = start_new_files(args.output, file_counter, keys,folder=folder)
 
     total_pages = len(raw_buffer) // PAGE_SIZE

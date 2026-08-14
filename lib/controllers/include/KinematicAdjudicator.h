@@ -3,6 +3,7 @@
 #include "Estimator.h"
 #include "INDIController.h"
 #include "ExcitationGenerator.h"
+#include "DataTypes.h"
 
 class KinematicAdjudicator
 {
@@ -12,11 +13,11 @@ public:
     KinematicAdjudicator();
 
     // Returns the final motor command to be sent to ESCs
-    Eigen::Vector4f update(uint64_t timestamp_us, 
-                           const Eigen::Vector4f& raw_omega, 
-                           const Eigen::Vector3f& raw_acc, 
-                           const Eigen::Vector3f& raw_gyro);
+    void update(FastIMUData *imu_data, FastRPMData *rpm_data, float *command);
     void setCommand(Eigen::Vector3f cmd, float acc){m_indicator.setCommand( cmd,acc);}
+    void launch();
+    FlightMode getCurrentMode() const { return model.current_mode; }
+
 private:
     
     // Shared Data Store
