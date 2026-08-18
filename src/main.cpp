@@ -9,7 +9,8 @@
 #include "drivers/GPS.h"
 #include "MCE.h"
 #include "KinematicAdjudicator.h"
-
+#include "SEGGER_RTT.h"
+#include "SEGGER_SYSVIEW.h"
 #include "peripherals.h"
 #include <string.h>
 #include <stdio.h>
@@ -488,8 +489,6 @@ int main(void)
 
     printf("CRSF Receiver Started.\n");
 
-    uint64_t last_mavlink_send_time = 0;
-    const uint64_t mavlink_send_interval_us = 10000;
 
     volatile uint64_t last_crsf_telemetry_time = 0;
     const uint64_t crsf_telemetry_interval_us = 100000;
@@ -502,25 +501,25 @@ int main(void)
     dshot_driver.arm();
     HAL_Delay(500);
     dshot_driver.disarm();
+
+    SEGGER_SYSVIEW_Conf();
+
     while (1)
     {
+        SEGGER_SYSVIEW_RecordVoid(32);
         flash.run();
         CheckUsb();
         // Run the main flight software logic.
 
         mce.run();
 
-        // // Periodically send CRSF telemetry
-        // if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {
-        //     handle_telemetry(crsf_receiver);
-        //     last_crsf_telemetry_time = getCurrentTimeUs();
-        // }
+        // Periodically send CRSF telemetry
+        if (getCurrentTimeUs() - last_crsf_telemetry_time > crsf_telemetry_interval_us) {
+            handle_telemetry(crsf_receiver);
+            last_crsf_telemetry_time = getCurrentTimeUs();
+        }
 
-        // // Periodically send MAVLink attitude message
-        // if (is_usb_vcp_connected() && (getCurrentTimeUs() - last_mavlink_send_time > mavlink_send_interval_us)) {
-        //     mavlink_publisher.run();
-        //     last_mavlink_send_time = getCurrentTimeUs();
-        // }
+
 
         // // Control the on-board LED based on the MCE state
         // if (mce.getCurrentState() == DisarmedState::instance()) {
