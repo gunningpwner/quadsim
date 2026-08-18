@@ -592,12 +592,10 @@ extern "C" void DMA2_Stream4_IRQHandler(void)
     
     g_dshot_ptr->handleInterrupt();
 }
-extern "C" void DMA1_Stream5_IRQHandler(void)
-{
-    SEGGER_SYSVIEW_RecordEnterISR(); // I#32=CompassProcess
-    HAL_DMA_IRQHandler(hi2c1.hdmarx);
-    SEGGER_SYSVIEW_RecordExitISR();
-}
+// extern "C" void DMA1_Stream5_IRQHandler(void)
+// {
+//     HAL_DMA_IRQHandler(hi2c1.hdmarx);
+// }
 
 extern "C" void DMA1_Stream1_IRQHandler(void)
 {
@@ -618,7 +616,7 @@ extern "C" void DMA1_Stream4_IRQHandler(void)
     HAL_DMA_IRQHandler(hspi2.hdmatx);
 }
 
-extern "C" void DMA1_Stream6_IRQHandler(void)
-{
-    HAL_DMA_IRQHandler(hi2c1.hdmatx);
-}
+// extern "C" void DMA1_Stream6_IRQHandler(void)
+// {
+//     HAL_DMA_IRQHandler(hi2c1.hdmatx);
+// }
