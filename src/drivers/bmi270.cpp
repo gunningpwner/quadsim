@@ -184,6 +184,7 @@ bool BMI270::startReadImu_DMA()
     HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
     return false;
   }
+  __HAL_DMA_DISABLE_IT(m_spi_handle->hdmarx, DMA_IT_HT);
 
   return true; // The transfer has started successfully.
 }

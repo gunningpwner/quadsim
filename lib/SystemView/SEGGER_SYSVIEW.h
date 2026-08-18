@@ -152,6 +152,10 @@ extern "C" {
                                             | SYSVIEW_EVTMASK_STACK_INFO          \
                                             | SYSVIEW_EVTMASK_TASK_TERMINATE)
 
+
+// custom marker definitions
+#define ESKF_MARKER 1
+
 /*********************************************************************
 *
 *       Structures

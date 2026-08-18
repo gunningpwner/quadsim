@@ -63,7 +63,6 @@ struct MotorCommands
 };
 
 struct CRSFPackedChannels {
-    unsigned int chan0 : 11;
     unsigned int chan1 : 11;
     unsigned int chan2 : 11;
     unsigned int chan3 : 11;
@@ -79,6 +78,7 @@ struct CRSFPackedChannels {
     unsigned int chan13 : 11;
     unsigned int chan14 : 11;
     unsigned int chan15 : 11;
+    unsigned int chan16 : 11;
 } __attribute__((__packed__));
 
 /// <summary>

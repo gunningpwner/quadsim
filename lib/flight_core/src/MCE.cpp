@@ -3,6 +3,8 @@
 #include <algorithm>
 #include "timing.h"
 #include <math.h>
+#include <inttypes.h> // Required for PRIu64
+#include "SEGGER_SYSVIEW.h"
 #ifdef SIM
     #include "driver_emulators/DShot.h"
     #include "driver_emulators/bmi270.h"
@@ -15,10 +17,13 @@ extern DShot *g_dshot_ptr;
 extern BMI270 *g_imu_ptr;
 extern DataManager *g_data_manager_ptr;
 
+
+
 UserCommands interpretRCData(const RCChannelsData &rc_data){
     UserCommands user_commands;
-    user_commands.armSwitch = rc_data.channels.chan4 >= CRSF_CHANNEL_MAX;
-    user_commands.throttle = (std::clamp(rc_data.channels.chan2,CRSF_CHANNEL_MIN,CRSF_CHANNEL_MAX) - CRSF_CHANNEL_MIN) / (float)(CRSF_CHANNEL_MAX - CRSF_CHANNEL_MIN);
+    user_commands.armSwitch = rc_data.channels.chan5 >= CRSF_CHANNEL_MAX;
+    user_commands.excitationTriggered = rc_data.channels.chan12 >= CRSF_CHANNEL_MAX;
+    user_commands.throttle = (std::clamp(rc_data.channels.chan3,CRSF_CHANNEL_MIN,CRSF_CHANNEL_MAX) - CRSF_CHANNEL_MIN) / (float)(CRSF_CHANNEL_MAX - CRSF_CHANNEL_MIN);
     
 
     return user_commands;
@@ -48,9 +53,11 @@ void MonolithicControlEntity::init()
 void MonolithicControlEntity::run()
 {
 
-    if (m_filter)
+    if (m_filter){
+        
         m_filter->run();
-
+        
+    }
     RCChannelsData *rc_data = m_rc_consumer.readLatest();
     if (rc_data != nullptr)
     {
@@ -113,10 +120,14 @@ void MonolithicControlEntity::runFastLoop()
         std::memset(imu_buffer, 0, sizeof(imu_buffer));
     }
     // TODO: This is eRPM. I need RPM
-    uint8_t valid_rpm = g_dshot_ptr->processTelemetry(&rpm_data);
+    // uint8_t valid_rpm = g_dshot_ptr->processTelemetry(&rpm_data);
+    uint8_t valid_rpm = 4;
     if (valid_rpm == 4 && valid_imu)
     {
+        // uint32_t timestamp = DWT->CYCCNT;
         m_adjudicator.update(&imu_data, &rpm_data, motor_cmd);
+        // timestamp = DWT->CYCCNT-timestamp;
+        // printf("delta was %" PRIu32 " \n",timestamp);
     }
 
         g_dshot_ptr->sendMotorThrottle(motor_cmd);
@@ -195,18 +206,19 @@ void ArmedState::on_enter(MonolithicControlEntity *mce)
 State *ArmedState::on_run(MonolithicControlEntity *mce)
 {
     UserCommands &user_commands = mce->last_user_commands;
-    StateEstimate *state_data = mce->getStateConsumer().readLatest();
-    if (state_data == nullptr){
-        return this;
-    }
+    // StateEstimate *state_data = mce->getStateConsumer().readLatest();
+    // if (state_data == nullptr){
+    //     return this;
+    // }
 
     KinematicAdjudicator *adjudicator = mce->getKinematicAdjudicator();
     // Not sure if I want this mf to launch itself into the sky first
     if(user_commands.excitationTriggered && adjudicator->getCurrentMode()==FlightMode::IDLE){
         // Make sure we're not moving, rotating or upside down ( or at least make sure we dont THINK we are)
-        if ( MAG3(state_data->velocity_ned)<5 && MAG3(state_data->angular_vel)<.03f){
+        // if ( MAG3(state_data->velocity_ned)<5 && MAG3(state_data->angular_vel)<.03f){
+            printf("Trigger warning libs\n");
             adjudicator->launch();
-        }
+        // }
     }
 
 

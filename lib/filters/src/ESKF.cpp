@@ -4,6 +4,7 @@
 #include <Eigen/Geometry>
 #include <cstdint>
 #include <iostream>
+#include "SEGGER_SYSVIEW.h"
 #define DEG2RAD (M_PI / 180.0f)
 
 #define R_M 6335439.0f
@@ -81,8 +82,12 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
 void ESKF::run()
 {
     SensorData *sensor_data = m_sensor_consumer.readNext();
+    if (sensor_data != nullptr){ // Temporary to allow calling task exec only when there is sensor data
+        SEGGER_SYSVIEW_OnTaskStartExec(ESKF_MARKER);
+    
     while (sensor_data != nullptr)
     {
+        
         // Filter initialization process
         // Align body up vector to first imu measurement
         // Set refLLA to first GPS measurement
@@ -135,6 +140,8 @@ void ESKF::run()
 #endif
 
         sensor_data = m_sensor_consumer.readNext();
+    }
+    SEGGER_SYSVIEW_OnIdle();
     }
 }
 

@@ -49,7 +49,7 @@ Revision: $Rev: 9599 $
 */
 #include "SEGGER_SYSVIEW.h"
 #include "SEGGER_SYSVIEW_Conf.h"
-
+#include <string.h>
 // SystemcoreClock can be used in most CMSIS compatible projects.
 // In non-CMSIS projects define SYSVIEW_CPU_FREQ.
 extern unsigned int SystemCoreClock;
@@ -61,7 +61,7 @@ extern unsigned int SystemCoreClock;
 **********************************************************************
 */
 // The application name to be displayed in SystemViewer
-#define SYSVIEW_APP_NAME        "Demo Application"
+#define SYSVIEW_APP_NAME        "Tobe"
 
 // The target device name
 #define SYSVIEW_DEVICE_NAME     "Cortex-M4"
@@ -104,9 +104,27 @@ extern unsigned int SystemCoreClock;
 *  Function description
 *    Sends SystemView description strings.
 */
+
+
 static void _cbSendSystemDesc(void) {
   SEGGER_SYSVIEW_SendSysDesc("N="SYSVIEW_APP_NAME",D="SYSVIEW_DEVICE_NAME);
   SEGGER_SYSVIEW_SendSysDesc("I#15=SysTick");
+  SEGGER_SYSVIEW_SendSysDesc("I#44=IMU/Compass");
+  SEGGER_SYSVIEW_SendSysDesc("I#72=runFastLoop");
+  SEGGER_SYSVIEW_SendSysDesc("I#32=CompassProcess");
+  SEGGER_SYSVIEW_SendSysDesc("I#55=USART3_CRSF");
+  SEGGER_SYSVIEW_SendSysDesc("I#28=DMA1_S1_CRSF_RX");
+  SEGGER_SYSVIEW_SendSysDesc("I#68=UART4_GPS");
+  SEGGER_SYSVIEW_SendSysDesc("I#29=DMA1_S2_GPS_RX");
+  SEGGER_SYSVIEW_TASKINFO eskf_info;
+  memset(&eskf_info, 0, sizeof(eskf_info));
+  eskf_info.TaskID = ESKF_MARKER; 
+  eskf_info.sName  = "ESKF_Update";
+  
+  SEGGER_SYSVIEW_SendTaskInfo(&eskf_info);
+  
+
+
 }
 
 /*********************************************************************

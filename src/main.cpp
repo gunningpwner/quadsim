@@ -9,7 +9,6 @@
 #include "drivers/GPS.h"
 #include "MCE.h"
 #include "KinematicAdjudicator.h"
-#include "SEGGER_RTT.h"
 #include "SEGGER_SYSVIEW.h"
 #include "peripherals.h"
 #include <string.h>
@@ -123,6 +122,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
     {
 
         g_mce_ptr->runFastLoop();
+        
     }
 }
 
@@ -368,6 +368,10 @@ int main(void)
     SystemClock_Config_HSE();
     HAL_Init();
 
+    SEGGER_SYSVIEW_Conf();
+
+
+
     initTime();
 
     MX_GPIO_Init();
@@ -424,8 +428,9 @@ int main(void)
 
     DShot dshot_driver;
     g_dshot_ptr = &dshot_driver;
-
+    
     HAL_Delay(2000); // Wait for USB to enumerate
+    
     printf("\n--- BMI270 Initialization ---\n");
 
     if (imu.init() == 0)
@@ -493,20 +498,10 @@ int main(void)
     volatile uint64_t last_crsf_telemetry_time = 0;
     const uint64_t crsf_telemetry_interval_us = 100000;
 
-    HAL_Delay(5000);
-    dshot_driver.arm();
-    HAL_Delay(500);
-    dshot_driver.disarm();
-    HAL_Delay(500);
-    dshot_driver.arm();
-    HAL_Delay(500);
-    dshot_driver.disarm();
-
-    SEGGER_SYSVIEW_Conf();
 
     while (1)
     {
-        SEGGER_SYSVIEW_RecordVoid(32);
+        
         flash.run();
         CheckUsb();
         // Run the main flight software logic.
@@ -543,22 +538,30 @@ extern "C" void OTG_FS_IRQHandler(void)
 
 extern "C" void USART3_IRQHandler(void)
 {
+    SEGGER_SYSVIEW_RecordEnterISR(); //I#55=USART3_CRSF
     HAL_UART_IRQHandler(&huart3);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void UART4_IRQHandler(void)
 {
+    SEGGER_SYSVIEW_RecordEnterISR(); // I#68=UART4_GPS
     HAL_UART_IRQHandler(&huart4);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 void I2C1_EV_IRQHandler(void)
 {
+    
     HAL_I2C_EV_IRQHandler(&hi2c1);
+    
 }
 
 extern "C" void TIM2_IRQHandler(void)
 {
+    SEGGER_SYSVIEW_RecordEnterISR(); //I#44=IMU/Compass
     HAL_TIM_IRQHandler(&htim2);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 // Shouldn't be needed anymore. We just check if anything was received at the next fast loop.
 // extern "C" void TIM4_IRQHandler(void)
@@ -573,8 +576,10 @@ extern "C" void TIM2_IRQHandler(void)
 // }
 
 extern "C" void DMA2_Stream0_IRQHandler(void)
-{
+{   
+    SEGGER_SYSVIEW_RecordEnterISR(); //I#72=runFastLoop
     HAL_DMA_IRQHandler(hspi1.hdmarx);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA2_Stream3_IRQHandler(void)
@@ -589,18 +594,23 @@ extern "C" void DMA2_Stream4_IRQHandler(void)
 }
 extern "C" void DMA1_Stream5_IRQHandler(void)
 {
+    SEGGER_SYSVIEW_RecordEnterISR(); // I#32=CompassProcess
     HAL_DMA_IRQHandler(hi2c1.hdmarx);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA1_Stream1_IRQHandler(void)
 {
-
+    SEGGER_SYSVIEW_RecordEnterISR(); // #28=DMA1_S1_CRSF_RX
     HAL_DMA_IRQHandler(huart3.hdmarx);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA1_Stream2_IRQHandler(void)
 {
+    SEGGER_SYSVIEW_RecordEnterISR(); //I#29=DMA1_S2_GPS_RX
     HAL_DMA_IRQHandler(huart4.hdmarx);
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA1_Stream4_IRQHandler(void)
