@@ -34,7 +34,7 @@ public:
     int init();
     void disarm();
     void arm();
-    void sendMotorCommand(MotorCommands& cmd);
+    void sendMotorCommand(uint16_t cmds[4]);
     void sendMotorThrottle(float cmds[4]);
     void handleInterrupt();
     uint8_t processTelemetry(FastRPMData* data);
