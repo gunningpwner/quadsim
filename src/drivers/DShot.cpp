@@ -1,8 +1,11 @@
 #include "drivers/DShot.h"
 #include "timing.h"
 #include <cstring>
+// #include "SEGGER_SYSVIEW.h"
 #define DSHOT_RATE 150000 // in kbit/s
-#define DSHOT_MIN_THROTTLE 50
+#define DSHOT_MIN_THROTTLE 80
+#define DSHOT_MAX_THROTTLE 150
+#define THROTTLE_MULT (DSHOT_MAX_THROTTLE-DSHOT_MIN_THROTTLE)
 #define SAFETY_MARGIN_US 10
 
 const uint64_t RX_TIMEOUT_US = ((22 * 1000000) / DSHOT_RATE)+ SAFETY_MARGIN_US;
@@ -408,12 +411,10 @@ void DShot::startCmdXmit()
 }
 
 const int8_t gcr_decode_table[32] = {
-    -1, -1, -1, -1, -1, -1, -1, -1, // 0-7
-    -1,  9, 10, 11, -1, 13, 14, 15, // 8-15
-    -1, -1,  2,  3, -1,  5,  6,  7, // 16-23
-    -1,  0,  4,  8, -1,  1, 12, -1  // 24-31
-};
-
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 9, 10, 11, 0, 13, 14, 15,
+        0, 0, 2, 3, 0, 5, 6, 7,
+         0, 0, 8, 1, 0, 4, 12, 0 };
 // Returns number of motors that valid eRPM frame was received from
 uint8_t DShot::processTelemetry(FastRPMData* data)
 {
@@ -424,100 +425,80 @@ uint8_t DShot::processTelemetry(FastRPMData* data)
     {
         MotorTable *m = &motor_tables[i];
 
-        // 1. Find the actual start and end of the packet (ignoring our leading ghost zeros)
-        int start_idx = 0;
-        while (start_idx < 22 && m->rx_buffer[start_idx] == 0) {
-            start_idx++;
-        }
-        
         int end_idx = 21;
-        while (end_idx > start_idx && m->rx_buffer[end_idx] == 0) {
+        while (end_idx>0 && m->rx_buffer[end_idx] == 0) {
             end_idx--;
         }
-
-        int num_edges = end_idx - start_idx + 1;
-        if (num_edges < 8) {
+        if (end_idx <5) { // Might be the smallest number of edges. idk
             std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
-            continue; // Not enough physical edges to be a valid packet
+            continue; // No edges
         }
-
-        // 2. Calculate dynamic bit period 
-        // Total packet is 21 bits (1 start bit + 20 GCR data bits)
-        uint32_t total_time = m->rx_buffer[end_idx] - m->rx_buffer[start_idx];
+        uint32_t total_time = m->rx_buffer[end_idx] - m->rx_buffer[0];
         uint32_t bit_period = total_time / 21; 
         
         if (bit_period == 0) {
+            // SEGGER_SYSVIEW_Mark(24);
+            std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+            continue; // Prevent division by zero if something goes horribly wrong
+        }
+        // Decoding logic shamelessly stolen. I tried following 3 different guides and they were all wrong in their own way. I still have no idea what this signal is.
+        //https://github.com/betaflight/betaflight/blob/1efac3ef1ab761228c442830804243f788b3244b/src/platform/common/stm32/pwm_output_dshot_shared.c#L194
+        
+        uint32_t gcr_bitstream = 0;
+        int bits = 0;
+        int len=0;
+        int level =0;
+        for (int j = 1; j <= end_idx; ++j)
+        {
+            int interval = m->rx_buffer[j] - m->rx_buffer[j - 1];
+            if (interval<0){
+                level=0;
+                bits=0;
+                break;
+            }
+            len = (interval + (bit_period / 2)) / bit_period;
+            gcr_bitstream <<= len;
+            gcr_bitstream |= 1 << (len - 1); 
+
+            bits+=len;
+            level ^= 1;
+        }
+        if (level==1){
+            len=(21-bits);
+            gcr_bitstream <<= len;
+            gcr_bitstream |= 1 << (len - 1); 
+            bits+=len;
+        }
+        
+        if (bits != 21) {
+            // SEGGER_SYSVIEW_Mark(23);
             std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
             continue; // Prevent division by zero if something goes horribly wrong
         }
 
-        // 3. Reconstruct the GCR bitstream directly (NRZI Decode)
-        uint32_t gcr_bitstream = 0;
+        uint32_t decodedValue = gcr_decode_table[gcr_bitstream & 0x1f];
+        decodedValue |= gcr_decode_table[(gcr_bitstream >> 5) & 0x1f] << 4;
+        decodedValue |= gcr_decode_table[(gcr_bitstream >> 10) & 0x1f] << 8;
+        decodedValue |= gcr_decode_table[(gcr_bitstream >> 15) & 0x1f] << 12;
 
-        for (int j = start_idx + 1; j <= end_idx; ++j)
-        {
-            uint32_t interval = m->rx_buffer[j] - m->rx_buffer[j - 1];
+        uint16_t telemetry_data = decodedValue >> 4; // Top 12 bits
+
+        uint16_t calculated_crc = decodedValue ^ (decodedValue >> 8);
+        calculated_crc = calculated_crc ^ (calculated_crc >> 4);
+        if ((calculated_crc&0x0F) == 0x0F)
+        {   uint32_t erpm = 0;
+            if (telemetry_data!=4095){
+                erpm = (1000000 * 60 / 100 + telemetry_data / 2) / telemetry_data;
+            }
             
-            // Magic rounding trick: (value + (divisor / 2)) / divisor
-            int bits = (interval + (bit_period / 2)) / bit_period;
-
-            // Betaflight Run-Length Decode: 
-            // An interval of N periods means the state stayed the same for N-1 periods (0s), 
-            // and then transitioned on the final period (1). 
-            for (int k = 0; k < bits - 1; ++k)
-            {
-                gcr_bitstream = (gcr_bitstream << 1) | 0;
-            }
-            gcr_bitstream = (gcr_bitstream << 1) | 1;
-        }
-
-        // We only care about the last 20 bits (stripping off the start bit)
-        gcr_bitstream &= 0xFFFFF;
-
-        // 4. Decode the 5b/4b GCR
-        uint16_t decoded_payload = 0;
-        bool valid_gcr = true;
-
-        // Read the 20 bits in four 5-bit chunks, starting from the highest bits
-        for (int shift = 15; shift >= 0; shift -= 5)
-        {
-            int chunk = (gcr_bitstream >> shift) & 0x1F;
-            int decoded_nibble = gcr_decode_table[chunk];
             
-            if (decoded_nibble < 0) {
-                valid_gcr = false; // Corrupted chunk, fail out
-                break;
-            }
-            decoded_payload = (decoded_payload << 4) | decoded_nibble;
-        }
-
-        if (!valid_gcr) {
-            std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
-            continue;
-        }
-
-        // 5. Validate the CRC
-        uint16_t telemetry_data = decoded_payload >> 4; // Top 12 bits
-        uint16_t expected_crc = decoded_payload & 0x0F; // Bottom 4 bits
-
-        uint16_t calculated_crc = telemetry_data ^ (telemetry_data >> 4) ^ (telemetry_data >> 8);
-        calculated_crc = (~calculated_crc) & 0x0F;
-
-        if (calculated_crc == expected_crc)
-        {
-            // WE HAVE A VALID TELEMETRY PACKET!
-            // The 12-bit telemetry data represents the electrical period.
-            // Standard Betaflight conversion to electrical RPM (eRPM):
-            uint32_t erpm;
-            if (telemetry_data==4095){
-                erpm = 0; // ESC sends max 12 bit value when motor is stopped
-            } else
-            {
-                erpm= (1000000 * 60 / 100 + telemetry_data / 2) / telemetry_data;
-            }
             data->rpm[i] = erpm;
             num_valid++;
         }
+        // else{
+
+        //     std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
+        // }
 
         // Wipe buffer clean for the next DMA transfer
         std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
@@ -594,39 +575,33 @@ void DShot::sendMotorThrottle(float cmds[4])
         }
     } 
     // Commands come in with range 0-1
+
     for (int i = 0; i < NUM_MOTORS; ++i)
     {
         uint16_t dshot_val = 0;
         if (armedState==ARMED){
-            dshot_val = (uint16_t)(cmds[i] * 1999.0f) + 48;
-            dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
+            dshot_val = (uint16_t)(cmds[i] * THROTTLE_MULT) + DSHOT_MIN_THROTTLE;
+            dshot_val = (dshot_val > DSHOT_MAX_THROTTLE) ? DSHOT_MAX_THROTTLE : dshot_val;
+            
+
         }
+
         fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
     }
+    
     startCmdXmit();
 }
 
-void DShot::sendMotorCommand(MotorCommands &cmd)
+void DShot::sendMotorCommand(uint16_t cmds[4])
 {
-    if (cmd.is_throttle_command)
+    
+
+    for (int i = 0; i < NUM_MOTORS; ++i)
     {
-        // Throttle value will come to us in range 0-1999 so we map it to 48-2047.
-        // Prolly make this better
-        for (int i = 0; i < NUM_MOTORS; ++i)
-        {
-            uint16_t dshot_val = cmd.throttle[i] + 48 + DSHOT_MIN_THROTTLE;
-            dshot_val = (dshot_val > 2047) ? 2047 : dshot_val;
-            fillMotorTableBuffer(&motor_tables[i], dshot_val, false);
-        }
+        uint16_t cmd = (cmds[i] > 47) ? 47 : cmds[i];
+        fillMotorTableBuffer(&motor_tables[i], cmd, false);
     }
-    else
-    {
-        uint16_t command_val = static_cast<uint16_t>(cmd.command);
-        for (int i = 0; i < NUM_MOTORS; ++i)
-        {
-            fillMotorTableBuffer(&motor_tables[i], command_val, false);
-        }
-    }
+    
 
     startCmdXmit();
 }
