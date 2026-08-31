@@ -154,8 +154,17 @@ extern "C" {
 
 
 // custom marker definitions
-#define ESKF_MARKER 1
-
+#define ESKF_TASK 0 
+#define ESKF_IMU_MARKER 1
+#define ESKF_GPS_MARKER 2
+#define ESKF_MAG_MARKER 3
+#define PROCESS_MAG 4
+#define SENSOR_BUFFER_DATA_ID 0x5678
+#define MOTOR_1_DATA_ID 1001
+#define MOTOR_2_DATA_ID 1002
+#define MOTOR_3_DATA_ID 1003
+#define MOTOR_4_DATA_ID 1004
+#define VALID_RPM_DATA_ID 1010
 /*********************************************************************
 *
 *       Structures

@@ -29,19 +29,19 @@ struct SensorData
             std::array<float, 3> mag;
         } mag;
     } data;
-};
+}; //40 bytes
 
 struct FastIMUData
 {
     uint64_t timestamp;
     std::array<float, 6> data;
-};
+}; //32 bytes
 
 struct FastRPMData
 {
     uint64_t timestamp;
-    std::array<float, 4> rpm;
-};
+    std::array<uint32_t, 4> rpm;
+}; // 24 bytes
 
 
 struct StateEstimate{
@@ -51,8 +51,7 @@ struct StateEstimate{
     std::array<float, 4> orientation;
     std::array<float, 3> ref_lla;
     std::array<float, 3> angular_vel;
-
-};
+}; //72 bytes
 
 struct MotorCommands
 {

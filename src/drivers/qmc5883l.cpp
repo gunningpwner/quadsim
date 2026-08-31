@@ -1,6 +1,5 @@
 #include "drivers/qmc5883l.h"
 #include "timing.h"
-#include "SEGGER_SYSVIEW.h"
 
 extern I2C_HandleTypeDef hi2c1;
 
@@ -35,16 +34,12 @@ int8_t QMC5883L::init()
 
 bool QMC5883L::startReadCompass_DMA()
 {
-    SEGGER_SYSVIEW_MarkStart(PROCESS_MAG);
-    if (HAL_I2C_Mem_Read(&hi2c1, DEVICE_ADDR, REG_DATA, 1, m_rx_buf, 7, 10)==HAL_OK){
-        processRawData();
-        SEGGER_SYSVIEW_MarkStop(PROCESS_MAG);
+    
+    if (HAL_I2C_Mem_Read_IT(&hi2c1, DEVICE_ADDR, REG_DATA, 1, m_rx_buf, 7) == HAL_OK){
+
         return true;
     }
-    SEGGER_SYSVIEW_MarkStop(PROCESS_MAG);
     return false;
-    
-    
 }
 
 void QMC5883L::processRawData()

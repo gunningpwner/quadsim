@@ -104,6 +104,70 @@ extern unsigned int SystemCoreClock;
 *  Function description
 *    Sends SystemView description strings.
 */
+static const SEGGER_SYSVIEW_DATA_REGISTER buffer_reg_data = {
+    .ID            = SENSOR_BUFFER_DATA_ID,
+    .DataType      = SEGGER_SYSVIEW_TYPE_U32, // Unsigned 32-bit int
+    .Offset        = 0,
+    .RangeMin      = 0,     
+    .RangeMax      = 0,     // Leaving Min/Max at 0 tells SystemView to auto-scale the Y-axis
+    .ScalingFactor = 1.0f,  // IMPORTANT: This must be non-zero or the graph won't draw!
+    .sName         = "Sensor Buffer",
+    .sUnit         = "Measurements"
+};
+
+static const SEGGER_SYSVIEW_DATA_REGISTER motor_1_data = {
+    .ID            = MOTOR_1_DATA_ID,
+    .DataType      = SEGGER_SYSVIEW_TYPE_U32,
+    .Offset        = 0,
+    .RangeMin      = 0,     
+    .RangeMax      = 3000,     // Leaving Min/Max at 0 tells SystemView to auto-scale the Y-axis
+    .ScalingFactor = 1.0f,  // IMPORTANT: This must be non-zero or the graph won't draw!
+    .sName         = "Motor 1",
+    .sUnit         = "Throttle"
+};
+
+static const SEGGER_SYSVIEW_DATA_REGISTER motor_2_data = {
+    .ID            = MOTOR_2_DATA_ID,
+    .DataType      = SEGGER_SYSVIEW_TYPE_U32,
+    .Offset        = 0,
+    .RangeMin      = 0,     
+    .RangeMax      = 3000,
+    .ScalingFactor = 1.0f,
+    .sName         = "Motor 2",
+    .sUnit         = "Throttle"
+};
+
+static const SEGGER_SYSVIEW_DATA_REGISTER motor_3_data = {
+    .ID            = MOTOR_3_DATA_ID,
+    .DataType      = SEGGER_SYSVIEW_TYPE_U32,
+    .Offset        = 0,
+    .RangeMin      = 0,     
+    .RangeMax      = 3000,
+    .ScalingFactor = 1.0f,
+    .sName         = "Motor 3",
+    .sUnit         = "Throttle"
+};
+
+static const SEGGER_SYSVIEW_DATA_REGISTER motor_4_data = {
+    .ID            = MOTOR_4_DATA_ID,
+    .DataType      = SEGGER_SYSVIEW_TYPE_U32,
+    .Offset        = 0,
+    .RangeMin      = 0,     
+    .RangeMax      = 3000,
+    .ScalingFactor = 1.0f,
+    .sName         = "Motor 4",
+    .sUnit         = "Throttle"
+};
+static const SEGGER_SYSVIEW_DATA_REGISTER valid_rpm = {
+    .ID            = VALID_RPM_DATA_ID,
+    .DataType      = SEGGER_SYSVIEW_TYPE_U32,
+    .Offset        = 0,
+    .RangeMin      = 0,     
+    .RangeMax      = 4,
+    .ScalingFactor = 1.0f,
+    .sName         = "Valid RPM",
+    .sUnit         = "aaa"
+};
 
 
 static void _cbSendSystemDesc(void) {
@@ -111,19 +175,36 @@ static void _cbSendSystemDesc(void) {
   SEGGER_SYSVIEW_SendSysDesc("I#15=SysTick");
   SEGGER_SYSVIEW_SendSysDesc("I#44=IMU/Compass");
   SEGGER_SYSVIEW_SendSysDesc("I#72=runFastLoop");
-  SEGGER_SYSVIEW_SendSysDesc("I#32=CompassProcess");
   SEGGER_SYSVIEW_SendSysDesc("I#55=USART3_CRSF");
   SEGGER_SYSVIEW_SendSysDesc("I#28=DMA1_S1_CRSF_RX");
   SEGGER_SYSVIEW_SendSysDesc("I#68=UART4_GPS");
   SEGGER_SYSVIEW_SendSysDesc("I#29=DMA1_S2_GPS_RX");
+  SEGGER_SYSVIEW_SendSysDesc("I#47=ProcessCompass");
+  SEGGER_SYSVIEW_SendSysDesc("I#31=DMA1_Stream4_IRQn");
+  SEGGER_SYSVIEW_SendSysDesc("I#75=DMA2_Stream3_IRQ");
+  SEGGER_SYSVIEW_SendSysDesc("I#76=DMA2_Stream4_IRQ");
+  SEGGER_SYSVIEW_SendSysDesc("I#83=OTG_FS");
   SEGGER_SYSVIEW_TASKINFO eskf_info;
   memset(&eskf_info, 0, sizeof(eskf_info));
-  eskf_info.TaskID = ESKF_MARKER; 
-  eskf_info.sName  = "ESKF_Update";
-  
+  eskf_info.TaskID = ESKF_TASK; 
+  eskf_info.sName  = "ESKF_TASK";
   SEGGER_SYSVIEW_SendTaskInfo(&eskf_info);
+
+
+
+
+  SEGGER_SYSVIEW_NameMarker(ESKF_IMU_MARKER, "ESKF_IMU");
+  SEGGER_SYSVIEW_NameMarker(ESKF_GPS_MARKER, "ESKF_GPS");
+  SEGGER_SYSVIEW_NameMarker(ESKF_MAG_MARKER, "ESKF_MAG");
   
 
+
+  SEGGER_SYSVIEW_RegisterData((SEGGER_SYSVIEW_DATA_REGISTER*)&buffer_reg_data);
+  SEGGER_SYSVIEW_RegisterData((SEGGER_SYSVIEW_DATA_REGISTER*)&motor_1_data);
+  SEGGER_SYSVIEW_RegisterData((SEGGER_SYSVIEW_DATA_REGISTER*)&motor_2_data);
+  SEGGER_SYSVIEW_RegisterData((SEGGER_SYSVIEW_DATA_REGISTER*)&motor_3_data);
+  SEGGER_SYSVIEW_RegisterData((SEGGER_SYSVIEW_DATA_REGISTER*)&motor_4_data);
+  SEGGER_SYSVIEW_RegisterData((SEGGER_SYSVIEW_DATA_REGISTER*)&valid_rpm);
 
 }
 

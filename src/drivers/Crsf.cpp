@@ -1,7 +1,6 @@
 #include "drivers/Crsf.h"
 #include <string.h> // For memcpy
 #include "timing.h"
-
 // Make the global DataManager instance from main.cpp available here.
 // This allows the non-ISR context function to post data.
 
@@ -43,7 +42,7 @@ void Crsf::handleRxChunk(uint8_t *buf, uint16_t len)
     {
         uint8_t byte = buf[i];
         uint64_t current_time = getCurrentTimeUs();
-
+        
         // The idle line interrupt should handle frame timeouts, but as a fallback,
         // we can still check for inter-byte timeouts if needed, though it's less critical now.
         if (m_frame_position > 0 && (current_time - m_frame_start_time) > CRSF_TIME_NEEDED_PER_FRAME_US)

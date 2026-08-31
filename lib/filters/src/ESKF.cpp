@@ -4,7 +4,9 @@
 #include <Eigen/Geometry>
 #include <cstdint>
 #include <iostream>
+#ifdef PROFILING
 #include "SEGGER_SYSVIEW.h"
+#endif
 #define DEG2RAD (M_PI / 180.0f)
 
 #define R_M 6335439.0f
@@ -81,10 +83,17 @@ ESKF::ESKF(DataManager::SensorConsumer m_sensor_consumer, DataManager::StateBuff
 
 void ESKF::run()
 {
+    uint32_t buff_size = m_sensor_consumer.available();
     SensorData *sensor_data = m_sensor_consumer.readNext();
+    #ifdef PROFILING
     if (sensor_data != nullptr){ // Temporary to allow calling task exec only when there is sensor data
-        SEGGER_SYSVIEW_OnTaskStartExec(ESKF_MARKER);
-    
+        
+        SEGGER_SYSVIEW_OnTaskStartExec(ESKF_TASK);
+        SEGGER_SYSVIEW_DATA_SAMPLE buffer_sample;
+        buffer_sample.ID = SENSOR_BUFFER_DATA_ID;
+        buffer_sample.pValue.pU32 = &buff_size;
+        SEGGER_SYSVIEW_SampleData(&buffer_sample);
+    #endif
     while (sensor_data != nullptr)
     {
         
@@ -141,13 +150,17 @@ void ESKF::run()
 
         sensor_data = m_sensor_consumer.readNext();
     }
+    #ifdef PROFILING
     SEGGER_SYSVIEW_OnIdle();
     }
+    #endif
 }
 
 void ESKF::updateIMU(const SensorData &imu_data)
 {
-
+    #ifdef PROFILING
+    SEGGER_SYSVIEW_MarkStart(ESKF_IMU_MARKER);
+    #endif
     float dt = (imu_data.timestamp - last_timestamp) / 1e6f;
     if (dt < 2e-6f)
         return;
@@ -198,7 +211,9 @@ void ESKF::updateIMU(const SensorData &imu_data)
 
     // Gyro Bias Noise (Random Walk)
     errorStateCovariance.diagonal().segment<3>(12).array() += gyroBiasVar * dt;
-
+#ifdef PROFILING
+    SEGGER_SYSVIEW_MarkStop(ESKF_IMU_MARKER);
+#endif
 #ifdef SIM
     Eigen::VectorXf meas(6);
     meas << accel, gyro;
@@ -210,8 +225,9 @@ void ESKF::updateIMU(const SensorData &imu_data)
 
 void ESKF::updateMag(const SensorData &mag_data)
 {
-
-
+#ifdef PROFILING
+    SEGGER_SYSVIEW_MarkStart(ESKF_MAG_MARKER);
+#endif
     float inc, dec;
     calcIncAndDec(refLLA.x(), refLLA.y(), inc, dec);
     Eigen::Vector3f ref_mag = {cosf(inc) * cosf(dec), cosf(inc) * sinf(dec), sinf(inc)};
@@ -257,6 +273,9 @@ void ESKF::updateMag(const SensorData &mag_data)
     H.block<3, 3>(0, 6) = skew(pred_mag);
     correctionStep<3>(H, V, rot_corr_mag, pred_mag);
     // }
+#ifdef PROFILING    
+    SEGGER_SYSVIEW_MarkStop(ESKF_MAG_MARKER);
+#endif
 #ifdef SIM
     Logger::getInstance().log("MAG", meas, mag_data.timestamp);
     Logger::getInstance().log("MAG_Corr", rot_corr_mag, getCurrentTimeUs());
@@ -267,7 +286,9 @@ void ESKF::updateMag(const SensorData &mag_data)
 
 void ESKF::updateGPS(const SensorData &gps_data)
 {
-
+    #ifdef PROFILING
+    SEGGER_SYSVIEW_MarkStart(ESKF_GPS_MARKER);
+    #endif
     Eigen::Matrix<float, 6, 18> H;
     H.setZero();
     H.block<6, 6>(0, 0).setIdentity();
@@ -310,4 +331,7 @@ void ESKF::updateGPS(const SensorData &gps_data)
         Logger::getInstance().log("GPS", logMeas, gps_data.timestamp);
 #endif
     }
+#ifdef PROFILING
+    SEGGER_SYSVIEW_MarkStop(ESKF_GPS_MARKER);
+#endif
 }

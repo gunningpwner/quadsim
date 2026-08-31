@@ -437,7 +437,6 @@ uint8_t DShot::processTelemetry(FastRPMData* data)
         uint32_t bit_period = total_time / 21; 
         
         if (bit_period == 0) {
-            // SEGGER_SYSVIEW_Mark(24);
             std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
             continue; // Prevent division by zero if something goes horribly wrong
         }
@@ -471,7 +470,6 @@ uint8_t DShot::processTelemetry(FastRPMData* data)
         }
         
         if (bits != 21) {
-            // SEGGER_SYSVIEW_Mark(23);
             std::memset(m->rx_buffer, 0, sizeof(m->rx_buffer));
             continue; // Prevent division by zero if something goes horribly wrong
         }

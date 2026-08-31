@@ -4,7 +4,9 @@
 #include "timing.h"
 #include <math.h>
 #include <inttypes.h> // Required for PRIu64
-#include "SEGGER_SYSVIEW.h"
+#ifdef PROFILING
+    #include "SEGGER_SYSVIEW.h"
+#endif
 #ifdef SIM
     #include "driver_emulators/DShot.h"
     #include "driver_emulators/bmi270.h"
@@ -87,6 +89,8 @@ void MonolithicControlEntity::runFastLoop()
     static FastIMUData imu_data;
     static FastRPMData rpm_data;
     static float motor_cmd[4] = {0.00f, 0.00f, 0.00f, 0.00f};
+    // Use this to run the kinematic adjudicator without using the commands that come out
+    // static float test_buffer[4] = {1.00f, 1.00f, 1.00f, 1.00f};
     static float imu_buffer[6] = {0.0f};
     static size_t samples = 0;
 
@@ -119,18 +123,29 @@ void MonolithicControlEntity::runFastLoop()
         samples = 0;
         std::memset(imu_buffer, 0, sizeof(imu_buffer));
     }
-    // TODO: This is eRPM. I need RPM
-    // uint8_t valid_rpm = g_dshot_ptr->processTelemetry(&rpm_data);
-    uint8_t valid_rpm = 4;
+    // TODO: This is eRPM. I need RPM. It doesn't really matter actually. 
+    // The estimator will just learn the eRPM. 
+    unsigned long valid_rpm = g_dshot_ptr->processTelemetry(&rpm_data);
+    #ifdef PROFILING
+        SEGGER_SYSVIEW_DATA_SAMPLE motor_data;
+        for (int i=0; i<4;i++){
+            motor_data.ID = MOTOR_1_DATA_ID+i;
+            motor_data.pValue.pU32 = &rpm_data.rpm[i];
+            SEGGER_SYSVIEW_SampleData(&motor_data);
+        }
+        motor_data.ID=VALID_RPM_DATA_ID;
+        motor_data.pValue.pU32 = &valid_rpm;
+        SEGGER_SYSVIEW_SampleData(&motor_data);
+    #endif
+
     if (valid_rpm == 4 && valid_imu)
     {
-        // uint32_t timestamp = DWT->CYCCNT;
+
         m_adjudicator.update(&imu_data, &rpm_data, motor_cmd);
-        // timestamp = DWT->CYCCNT-timestamp;
-        // printf("delta was %" PRIu32 " \n",timestamp);
     }
 
-        g_dshot_ptr->sendMotorThrottle(motor_cmd);
+    
+    g_dshot_ptr->sendMotorThrottle(motor_cmd);
     
 }
 

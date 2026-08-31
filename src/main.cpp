@@ -9,7 +9,9 @@
 #include "drivers/GPS.h"
 #include "MCE.h"
 #include "KinematicAdjudicator.h"
-#include "SEGGER_SYSVIEW.h"
+#ifdef PROFILING
+    #include "SEGGER_SYSVIEW.h"
+#endif
 #include "peripherals.h"
 #include <string.h>
 #include <stdio.h>
@@ -193,6 +195,14 @@ void CheckUsb(void) {
         } else if ((strncmp((char*)RxLastPacket, "STATUS", 5) == 0))
         {
             printf("%d Sats\n",g_gps_ptr->getLastSatCount());
+        } else if ((strncmp((char*)RxLastPacket, "RESET", 5) == 0))
+        {
+            // Write the required VECTKEY (0x05FA) along with the SYSRESETREQ bit
+            SCB->AIRCR = (0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk;
+
+            // Ensure memory operations complete and wait for reset
+            __DSB(); 
+            while(1);
         }
         
         
@@ -367,9 +377,9 @@ int main(void)
     SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));
     SystemClock_Config_HSE();
     HAL_Init();
-
-    SEGGER_SYSVIEW_Conf();
-
+    #ifdef PROFILING
+        SEGGER_SYSVIEW_Conf();
+    #endif
 
 
     initTime();
@@ -533,35 +543,37 @@ extern "C" void SysTick_Handler(void)
 
 extern "C" void OTG_FS_IRQHandler(void)
 {
+    // SEGGER_SYSVIEW_RecordEnterISR(); //I#83=OTG_FS
     HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void USART3_IRQHandler(void)
 {
-    SEGGER_SYSVIEW_RecordEnterISR(); //I#55=USART3_CRSF
+    // SEGGER_SYSVIEW_RecordEnterISR(); //I#55=USART3_CRSF
     HAL_UART_IRQHandler(&huart3);
-    SEGGER_SYSVIEW_RecordExitISR();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void UART4_IRQHandler(void)
 {
-    SEGGER_SYSVIEW_RecordEnterISR(); // I#68=UART4_GPS
+    // SEGGER_SYSVIEW_RecordEnterISR(); // I#68=UART4_GPS
     HAL_UART_IRQHandler(&huart4);
-    SEGGER_SYSVIEW_RecordExitISR();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
-void I2C1_EV_IRQHandler(void)
+extern "C" void I2C1_EV_IRQHandler(void)
 {
-    
+    // SEGGER_SYSVIEW_RecordEnterISR(); // I#47=ProcessCompass
     HAL_I2C_EV_IRQHandler(&hi2c1);
-    
+    // SEGGER_SYSVIEW_RecordExitISR(); 
 }
 
 extern "C" void TIM2_IRQHandler(void)
 {
-    SEGGER_SYSVIEW_RecordEnterISR(); //I#44=IMU/Compass
+    // SEGGER_SYSVIEW_RecordEnterISR(); //I#44=IMU/Compass
     HAL_TIM_IRQHandler(&htim2);
-    SEGGER_SYSVIEW_RecordExitISR();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 // Shouldn't be needed anymore. We just check if anything was received at the next fast loop.
 // extern "C" void TIM4_IRQHandler(void)
@@ -577,20 +589,24 @@ extern "C" void TIM2_IRQHandler(void)
 
 extern "C" void DMA2_Stream0_IRQHandler(void)
 {   
-    SEGGER_SYSVIEW_RecordEnterISR(); //I#72=runFastLoop
+    // SEGGER_SYSVIEW_RecordEnterISR(); //I#72=runFastLoop
     HAL_DMA_IRQHandler(hspi1.hdmarx);
-    SEGGER_SYSVIEW_RecordExitISR();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA2_Stream3_IRQHandler(void)
 {
+    // SEGGER_SYSVIEW_RecordEnterISR(); // I#75=DMA2_Stream3_IRQ
     HAL_DMA_IRQHandler(hspi1.hdmatx);
+    // SEGGER_SYSVIEW_RecordExitISR();
+    
 }
 
 extern "C" void DMA2_Stream4_IRQHandler(void)
 {
-    
+    // SEGGER_SYSVIEW_RecordEnterISR(); // I#76=DMA2_Stream4_IRQ
     g_dshot_ptr->handleInterrupt();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 // extern "C" void DMA1_Stream5_IRQHandler(void)
 // {
@@ -599,21 +615,23 @@ extern "C" void DMA2_Stream4_IRQHandler(void)
 
 extern "C" void DMA1_Stream1_IRQHandler(void)
 {
-    SEGGER_SYSVIEW_RecordEnterISR(); // #28=DMA1_S1_CRSF_RX
+    // SEGGER_SYSVIEW_RecordEnterISR(); // I#28=DMA1_S1_CRSF_RX
     HAL_DMA_IRQHandler(huart3.hdmarx);
-    SEGGER_SYSVIEW_RecordExitISR();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA1_Stream2_IRQHandler(void)
 {
-    SEGGER_SYSVIEW_RecordEnterISR(); //I#29=DMA1_S2_GPS_RX
+    // SEGGER_SYSVIEW_RecordEnterISR(); //I#29=DMA1_S2_GPS_RX
     HAL_DMA_IRQHandler(huart4.hdmarx);
-    SEGGER_SYSVIEW_RecordExitISR();
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA1_Stream4_IRQHandler(void)
 {
+    // SEGGER_SYSVIEW_RecordEnterISR();//I#31=DMA1_Stream4_IRQn
     HAL_DMA_IRQHandler(hspi2.hdmatx);
+    // SEGGER_SYSVIEW_RecordExitISR();
 }
 
 // extern "C" void DMA1_Stream6_IRQHandler(void)

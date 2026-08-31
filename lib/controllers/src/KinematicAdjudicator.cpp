@@ -15,6 +15,11 @@ KinematicAdjudicator::KinematicAdjudicator() :
 {
     model.current_mode = FlightMode::IDLE;
     model.current_motor = 0;
+    // model.B1 <<0,0,0,0,0,0,0,0,0,0,0,0,-2.03083e-07,2.06884e-07,2.10073e-07,-2.53886e-08,-1.90439e-07,-2.11691e-07,2.518e-07,-1.44087e-06,5e-08,4.99999e-08,4.99993e-08,4.84542e-08;
+    // model.B2 <<0,0,0,0,0,0,0,0,0,0,0,0,-1.94739e-07,-7.23204e-07,2.18145e-06,0.000510169,1.78738e-07,-6.4241e-07,-1.41923e-06,-0.00265609,-2.27419e-11,8.82825e-11,-1.58726e-09,-2.64969e-06;
+    // model.motor_omega_max << 29975.2,29975.3,29975.3,29975.3;
+    // model.motor_kappa << 0.498454,0.498458,0.498458,0.498458;
+    // model.motor_tau << 0.0247397,0.0247397,0.0247397,0.0247397;
 }
 
 void KinematicAdjudicator::launch(){
@@ -28,8 +33,11 @@ void KinematicAdjudicator::update(FastIMUData *imu_data, FastRPMData *rpm_data, 
     // Pack IMU data [Acc, Gyro]
     Vec6Map imu_vec(imu_data->data.data());
     model.imu_sig.update(imu_vec, imu_data->timestamp);
-
-    Vec4Map omega(rpm_data->rpm.data());
+    Eigen::Vector4f omega;
+    omega[0] = rpm_data->rpm[0];
+    omega[1] = rpm_data->rpm[1];
+    omega[2] = rpm_data->rpm[2];
+    omega[3] = rpm_data->rpm[3];
     model.omega_sig.update(omega, rpm_data->timestamp);
 
     Eigen::Vector4f motor_command = Eigen::Vector4f::Zero();
@@ -63,13 +71,18 @@ void KinematicAdjudicator::update(FastIMUData *imu_data, FastRPMData *rpm_data, 
             model.control_sig.update(motor_command, timestamp_us);
             break;
         }
-        default: {
+        case FlightMode::IDLE:  {
             break;
         }
     }
+
     for (int i = 0; i < 4; i++)
     {
-        command[i] = motor_command[i];
+        if(std::isnan(motor_command[i])){
+            command[i]=0;
+        } else{
+            command[i] = motor_command[i];
+        }
     }
 
 }
