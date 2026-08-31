@@ -7,7 +7,8 @@ class ExcitationGenerator
 public:
     ExcitationGenerator() : current_motor(0),
                             state_timer(0.0f),
-                            is_complete(false), 
+                            is_complete(false),
+                            launch_dur(1.0f),
                             zero_dur(0.030f), 
                             step_dur(0.050f), 
                             ramp_dur(0.150f), 
@@ -30,6 +31,7 @@ private:
     bool is_complete;
 
     // Timing parameters
+    float launch_dur;
     float zero_dur, step_dur, ramp_dur, wait_dur;
     uint64_t timer_start_timestamp;
     uint64_t motor_start_timestamp;

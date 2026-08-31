@@ -93,6 +93,7 @@ private:
     
     Vector3f nominalPos;
     Vector3f nominalVel;
+    Vector3f nominalAngVel;
     Quaternionf nominalQuat;
     Vector3f nominalAccBias;
     Vector3f nominalGyroBias;

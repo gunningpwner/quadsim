@@ -16,7 +16,7 @@ public:
     void updateVelocityControl();
     void updateRotationControl();
     
-    Vector3f ang_acc_desired;
+    
     Matrix3f rot_desired;
     Vector3f ang_acc_cmd;
     Vector3f vel_desired;
@@ -33,7 +33,7 @@ private:
     DataManager::StateConsumer m_state_consumer;
     StateEstimate* state_data;
 
-    
+    Vector3f ang_acc_desired;
     Vector3f acc_desired;
     Vector3f jerk_desired;
     Vector3f snap_desired;

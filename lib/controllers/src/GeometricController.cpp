@@ -62,9 +62,12 @@ GeometricController::GeometricController(DataManager::StateConsumer m_state_cons
 void GeometricController::run()
 {
     state_data = m_state_consumer.readLatest();
-    updatePositionControl();
-    updateVelocityControl();
-    updateRotationControl();
+    if (state_data != nullptr){
+        updatePositionControl();
+        updateVelocityControl();
+        updateRotationControl();
+    }
+
 }
 
 void GeometricController::updatePositionControl()
@@ -76,9 +79,9 @@ void GeometricController::updatePositionControl()
     vel_cmd = vel_desired - kx * pos_err;
 
     // Feedforward derivatives pass through
-    acc_cmd = acc_desired;
-    jerk_cmd = jerk_desired;
-    snap_cmd = snap_desired;
+    // acc_cmd = acc_desired;
+    // jerk_cmd = jerk_desired;
+    // snap_cmd = snap_desired;
 }
 
 void GeometricController::updateVelocityControl()
@@ -86,13 +89,13 @@ void GeometricController::updateVelocityControl()
     Vector3f vel_err = Vec3Map(state_data->velocity_ned.data()) - vel_cmd;
 
     // A is the desired kinematic acceleration of the drone
-    Vector3f A = acc_cmd - kv * vel_err;
+    acc_cmd = acc_desired - kv * vel_err;
     
     // In NED, gravity acts in +Z. The drone produces thrust acceleration 'c' in the -b3 direction.
     // Equations of motion: a = g * UnitZ - c * b3
     // We want to track a = A, therefore: c * b3 = g * UnitZ - A
     Vector3f gravity = 9.81f * Vector3f::UnitZ();
-    Vector3f v_in = A - gravity;
+    Vector3f v_in = acc_cmd - gravity;
 
     Matrix3f rot_mat = QuatMap(state_data->orientation.data()).toRotationMatrix();
     Vector3f b3 = rot_mat * Vector3f::UnitZ();
@@ -104,17 +107,17 @@ void GeometricController::updateVelocityControl()
 
     // Differentiate actual acceleration to find velocity tracking error derivatives
     Vector3f current_accel = gravity - linear_z_accel_cmd * b3;
-    Vector3f vel_err_dot = current_accel - acc_cmd; 
+    Vector3f vel_err_dot = current_accel - acc_desired; 
     
-    Vector3f A_dot = jerk_cmd - kv * vel_err_dot;
-    Vector3f vd_in = A_dot; // gravity is constant, so derivative of v_in is A_dot
+    jerk_cmd = jerk_desired - kv * vel_err_dot;
+    Vector3f vd_in = jerk_cmd; // gravity is constant, so derivative of v_in is A_dot
 
     float c_dot = -vd_in.dot(b3) - v_in.dot(b3_dot);
     Vector3f current_jerk = -c_dot * b3 - linear_z_accel_cmd * b3_dot;
-    Vector3f vel_err_ddot = current_jerk - jerk_cmd;
+    Vector3f vel_err_ddot = current_jerk - jerk_desired;
 
-    Vector3f A_ddot = snap_cmd - kv * vel_err_ddot;
-    Vector3f vdd_in = A_ddot;
+    snap_cmd = snap_desired - kv * vel_err_ddot;
+    Vector3f vdd_in = snap_cmd;
 
     // Compute desired geometric axes
     Vector3f b3c, b3c_dot, b3c_ddot;

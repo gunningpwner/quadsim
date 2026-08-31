@@ -40,7 +40,8 @@ MonolithicControlEntity::MonolithicControlEntity()
     m_rc_consumer(g_data_manager_ptr->makeRCChannelsConsumer()),
     m_sensor_buffer(g_data_manager_ptr->getSensorBuffer()),
     m_state_consumer(g_data_manager_ptr->makeStateConsumer()),
-    m_adjudicator()
+    m_adjudicator(),
+    m_geom_control(nullptr)
 {
 
 }
@@ -48,6 +49,7 @@ void MonolithicControlEntity::init()
 {
 
     m_filter = new ESKF(g_data_manager_ptr->makeSensorConsumer(), g_data_manager_ptr->getStateBuffer());
+    m_geom_control = new GeometricController(g_data_manager_ptr->makeStateConsumer());
     // m_auto_level_controller = new AutoLevelController(m_data_manager);
     transition_to(DisarmedState::instance());
 }
@@ -56,9 +58,7 @@ void MonolithicControlEntity::run()
 {
 
     if (m_filter){
-        
         m_filter->run();
-        
     }
     RCChannelsData *rc_data = m_rc_consumer.readLatest();
     if (rc_data != nullptr)
@@ -225,6 +225,7 @@ State *ArmedState::on_run(MonolithicControlEntity *mce)
     // if (state_data == nullptr){
     //     return this;
     // }
+    
 
     KinematicAdjudicator *adjudicator = mce->getKinematicAdjudicator();
     // Not sure if I want this mf to launch itself into the sky first
@@ -235,6 +236,14 @@ State *ArmedState::on_run(MonolithicControlEntity *mce)
             adjudicator->launch();
         // }
     }
+    else if (adjudicator->getCurrentMode()==FlightMode::FLIGHT)
+    {
+        GeometricController * geom = mce->getGeometricController();
+        geom->run();
+        adjudicator->setCommand(geom->ang_acc_cmd,geom->acc_cmd.z());
+    }
+    
+
 
 
     return this;

@@ -3,7 +3,7 @@
 #include "ESKF.h"
 #include "MCEStates.h"
 #include "KinematicAdjudicator.h"
-
+#include "GeometricController.h"
 
 struct UserCommands{
     bool armSwitch=false;
@@ -27,6 +27,7 @@ public:
     const State *getCurrentState() const { return m_current_state; }
     DataManager::StateConsumer &getStateConsumer() { return m_state_consumer; }
     KinematicAdjudicator *getKinematicAdjudicator() { return &m_adjudicator; }
+    GeometricController *getGeometricController() { return m_geom_control;}
     uint64_t last_rc_frame_time;
     UserCommands last_user_commands;
     const uint64_t rc_timeout_us = 500000;
@@ -39,6 +40,8 @@ private:
     DataManager::SensorBuffer &m_sensor_buffer;
     DataManager::StateConsumer m_state_consumer;
     KinematicAdjudicator m_adjudicator;
+    GeometricController *m_geom_control;
+
 };
 
 

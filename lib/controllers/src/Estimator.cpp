@@ -45,7 +45,7 @@ void Estimator::update_motor_estimate()
     Vector4f omega_dot = model.omega_sig.dot;
     Vector4f u = model.control_sig.val;
     // for(int i = 0; i < 4; i++) {
-    if (model.current_mode == FlightMode::LEARNING)
+    if (model.current_mode == FlightMode::LEARNING && model.current_motor>=0)
     {
         int i = model.current_motor;
         // Construct Regressor

@@ -94,6 +94,9 @@ void ESKF::run()
         buffer_sample.pValue.pU32 = &buff_size;
         SEGGER_SYSVIEW_SampleData(&buffer_sample);
     #endif
+    bool state_updated = false;
+    uint64_t state_validity_time = 0;
+
     while (sensor_data != nullptr)
     {
         
@@ -134,6 +137,7 @@ void ESKF::run()
         default:
             break;
         }
+
 #ifdef SIM
         // Logging code remains mostly the same, casting to VectorXf only where needed for the logger interface
         Logger::getInstance().log("LLA", refLLA, getCurrentTimeUs());
@@ -147,13 +151,28 @@ void ESKF::run()
         Logger::getInstance().log("Grav", nominalGrav, getCurrentTimeUs());
         Logger::getInstance().log("Cov", errorStateCovariance, getCurrentTimeUs());
 #endif
-
+        state_updated = true;
+        state_validity_time = sensor_data->timestamp;
         sensor_data = m_sensor_consumer.readNext();
     }
+    if (state_updated){
+        StateEstimate *state_est = m_state_buffer.claim();
+        state_est->ref_lla = {refLLA.x(), refLLA.y(), refLLA.z() };
+        state_est->position_ned = {nominalPos.x(), nominalPos.y(), nominalPos.z() };
+        state_est->velocity_ned = {nominalVel.x(), nominalVel.y(), nominalVel.z() };
+        state_est->angular_vel = {nominalAngVel.x(), nominalAngVel.y(), nominalAngVel.z() };
+        state_est->orientation = {nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w()};
+        state_est->timestamp = state_validity_time;
+        m_state_buffer.commit(state_est);
+    }
+
     #ifdef PROFILING
     SEGGER_SYSVIEW_OnIdle();
     }
     #endif
+
+    
+
 }
 
 void ESKF::updateIMU(const SensorData &imu_data)
@@ -176,6 +195,8 @@ void ESKF::updateIMU(const SensorData &imu_data)
 
     Eigen::Vector3f accCorr = accel - nominalAccBias;
     Eigen::Vector3f gyroCorr = gyro - nominalGyroBias;
+    nominalAngVel = gyroCorr;
+
     Quaternionf delta_quat = axisAngleToQuaternion(gyroCorr, dt);
 
     Eigen::Matrix3f rot_mat = nominalQuat.toRotationMatrix();
