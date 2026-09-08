@@ -739,7 +739,7 @@
         async function populateDropdown() {
             try {
                 // Fetch the contents of the "data" folder at the root of your repo
-                const apiUrl = `https://api.github.com/repos/${githubUser}/${githubRepo}/contents/data?ref=${branchName}`;
+                const apiUrl = `https://api.github.com/repos/${githubUser}/${githubRepo}/contents/docs/data?ref=${branchName}`;
                 const response = await fetch(apiUrl);
                 
                 if (!response.ok) throw new Error("Could not fetch directory contents from GitHub API.");
@@ -754,7 +754,7 @@
                     if (file.name.endsWith('.zip')) {
                         const option = document.createElement('option');
                         // Since index.html is in /docs, the relative path to the zip is ../data/filename.zip
-                        option.value = `../data/${file.name}`; 
+                        option.value = `data/${file.name}`; 
                         option.textContent = file.name;
                         runSelect.appendChild(option);
                     }
