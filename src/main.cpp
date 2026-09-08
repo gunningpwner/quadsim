@@ -8,9 +8,13 @@
 #include "drivers/DShot.h"
 #include "drivers/GPS.h"
 #include "MCE.h"
+#include "drivers/TelemetryLogger.h"
 #include "KinematicAdjudicator.h"
 #ifdef PROFILING
     #include "SEGGER_SYSVIEW.h"
+#else
+    void SEGGER_SYSVIEW_RecordEnterISR(){}
+    void SEGGER_SYSVIEW_RecordExitISR(){}
 #endif
 #include "peripherals.h"
 #include <string.h>
@@ -26,6 +30,7 @@ BMI270 *g_imu_ptr = nullptr;
 GPS *g_gps_ptr = nullptr;
 QMC5883L *g_compass_ptr = nullptr;
 W25Q128FV *g_flash_ptr = nullptr;
+
 DShot *g_dshot_ptr = nullptr;
 DataManager::SensorBuffer *g_sensor_buffer_ptr = nullptr;
 
@@ -130,11 +135,12 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
-    if (hspi->Instance == SPI2) //Flash
+    if (hspi->Instance == SPI2) //Flash as finished a write
     {
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
         if (g_flash_ptr) {
             g_flash_ptr->m_dma_transfer_active = false; // Clear flag
+            
         }
     }
 }
@@ -172,20 +178,24 @@ void CheckUsb(void) {
         RxLastPacket[RxPacketLen] = 0; 
 
         if (strncmp((char*)RxLastPacket, "DUMP", 4) == 0) {
+            if (!Logger::getInstance().isStopped()||g_flash_ptr->isBusy()){
+                printf("Logger is not stopped or flash is not done flushing\n");
+            } else{
+                printf("Dumping Flash Data\n");
+                g_flash_ptr->dumpDataToUSB();
+                printf("Dump Complete\n");
+            }
 
-            g_flash_ptr->stopWriting();
-            printf("Dumping Flash Data\n");
-            g_flash_ptr->dumpDataToUSB();
-            printf("Dump Complete\n");
             
         } else if ((strncmp((char*)RxLastPacket, "START", 5) == 0))
         {
-            printf("Starting flash write\n");
-            g_flash_ptr->startWriting();
+            printf("Starting logging\n");
+            Logger::getInstance().enableLogging();
+
         } else if ((strncmp((char*)RxLastPacket, "STOP", 4) == 0))
         {
-            printf("Stopping flash write\n");
-            g_flash_ptr->stopWriting();
+            Logger::getInstance().stopLogging();
+            printf("Stopping log and flushing to flash\n");
         }
         else if ((strncmp((char*)RxLastPacket, "ERASE", 5) == 0))
         {
@@ -433,7 +443,7 @@ int main(void)
     g_gps_ptr = &gps_driver;
     QMC5883L compass(data_manager.getSensorBuffer());
     g_compass_ptr = &compass;
-    W25Q128FV flash(data_manager.makeSensorConsumer());
+    W25Q128FV flash;
     g_flash_ptr = &flash;
 
     DShot dshot_driver;
@@ -512,7 +522,6 @@ int main(void)
     while (1)
     {
         
-        flash.run();
         CheckUsb();
         // Run the main flight software logic.
 
@@ -524,7 +533,7 @@ int main(void)
             last_crsf_telemetry_time = getCurrentTimeUs();
         }
 
-
+        Logger::getInstance().yourGodRequiresFurtherOfferingsToBeSated();
 
         // // Control the on-board LED based on the MCE state
         // if (mce.getCurrentState() == DisarmedState::instance()) {
@@ -557,16 +566,16 @@ extern "C" void USART3_IRQHandler(void)
 
 extern "C" void UART4_IRQHandler(void)
 {
-    // SEGGER_SYSVIEW_RecordEnterISR(); // I#68=UART4_GPS
+    SEGGER_SYSVIEW_RecordEnterISR(); // I#68=UART4_GPS
     HAL_UART_IRQHandler(&huart4);
-    // SEGGER_SYSVIEW_RecordExitISR();
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void I2C1_EV_IRQHandler(void)
 {
-    // SEGGER_SYSVIEW_RecordEnterISR(); // I#47=ProcessCompass
+    SEGGER_SYSVIEW_RecordEnterISR(); // I#47=ProcessCompass
     HAL_I2C_EV_IRQHandler(&hi2c1);
-    // SEGGER_SYSVIEW_RecordExitISR(); 
+    SEGGER_SYSVIEW_RecordExitISR(); 
 }
 
 extern "C" void TIM2_IRQHandler(void)
@@ -622,9 +631,9 @@ extern "C" void DMA1_Stream1_IRQHandler(void)
 
 extern "C" void DMA1_Stream2_IRQHandler(void)
 {
-    // SEGGER_SYSVIEW_RecordEnterISR(); //I#29=DMA1_S2_GPS_RX
+    SEGGER_SYSVIEW_RecordEnterISR(); //I#29=DMA1_S2_GPS_RX
     HAL_DMA_IRQHandler(huart4.hdmarx);
-    // SEGGER_SYSVIEW_RecordExitISR();
+    SEGGER_SYSVIEW_RecordExitISR();
 }
 
 extern "C" void DMA1_Stream4_IRQHandler(void)

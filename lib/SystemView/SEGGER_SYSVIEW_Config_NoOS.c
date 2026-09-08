@@ -196,6 +196,7 @@ static void _cbSendSystemDesc(void) {
   SEGGER_SYSVIEW_NameMarker(ESKF_IMU_MARKER, "ESKF_IMU");
   SEGGER_SYSVIEW_NameMarker(ESKF_GPS_MARKER, "ESKF_GPS");
   SEGGER_SYSVIEW_NameMarker(ESKF_MAG_MARKER, "ESKF_MAG");
+  SEGGER_SYSVIEW_NameMarker(LOGGER_MARKER, "LOGGER");
   
 
 

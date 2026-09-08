@@ -74,8 +74,8 @@ private:
     int sample_count = 0;
 
     static BiquadFilter<T> computeDefaultFilter() {
-        float cutoff_hz = 20.0f;
-        float sample_rate_hz = 2000.0f;
+        float cutoff_hz = 200.0f;
+        float sample_rate_hz = 1600.0f;
         float K = std::tan(M_PI * cutoff_hz / sample_rate_hz);
         float K2 = K * K;
         float norm = 1.0f / (1.0f + std::sqrt(2.0f) * K + K2);
@@ -85,8 +85,8 @@ private:
         float b2 = b0;
         float a1 = 2.0f * (K2 - 1.0f) * norm;
         float a2 = (1.0f - std::sqrt(2.0f) * K + K2) * norm;
-        // return BiquadFilter<T>(b0, b1, b2, a1, a2);
-        return BiquadFilter<T>(1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+        return BiquadFilter<T>(b0, b1, b2, a1, a2);
+        // return BiquadFilter<T>(1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
     }
 
     void setZero(T& v) {

@@ -5,7 +5,7 @@
 extern SPI_HandleTypeDef hspi2;
 extern int8_t usbStatus;
 
-W25Q128FV::W25Q128FV(DataManager::SensorConsumer m_consumer) : m_sensor_consumer(m_consumer), m_should_write(false)
+W25Q128FV::W25Q128FV() : m_flash_full(false)
 {
 }
 
@@ -31,53 +31,50 @@ int8_t W25Q128FV::init()
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
 
     if (!(m_rx_buf[0] == 0xEF && m_rx_buf[1] == 0x40 && m_rx_buf[2] == 0x18))
+    {
         return -1;
+    }
 
     write_head = findWriteHead();
     if (write_head == 0xFFFFFFFF)
+    {
+        m_flash_full = false;
         return -1;
+    }
 
     return 0;
 }
 
-void W25Q128FV::run()
+bool W25Q128FV::writePageDMA_Raw(uint8_t *buffer_with_header)
 {
-    if (!m_should_write)
-        return;
-    //Check if flash is full or will be full
-    // W25Q128FV capacity is 16MB (0x1000000)
-    if (write_head >= 0x1000000 - 256) {
-        m_should_write = false;
-        return;
-    }
-    if (m_sensor_consumer.available() >= ITEMS_PER_PAGE)
+    if (m_flash_full)
     {
-        if (isBusy())
-            return;
-
-        page_buffer[0] = 0x02;
-        page_buffer[1] = (write_head >> 16) & 0xFF;
-        page_buffer[2] = (write_head >> 8) & 0xFF;
-        page_buffer[3] = (write_head) & 0xFF;
-        uint8_t *data_ptr = &page_buffer[4];
-        for (size_t i = 0; i < ITEMS_PER_PAGE; i++)
-        {
-            SensorData *data = m_sensor_consumer.readNext();
-            if (data == nullptr)
-            {
-                return;
-            }
-            memcpy(data_ptr, data, sizeof(SensorData));
-            data_ptr += sizeof(SensorData);
-        }
-        if (PADDING_SIZE > 0)
-        {
-            memset(data_ptr, 0, PADDING_SIZE);
-        }
-
-        write_head += 256;
-        writePageDMA_Raw(page_buffer, 256 + 4);
+        return false;
     }
+    // Check if flash is full or will be full
+    //  W25Q128FV capacity is 16MB (0x1000000)
+    if (write_head >= 0x1000000 - 256)
+    {
+        m_flash_full = false;
+        return false;
+    }
+
+    if (isBusy())
+    {
+        return false;
+    }
+    m_dma_transfer_active = true;
+    
+    buffer_with_header[0] = 0x02;
+    buffer_with_header[1] = (write_head >> 16) & 0xFF;
+    buffer_with_header[2] = (write_head >> 8) & 0xFF;
+    buffer_with_header[3] = (write_head) & 0xFF;
+    write_head += 256;
+    
+    enableWrite();
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+    HAL_SPI_Transmit_DMA(&hspi2, buffer_with_header, 260);
+    return true;
 }
 bool W25Q128FV::isBusy()
 {
@@ -135,13 +132,7 @@ void W25Q128FV::readData(uint32_t address, uint8_t *buffer, uint32_t size)
     HAL_SPI_Receive(&hspi2, buffer, size, 100);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
 }
-void W25Q128FV::writePageDMA_Raw(uint8_t *buffer_with_header, uint16_t total_len)
-{
-    m_dma_transfer_active = true;
-    enableWrite();
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
-    HAL_SPI_Transmit_DMA(&hspi2, buffer_with_header, total_len);
-}
+
 void W25Q128FV::dumpDataToUSB()
 {
     while (isBusy())
@@ -158,16 +149,6 @@ void W25Q128FV::dumpDataToUSB()
             HAL_Delay(1);
         }
     }
-}
-
-void W25Q128FV::startWriting()
-{
-    m_should_write = true;
-    m_sensor_consumer.reset();
-}
-void W25Q128FV::stopWriting()
-{
-    m_should_write = false;
 }
 
 void W25Q128FV::enableWrite()

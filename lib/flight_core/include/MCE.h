@@ -41,7 +41,7 @@ private:
     DataManager::StateConsumer m_state_consumer;
     KinematicAdjudicator m_adjudicator;
     GeometricController *m_geom_control;
-
+    
 };
 
 

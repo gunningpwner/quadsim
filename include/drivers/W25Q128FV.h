@@ -7,21 +7,17 @@
 class W25Q128FV
 {
 public:
-    W25Q128FV(DataManager::SensorConsumer m_consumer);
-    void run();
+    W25Q128FV();
     int8_t init();
     uint32_t findWriteHead();
     void readData(uint32_t address, uint8_t* buffer, uint32_t size);
     bool isBusy();
-    void startWriting();
-    void stopWriting();
-
-    // NOTE: This function assumes you have prepended the Command (0x02) 
-    // and 3-byte Address to your buffer
-    void writePageDMA_Raw(uint8_t* buffer_with_header, uint16_t total_len);
+    // NOTE: This function assumes size of buffer_with_header is 260 bytes and first 4 bytes are empty for command and write address
+    bool writePageDMA_Raw(uint8_t* buffer_with_header); // Returns true if flash / driver is not busy
     void dumpDataToUSB();
     void erase();
-    volatile bool m_dma_transfer_active = false;
+    volatile bool m_dma_transfer_active = false; // why is this volatile??
+    
 private:
     static constexpr uint8_t CMD_WRITE_ENABLE = 0x06;
     static constexpr uint8_t CMD_VOLATILE_SR = 0x50;
@@ -40,14 +36,10 @@ private:
     static constexpr size_t ITEM_SIZE = sizeof(SensorData);
     static constexpr size_t ITEMS_PER_PAGE = 256 / ITEM_SIZE; 
     static constexpr size_t PADDING_SIZE = 256 - (ITEMS_PER_PAGE * ITEM_SIZE);
-
-    DataManager::SensorConsumer m_sensor_consumer;
-
-    bool m_should_write;
-
+    bool m_flash_full;
     uint32_t write_head;
     uint8_t m_rx_buf[4];
-    uint8_t page_buffer[256+4];
-
+    uint8_t page_buffer[256];
+    
     void enableWrite();
 };

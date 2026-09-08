@@ -29,13 +29,14 @@ struct SensorData
             std::array<float, 3> mag;
         } mag;
     } data;
-}; //40 bytes
+}; //36 bytes
 
 struct FastIMUData
 {
     uint64_t timestamp;
     std::array<float, 6> data;
 }; //32 bytes
+//20 bytes  if using uint16_t
 
 struct FastRPMData
 {

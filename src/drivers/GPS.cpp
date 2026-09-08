@@ -1,7 +1,7 @@
 #include "drivers/GPS.h"
 #include "drivers/GPS_config.h"
 #include "timing.h"
-
+#include "drivers/TelemetryLogger.h"
 extern UART_HandleTypeDef huart4;
 
 GPS::GPS(DataManager::SensorBuffer &m_sensor_buffer) : 
@@ -102,6 +102,7 @@ void GPS::handleRxChunk(uint8_t *buf, uint16_t len)
             gps_data->data.gps.vel[1] = msg->velE * 1e-3;
             gps_data->data.gps.vel[2] = msg->velD * 1e-3;
             // gps_data.Satellites = msg->numSV;
+            LOG_DATA(*gps_data);
             m_sensor_buffer.commit(gps_data);
 
             last_sat_count = msg->numSV;
