@@ -9,7 +9,7 @@ class W25Q128FV
 public:
     W25Q128FV();
     int8_t init();
-    uint32_t findWriteHead();
+    
     void readData(uint32_t address, uint8_t* buffer, uint32_t size);
     bool isBusy();
     // NOTE: This function assumes size of buffer_with_header is 260 bytes and first 4 bytes are empty for command and write address
@@ -17,7 +17,7 @@ public:
     void dumpDataToUSB();
     void erase();
     volatile bool m_dma_transfer_active = false; // why is this volatile??
-    
+    uint32_t getWriteHead() {return write_head;};
 private:
     static constexpr uint8_t CMD_WRITE_ENABLE = 0x06;
     static constexpr uint8_t CMD_VOLATILE_SR = 0x50;
@@ -40,6 +40,6 @@ private:
     uint32_t write_head;
     uint8_t m_rx_buf[4];
     uint8_t page_buffer[256];
-    
+    uint32_t findWriteHead();
     void enableWrite();
 };

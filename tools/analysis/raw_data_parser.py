@@ -11,7 +11,7 @@ import math
 PACKET_CONFIGS = {
     0x01: ('FastIMUData', '<Q6f', ['timestamp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz']),
     0x02: ('FastRPMData', '<Q4I', ['timestamp', 'rpm0', 'rpm1', 'rpm2', 'rpm3']),
-    0x03: ('SensorData', '<QB3x6f', ['timestamp', 'sensor_type', 'd0', 'd1', 'd2', 'd3', 'd4', 'd5']),
+    0x03: ('SensorData', '<QB3x6f4x', ['timestamp', 'sensor_type', 'd0', 'd1', 'd2', 'd3', 'd4', 'd5']),
     0x04: ('StateEstimate', '<Q16f', [
         'timestamp', 
         'pos_n', 'pos_e', 'pos_d', 
@@ -138,29 +138,33 @@ def main():
     
     writer = csv.DictWriter(f_csv, fieldnames=all_fields, extrasaction='ignore')
     writer.writeheader()
-
+    overflows=0
     while pos < len(raw_buffer) - 1:
         packet_id = raw_buffer[pos]
         payload_size = raw_buffer[pos+1]
         # print(packet_id,payload_size)
         # Check if this matches a known packet header configuration
+        # print(raw_buffer[pos], pos)
         if packet_id in PACKET_CONFIGS:
             name, fmt, fields = PACKET_CONFIGS[packet_id]
             expected_size = struct.calcsize(fmt)
-            print(name,expected_size,payload_size)
+            # print(name,expected_size,payload_size)
             # Verify payload size matches struct size and doesn't exceed buffer bounds
             # if payload_size == expected_size and pos + 2 + expected_size <= len(raw_buffer):
-            if payload_size >= expected_size and pos + 2 + expected_size <= len(raw_buffer):
+            if payload_size==expected_size  and pos + 2 + expected_size <= len(raw_buffer):
                 payload = raw_buffer[pos+2 : pos+2+expected_size]
                 try:
                     unpacked = struct.unpack(fmt, payload)
+                    # if (name=="SensorData"):
+                        # print(payload)
+                        # print(unpacked)
                     row = dict(zip(fields, unpacked))
                     row['packet_type'] = name
                     
                     timestamp = row.get('timestamp', 0)
                     
                     # Time jump / reboot detection
-                    if last_timestamp != 0 and (timestamp < last_timestamp or timestamp - last_timestamp > 10e6):
+                    if last_timestamp != 0 and (last_timestamp-timestamp > 10000  or timestamp - last_timestamp > 10e6):
                         print(f"Time jump detected! (Old: {last_timestamp}, New: {timestamp})")
                         f_csv.close()
                         file_counter += 1
@@ -174,15 +178,25 @@ def main():
                     records_written += 1
                     
                     pos += 2 + payload_size
+                    overflows=0
                     continue
                 except struct.error:
                     print("OH GOD")
-            elif(packet_id==0xFF):
-                print("overflow")
+            
             else:
-                print("shit")
+                print("shit",pos)
+        elif(packet_id==0xFF):
+                writer.writerow({"timestamp":pos,"packet_id":0xFF})
+                print("overflow",pos)
+                
+                overflows+=1
         else:
-            print(packet_id, " aww")
+            overflows=0
+        if (overflows>5):
+            print("probably hit end of file")
+            break
+        # else:
+        #     print(packet_id, " aww")
         # Resynchronize by sliding 1 byte forward if header is invalid, padding (0x00), or erased flash (0xFF)
         pos += 1
 
@@ -190,4 +204,7 @@ def main():
     print(f"Done. Processed {records_written} valid telemetry packets into {folder}/.")
 
 if __name__ == '__main__':
+
+    for val in PACKET_CONFIGS.values():
+        print(val[0],struct.calcsize(val[1]))
     main()

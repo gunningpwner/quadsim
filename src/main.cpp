@@ -216,6 +216,8 @@ void CheckUsb(void) {
         } else if ((strncmp((char*)RxLastPacket, "TIME", 4) == 0)){
             uint64_t current_time = getCurrentTimeUs();
             printf("Now time eH:%lu L:%lu\n", (unsigned long)( current_time>> 32), (unsigned long)(current_time & 0xFFFFFFFF));
+        } else if ((strncmp((char*)RxLastPacket, "MEM", 3) == 0)){
+            printf("Write head at %lu \n",g_flash_ptr->getWriteHead());
         }
         
         

@@ -13,6 +13,7 @@
 #else
     #include "drivers/DShot.h"
     #include "drivers/bmi270.h"
+    #include "drivers/TelemetryLogger.h"
 #endif
 
 extern DShot *g_dshot_ptr;
@@ -104,6 +105,7 @@ void MonolithicControlEntity::runFastLoop()
         imu_buffer[4] += imu_data.data[4];
         imu_buffer[5] += imu_data.data[5];
         samples++;
+        LOG_DATA(imu_data);
     }
     // TODO: Have this check if a certain time has passed rather than number of samples
     if (samples == 16)
@@ -119,6 +121,7 @@ void MonolithicControlEntity::runFastLoop()
         dwnsmpled_imu_data->data.imu.gyro[0] = imu_buffer[3] / samples;
         dwnsmpled_imu_data->data.imu.gyro[1] = imu_buffer[4] / samples;
         dwnsmpled_imu_data->data.imu.gyro[2] = imu_buffer[5] / samples;
+        LOG_DATA(*dwnsmpled_imu_data);
         m_sensor_buffer.commit(dwnsmpled_imu_data);
         samples = 0;
         std::memset(imu_buffer, 0, sizeof(imu_buffer));
@@ -137,7 +140,7 @@ void MonolithicControlEntity::runFastLoop()
         motor_data.pValue.pU32 = &valid_rpm;
         SEGGER_SYSVIEW_SampleData(&motor_data);
     #endif
-
+    
     if (valid_rpm == 4 && valid_imu)
     {
 

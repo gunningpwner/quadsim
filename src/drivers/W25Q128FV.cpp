@@ -55,6 +55,7 @@ bool W25Q128FV::writePageDMA_Raw(uint8_t *buffer_with_header)
     //  W25Q128FV capacity is 16MB (0x1000000)
     if (write_head >= 0x1000000 - 256)
     {
+        printf("Dis bitch full\n");
         m_flash_full = false;
         return false;
     }

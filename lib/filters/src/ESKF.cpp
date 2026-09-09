@@ -4,6 +4,7 @@
 #include <Eigen/Geometry>
 #include <cstdint>
 #include <iostream>
+#include "drivers/TelemetryLogger.h"
 #ifdef PROFILING
 #include "SEGGER_SYSVIEW.h"
 #endif
@@ -163,6 +164,7 @@ void ESKF::run()
         state_est->angular_vel = {nominalAngVel.x(), nominalAngVel.y(), nominalAngVel.z() };
         state_est->orientation = {nominalQuat.x(), nominalQuat.y(), nominalQuat.z(), nominalQuat.w()};
         state_est->timestamp = state_validity_time;
+        LOG_DATA(*state_est);
         m_state_buffer.commit(state_est);
     }
 
