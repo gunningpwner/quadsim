@@ -69,9 +69,9 @@ private:
     void presentBufferToFlashDriverInHopesThatItMayBlessThisCodeToBeBugFree(int idx_of_buf_to_be_offered);
     static constexpr uint16_t BUFFER_CAPACITY = 260; //first 4 bytes are reserved for the spi to write address into.
     static constexpr uint8_t OVERFLOW_BYTE = 0xFF;
-
+    static constexpr uint32_t RECORD_END= 0x0B00B135; 
     uint8_t* in_buf; // Buffer that data gets written to
-    uint8_t buffer_head;
+    uint16_t buffer_head;
 
     uint8_t buffer_1[BUFFER_CAPACITY]; 
     uint8_t buffer_2[BUFFER_CAPACITY]; 

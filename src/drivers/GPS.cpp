@@ -6,7 +6,7 @@ extern UART_HandleTypeDef huart4;
 
 GPS::GPS(DataManager::SensorBuffer &m_sensor_buffer) : 
     m_sensor_buffer(m_sensor_buffer),
-    last_sat_count(0) 
+    last_sat_count(-1) 
     {}
 
 struct __attribute__((packed)) UbxHeader

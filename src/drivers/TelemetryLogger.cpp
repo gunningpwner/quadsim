@@ -30,8 +30,8 @@ void Logger::stopLogging(){
 
     global_log_enabled=false;
 
-    // Fill rest of buffer with 0s
-    std::fill(in_buf+buffer_head,in_buf+BUFFER_CAPACITY,0);
+    // make a write function that only writes the data. 
+    writePacket(reinterpret_cast<const uint8_t*>(&RECORD_END), sizeof(RECORD_END),0);
     int last_buf = active_idx;
     advanceBuffer();
     buf_states[active_idx] = BufferState::FREE;
@@ -135,6 +135,9 @@ void Logger::presentBufferToFlashDriverInHopesThatItMayBlessThisCodeToBeBugFree(
 }
 
 void Logger::yourGodRequiresFurtherOfferingsToBeSated(){
+    if (isStopped()){
+        return;
+    }
     int buffs_done = 0;
     for (int i=0;i<3;i++){
         if(buf_states[i]==BufferState::FLUSHING)

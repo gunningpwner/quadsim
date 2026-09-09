@@ -17,6 +17,6 @@ private:
     uint8_t m_dma_rx_buffer[256];
 
     void writeUBXMessage(uint8_t msg_class, uint8_t msg_id, const uint8_t *payload, uint16_t payload_len);
-    uint8_t last_sat_count;
+    int last_sat_count;
     DataManager::SensorBuffer &m_sensor_buffer;
 };

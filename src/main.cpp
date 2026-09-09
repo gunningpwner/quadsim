@@ -19,7 +19,7 @@
 #include "peripherals.h"
 #include <string.h>
 #include <stdio.h>
-
+#include <cinttypes>
 #define MAVLINK_SYSTEM_ID 1
 #define MAVLINK_COMPONENT_ID 1
 
@@ -213,6 +213,9 @@ void CheckUsb(void) {
             // Ensure memory operations complete and wait for reset
             __DSB(); 
             while(1);
+        } else if ((strncmp((char*)RxLastPacket, "TIME", 4) == 0)){
+            uint64_t current_time = getCurrentTimeUs();
+            printf("Now time eH:%lu L:%lu\n", (unsigned long)( current_time>> 32), (unsigned long)(current_time & 0xFFFFFFFF));
         }
         
         
